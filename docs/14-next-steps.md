@@ -1,85 +1,100 @@
 # 14 — Next Steps
 
-Captured 2026-08-25 from live use. Ordered by whether the thing is *wrong* or
-merely *unpolished* — the diff bug first, because it undermines trust in the
-review UI, which is the feature the whole design rests on.
+Captured 2026-08-25 from live use, and revised the same day as the items were
+worked. N1–N3 are done; N4 is a measurement, running separately. The carried-
+over list at the bottom is unchanged.
 
 ---
 
-## N1 · The diff is not a real diff · **bug, highest priority**
+## N1 · The diff is not a real diff · **fixed**
 
-**Observed.** A proposed edit renders the entire new source in green and the
-entire old source in red, including lines that did not change. A real unified
-diff should show unchanged lines as plain context and colour only the lines
-that actually differ.
+**Observed.** A proposed edit rendered the entire new source in green and the
+entire old source in red, including lines that had not changed.
 
-**Where.** `src/ui/diff.ts` → `diffLines()`, rendered by
-`src/ui/DiffOverlay.ts`. The `coalesce()` step already assumes a mix of
-`context` / `add` / `del` lines and trims around the changed ones, so if every
-line arrives marked added or removed, coalescing has nothing to do and the
-whole cell renders as one block.
+**Two causes, both real, found in the recorded transcript and then in a test.**
 
-**Likely causes, in order of suspicion:**
+1. **The model copied the listing's indentation.** `render_notebook` indents
+   every cell's source by four spaces so the listing reads as a block. In
+   `/tmp/vybe-transcript.jsonl` the model's `propose_edit` body came back with
+   that indent still on it — every line of the "edit" differed from the
+   original by four leading spaces, so every line genuinely *had* changed and
+   the differ was right. Fixed in two places: `_trim_body` in `protocol.py` now
+   removes an indent common to every non-blank line of a tag body, and
+   `prompts/tooling.md` states outright that the listing's indent is layout,
+   not code.
 
-1. **Trailing-newline mismatch.** The agent's body is trimmed of its trailing
-   newline (`_trim_body` in `protocol.py`), while the existing cell source may
-   keep one. jsdiff then sees the final line as changed, and depending on how
-   the parts split, can degenerate into one big remove + one big add.
-2. **Whitespace or indentation differences** throughout — the model rewrites
-   the cell with different indentation, so genuinely every line differs. This
-   would be correct behaviour on wrong input, and the fix belongs in the
-   prompt, not the differ.
-3. **Line-ending mismatch** (`\r\n` vs `\n`) between the notebook source and
-   the model's reply, which makes every line differ invisibly.
+2. **jsdiff tokenises on the newline terminator.** A final line without a
+   trailing `\n` does not compare equal to the same line with one, and the
+   result degenerates from "one line changed" to one whole-blob remove plus one
+   whole-blob add:
 
-**Do first:** dump `before` and `after` with `JSON.stringify` for a proposal
-that renders wrongly and compare them character by character. That separates
-cause 2 (real difference, differ is right) from causes 1 and 3 (artefact).
+   ```
+   diffLines('a = 1', 'a = 1\nb = 2')
+     -> [ {removed: 'a = 1'}, {added: 'a = 1\nb = 2'} ]
+   ```
 
-**Then:** normalise both sides before diffing — strip a single trailing
-newline from each, normalise CRLF to LF — and add a jest test with a
-before/after pair differing by one line in the middle, asserting exactly one
-`add`, one `del`, and the rest `context`. There is currently no such test,
-which is why this shipped.
+   Since `_trim_body` strips the agent's trailing newline while the cell it
+   replaces keeps one, every proposal hit this. `normaliseSource` in
+   `src/ui/diff.ts` now terminates both sides (and normalises CRLF) before
+   diffing. Note the fix is to *add* the newline, not strip it — stripping it
+   from both sides looks equivalent and reintroduces the bug on any pure
+   addition.
 
----
-
-## N2 · Review controls are too small and under-explained · **UX**
-
-- **Accept/reject buttons are too small.** Currently 34×34px in
-  `style/base.css` (`.jv-review-button`). Make them substantially larger —
-  they are the primary interaction of the whole tool.
-- **Nothing says `Enter` modifies.** The buttons label `Y` and `N`, but the
-  third verdict — `Enter` to open the merged version and hand-edit it
-  (decision D6) — is invisible. Add a line beneath the stack, e.g.
-  `Enter to modify`, styled like the existing `.jv-review-key` labels.
+`src/__tests__/diff.spec.ts` covers both, plus the reindentation case, so a
+regression shows up as a failing test rather than as a wall of red on screen.
+The second cause was found *by* writing that test, which is the whole argument
+for having written it earlier.
 
 ---
 
-## N3 · The status bubble is too small and its click is dangerous · **UX, partly a bug**
+## N2 · Review controls too small and under-explained · **done**
 
-- **Make it bigger.** It is the only indicator that anything needs review.
-- **Add a shortcut to jump to the first edit and begin reviewing**, shown on
-  the bubble itself rather than only in the keymap.
-- **Clicking must jump to the first edit, never reject.** Right now the bubble
-  has two stacked buttons (`src/ui/DiffOverlay.ts` → `StatusBubble`): the main
-  one jumps, the small one below it rejects all. At the current size they are
-  easy to confuse, so a click intended as "take me there" can discard every
-  proposed edit. Jump must be the large, obvious, default target; reject-all
-  must be visually separate and hard to hit by accident — ideally with an undo
-  path, since it currently discards an entire round's review in one click.
+Accept/reject are 52px (were 34px). The merge verdict — `Enter`, decision D6 —
+now has a button of its own and a line of text naming its key; previously
+nothing on screen indicated it existed.
 
 ---
 
-## N4 · Measure Gemma 4 with TurboFieldfareServer · **performance**
+## N3 · The status bubble · **done**
+
+Bigger, and the click is now safe. The jump button is the full width of the
+bubble; reject-all is small, below a divider, and labelled. Reject-all is also
+undoable (`⌥⇧Z`, or the bubble, which becomes `rejected N edits — undo`):
+undoing restores the proposals and re-registers the round so a later accept
+still records to its operation log. Staging any new proposal discards the undo.
+
+---
+
+## N5 · A second prompt in the same notebook did nothing · **fixed**
+
+**Observed.** After one prompt had run, running a second left the cell as `[ ]`
+— no `[*]`, no request, nothing.
+
+**Cause.** `Rounds.begin` refuses to start while a round is registered for the
+panel, which is correct. But a round that produced proposals was never
+unregistered: `_settle` handed control to `Proposals` and only `Proposals` knew
+when review ended, so the entry sat in `_active` forever and every later prompt
+was refused silently. A throw out of `_drive` leaked the same way.
+
+**Fix.** `IRoundHandle` gained `endReview()`, called by `Proposals` when the
+last verdict lands, and `begin`'s `finally` finishes any round that did not
+reach review — including one that threw. `_finish` is idempotent. Covered by
+`src/__tests__/proposals.spec.ts`.
+
+The general shape is worth remembering: a round's lifetime is owned by two
+objects, and neither one alone can see it end.
+
+---
+
+## N4 · Measure Gemma 4 with TurboFieldfareServer · **outstanding**
 
 Gemma 4 is the better model on the tool bench — 5/5 with zero fence fallbacks,
 against 13/15 with 2 fences for `qwen2.5-coder:7b`. The blocker is latency:
 roughly 90 s per call, because `TurboFieldfareAdapter` falls back to the CLI,
 which reloads the 13 GB model on every invocation.
 
-`TurboFieldfareServer` keeps the model resident and the adapter already
-prefers it when `/health` answers — that path has never been exercised.
+`TurboFieldfareServer` keeps the model resident and the adapter already prefers
+it when `/health` answers — that path has never been exercised.
 
 ```bash
 ~/.turbofieldfare/turbo-fieldfare/.build/release/TurboFieldfareServer \
@@ -90,8 +105,8 @@ prefers it when `/health` answers — that path has never been exercised.
 Then re-run `scripts/bench-tools.py --agent turbofieldfare-gemma4` and record
 wall-clock per call. **If it lands in single-digit seconds, make Gemma the
 default agent** — it is the better model and the only reason it is not the
-default is speed. Note `--prompt-cache-mode single-prefix`: our prompts share
-a long constant prefix (universal + tooling prompt), so prefix caching should
+default is speed. Note `--prompt-cache-mode single-prefix`: our prompts share a
+long constant prefix (universal + tooling prompt), so prefix caching should
 help substantially.
 
 ---
@@ -112,13 +127,14 @@ From [11-roadmap.md](11-roadmap.md), unchanged by the above:
   is not wired.
 - **Remaining adapters** — `claude -p` and OpenAI-compatible.
 - **Galata e2e**, settings custom renderers, context meter.
-- **Jest coverage for our own modules.** Only the protocol parser is tested on
-  the frontend side; the diff bug in N1 is a direct consequence.
+- **Jest coverage for our own modules.** Now covers the protocol parser, the
+  differ, and the review lifecycle. `mutations.ts` and `snapshot.ts` are still
+  untested on the frontend side.
 
 ## A process note
 
-Several fixes today were reported as working while the running server predated
-them. `scripts/dev.sh` now refuses to start beside a server already holding the
-port and prints the commit it serves; `scripts/vybe-diagnose.sh` reports when a
+Several fixes were reported as working while the running server predated them.
+`scripts/dev.sh` now refuses to start beside a server already holding the port
+and prints the commit it serves; `scripts/vybe-diagnose.sh` reports when a
 transcript came from stale code. **Check the banner before concluding anything
 about a fix.**

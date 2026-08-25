@@ -18,6 +18,7 @@ export namespace CommandIDs {
   export const accept = 'jupyter-vybe:accept-proposal';
   export const reject = 'jupyter-vybe:reject-proposal';
   export const editProposal = 'jupyter-vybe:edit-proposal';
+  export const undoRejectAll = 'jupyter-vybe:undo-reject-all';
   export const gotoFirst = 'jupyter-vybe:goto-first-proposal';
   export const rejectAll = 'jupyter-vybe:reject-all';
   export const cancel = 'jupyter-vybe:cancel-round';
@@ -141,6 +142,17 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
       }
     });
 
+    app.commands.addCommand(CommandIDs.undoRejectAll, {
+      label: 'Undo reject all proposed edits',
+      isEnabled: () => !!current() && proposals.undoableRejection(current()!) > 0,
+      execute: () => {
+        const panel = current();
+        if (panel && proposals.undoRejectAll(panel)) {
+          void app.commands.execute(CommandIDs.gotoFirst);
+        }
+      }
+    });
+
     app.commands.addCommand(CommandIDs.cancel, {
       label: 'Cancel agent round',
       execute: () => {
@@ -188,6 +200,13 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
     bind(CommandIDs.gotoFirst, ['Alt E'], ROUND_SELECTOR);
     bind(CommandIDs.rejectAll, ['Alt Shift E'], ROUND_SELECTOR);
     bind(CommandIDs.cancel, ['Ctrl C'], ROUND_SELECTOR);
+    // Not scoped to ROUND_SELECTOR: after a reject-all the round is over, so
+    // the class that selector matches is already gone.
+    bind(
+      CommandIDs.undoRejectAll,
+      ['Alt Shift Z'],
+      '.jp-Notebook.jp-mod-commandMode'
+    );
     bind(
       CommandIDs.reopenPrompt,
       ['Accel Shift Enter'],

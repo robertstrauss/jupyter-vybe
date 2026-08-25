@@ -57,16 +57,23 @@ free: dispose the overlay, unhide the editor.
 Floating over the cell's right edge, vertically stacked, per PROMPT §2:
 
 ```
-                                            ┌────┐
-   ┌──────────────────────────────────┐     │ ✓  │  Y
-   │  - old line                      │     ├────┤
-   │  + new line                      │     │ ✗  │  N
-   └──────────────────────────────────┘     └────┘
+                                          ┌──────┐
+   ┌──────────────────────────────────┐   │  ✓   │   Y
+   │  - old line                      │   ├──────┤
+   │  + new line                      │   │  ✗   │   N
+   └──────────────────────────────────┘   ├──────┤
+                                          │  ✎   │   ⏎
+                                          └──────┘
+                                         ⏎ to modify
 ```
 
 - Buttons are `position: sticky; top: …` inside an absolutely positioned right-edge container so
   they stay visible while a long cell scrolls.
-- Under each button, 10px text names its shortcut (`Y` / `N`), per PROMPT.
+- Accept and reject are 52px: they are the primary interaction of the extension and were far too
+  small to hit comfortably at first (docs/14 N2).
+- Under each button, small text names its shortcut (`Y` / `N` / `⏎`).
+- The third verdict — merge and hand-edit — has a button of its own, smaller than the other two,
+  plus a line of text naming its key. It existed from the start but nothing on screen said so.
 - Only the *active* proposal shows the stack; others show a thin left border marker so the user
   can see how many remain in view.
 
@@ -77,12 +84,20 @@ above the cell toolbar but below dialogs):
 
 ```
 ┌───────────────────────────────┐
-│ ⚡ 3 edits proposed      ⌥E   │
-│    reject all            ⌥⇧E  │
+│ ⚡ 3 edits proposed            │
+│ click or ⌥E to review         │
+├───────────────────────────────┤
+│ reject all  ⌥⇧E               │
 └───────────────────────────────┘
 ```
 
-- Click, or the shortcut, jumps to the first unresolved proposal.
+- Click, or the shortcut, jumps to the first unresolved proposal. The jump button is the entire
+  top of the bubble; reject-all sits below a divider, small and clearly labelled. They were once
+  adjacent and similarly sized, so a click meaning "show me" could discard the round (docs/14 N3).
+- **Reject-all is undoable.** One click discards a whole round's review, so the rejected batch is
+  kept and the bubble turns into `rejected 3 edits — undo ⌥⇧Z` instead of vanishing. Undoing
+  restores the proposals *and* re-registers the round, so accepting afterwards still records to
+  the round's operation log. Staging any new proposal discards the undo.
 - The count decrements on each resolution, with a brief number-change animation.
 - Also renders round status during `RUNNING` (`⚡ thinking…` + elapsed time + a cancel affordance),
   so there is one place to look for "is something happening".
@@ -105,6 +120,7 @@ notebook node while a round is live) so they never shadow core shortcuts outside
 | `J` / `K`, `↓` / `↑` | next / previous proposal | command mode, round active |
 | `Cmd+Z` | `jupyter-vybe:undo` (layered, see [02](02-prompt-cells.md)) | round active |
 | `Ctrl+C` | `jupyter-vybe:cancel-round` | round active |
+| `Alt+Shift+Z` | `jupyter-vybe:undo-reject-all` | command mode (the round is already over) |
 
 ### Why `Y` / `N` and not `Enter` / `Backspace`
 

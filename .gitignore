@@ -58,3 +58,8 @@ ui-tests/.playwright/
 .AppleDouble
 .LSOverride
 ._*
+
+# Test/lint artefacts (were committed once by accident)
+junit.xml
+.eslintcache
+coverage/

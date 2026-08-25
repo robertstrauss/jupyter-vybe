@@ -13,6 +13,10 @@ The notebook appears above as a numbered listing. Each cell looks like this:
   matching `[end of cell 2]`, is that cell's content — **not** the content of
   the cell before it.
 - `# output:` lines are results from running the cell, not part of its source.
+- The four-space indent in front of each line is **only** how the listing is
+  laid out. It is not part of the cell's code. In the example above, the cell's
+  real first line is `def example():` at column zero. When you write a cell
+  body, write it at column zero — do not copy the listing's indent back.
 
 Use the **number** to address a cell: `[2]` is `cell="2"`.
 

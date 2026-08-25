@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 
 sys.path.insert(0, ".")
 
@@ -50,6 +51,7 @@ CASES = [
 async def run(agent: str, runs: int) -> int:
     adapter = build_adapter(agent)
     tally = {"tagged": 0, "fenced": 0, "correct_tool": 0, "total": 0}
+    timings: list[float] = []
     print(f"agent: {agent}\n")
     for request, expected in CASES:
         got = []
@@ -59,8 +61,10 @@ async def run(agent: str, runs: int) -> int:
                 user_prompt=request, tooling=_tooling_with_limits({}),
             )
             out = ""
+            started = time.monotonic()
             async for chunk in adapter.stream([Message("user", prompt)], asyncio.Event()):
                 out += chunk
+            timings.append(time.monotonic() - started)
             tools = [e.name for e in parse(out) if e.kind.value == "tool"]
             tally["total"] += 1
             if tools:
@@ -71,11 +75,22 @@ async def run(agent: str, runs: int) -> int:
                 tally["correct_tool"] += 1
             got.append(tools[0] if tools else ("fence" if "```" in out else "prose"))
         ok = sum(g == expected for g in got)
-        print(f"  want {expected:13} {ok}/{runs}  got {got}")
+        secs = " ".join(f"{t:.1f}s" for t in timings[-runs:])
+        print(f"  want {expected:13} {ok}/{runs}  got {got}  [{secs}]")
     t = tally["total"]
     print(f"\n  tags emitted   {tally['tagged']}/{t}")
     print(f"  fell back to fence {tally['fenced']}/{t}")
     print(f"  correct tool   {tally['correct_tool']}/{t}")
+    if timings:
+        # First call absorbs model load and cold prompt cache; the rest is the
+        # latency a user actually feels, which is what decides the default
+        # agent (docs/14 N4).
+        rest = timings[1:] or timings
+        print(f"  first call     {timings[0]:.1f}s")
+        print(
+            f"  after that     {min(rest):.1f}s min / "
+            f"{sum(rest) / len(rest):.1f}s mean / {max(rest):.1f}s max"
+        )
     return 0 if tally["correct_tool"] == t else 1
 
 

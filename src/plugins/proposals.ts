@@ -10,7 +10,7 @@ import {
   OperationLog
 } from '../notebook/mutations';
 import { isSettledPromptCell } from '../notebook/promptCell';
-import { diffLines, type IHunk } from '../ui/diff';
+import { diffLines, normaliseSource, type IHunk } from '../ui/diff';
 
 export interface IProposal {
   id: string;
@@ -36,6 +36,13 @@ export interface IRoundHandle {
   id: string;
   log: OperationLog;
   promptCellId: string;
+  /**
+   * Called once, when the last pending proposal of the round is settled.
+   * The round is not over when the agent stops streaming -- it is over when
+   * review ends -- and until this fires the round is still registered, which
+   * blocks the next prompt in that notebook.
+   */
+  endReview(): void;
 }
 
 export interface IVybeProposals {
@@ -46,6 +53,8 @@ export interface IVybeProposals {
   accept(panel: NotebookPanel, proposalId: string): void;
   reject(panel: NotebookPanel, proposalId: string): void;
   rejectAll(panel: NotebookPanel): void;
+  undoRejectAll(panel: NotebookPanel): boolean;
+  undoableRejection(panel: NotebookPanel): number;
   activeProposal(panel: NotebookPanel): IProposal | null;
   clear(panel: NotebookPanel, roundId?: string): void;
   logFor(panel: NotebookPanel): OperationLog;
@@ -58,6 +67,8 @@ export const IVybeProposals = new Token<IVybeProposals>(
 export class Proposals implements IVybeProposals {
   private _byPanel = new Map<string, IProposal[]>();
   private _rounds = new Map<string, IRoundHandle>();
+  /** The last reject-all, kept so a mis-click is recoverable (docs/14 N3). */
+  private _undo = new Map<string, { ids: string[]; round: IRoundHandle }>();
   private _changed = new Signal<this, NotebookPanel>(this);
 
   get changed() {
@@ -75,8 +86,9 @@ export class Proposals implements IVybeProposals {
       return false;
     }
     const before = model.sharedModel.getSource();
-    if (before === req.after) {
-      // Models frequently "edit" a cell into itself; drop silently.
+    if (normaliseSource(before) === normaliseSource(req.after)) {
+      // Models frequently "edit" a cell into itself; drop silently. A reply
+      // that differs only in its trailing newline counts as itself.
       return false;
     }
     const proposal: IProposal = {
@@ -92,6 +104,7 @@ export class Proposals implements IVybeProposals {
         model.type === 'markdown' ? this._isRendered(panel, req.cellId) : false,
       state: 'pending'
     };
+    this._undo.delete(panel.id);
     const list = this._byPanel.get(panel.id) ?? [];
     list.push(proposal);
     this._byPanel.set(panel.id, list);
@@ -163,13 +176,49 @@ export class Proposals implements IVybeProposals {
   }
 
   rejectAll(panel: NotebookPanel): void {
+    const round = this._rounds.get(panel.id);
+    const ids: string[] = [];
     for (const p of this.list(panel)) {
       if (p.state === 'pending') {
         p.state = 'rejected';
         this._setRendered(panel, p.cellId, p.wasRendered);
+        ids.push(p.id);
       }
     }
+    // One click can discard a whole round's review, so remember what it was.
+    if (ids.length && round) {
+      this._undo.set(panel.id, { ids, round });
+    }
     this._advance(panel);
+  }
+
+  /** Put the last reject-all back up for review. */
+  undoRejectAll(panel: NotebookPanel): boolean {
+    const undo = this._undo.get(panel.id);
+    if (!undo) {
+      return false;
+    }
+    this._undo.delete(panel.id);
+    const list = this.list(panel);
+    let restored = 0;
+    for (const p of list) {
+      if (undo.ids.includes(p.id) && p.state === 'rejected') {
+        p.state = 'pending';
+        restored++;
+      }
+    }
+    if (!restored) {
+      return false;
+    }
+    // Re-register the round: accept() needs its log to record the edit, and
+    // endReview must fire again when the restored review finishes.
+    this._rounds.set(panel.id, undo.round);
+    this.beginReview(panel, undo.round);
+    return true;
+  }
+
+  undoableRejection(panel: NotebookPanel): number {
+    return this._undo.get(panel.id)?.ids.length ?? 0;
   }
 
   clear(panel: NotebookPanel, roundId?: string): void {
@@ -182,6 +231,13 @@ export class Proposals implements IVybeProposals {
       }
     }
     this._byPanel.set(panel.id, keep);
+    this._undo.delete(panel.id);
+    const round = this._rounds.get(panel.id);
+    if (round && (roundId === undefined || round.id === roundId)) {
+      // Cleared, not reviewed: the caller (a cancel) finishes the round
+      // itself, so drop the handle without calling endReview.
+      this._rounds.delete(panel.id);
+    }
     this._changed.emit(panel);
   }
 
@@ -201,8 +257,10 @@ export class Proposals implements IVybeProposals {
       widget?.node.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     if (!next) {
-      panel.node.classList.remove('jv-round-active');
       this._rounds.delete(panel.id);
+      // Ownership of the round -- the marker class included -- belongs to
+      // Rounds, not here.
+      round?.endReview();
     }
   }
 

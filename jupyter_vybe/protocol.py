@@ -206,16 +206,38 @@ def strip_body_fence(body: str, cell_type: str) -> str:
 
 
 def _trim_body(body: str) -> str:
-    """Strip one leading and one trailing newline; keep all interior whitespace."""
-    if body.startswith("\r\n"):
-        body = body[2:]
-    elif body.startswith("\n"):
+    """Normalise line endings, strip one leading/trailing newline, dedent."""
+    body = body.replace("\r\n", "\n").replace("\r", "\n")
+    if body.startswith("\n"):
         body = body[1:]
-    if body.endswith("\r\n"):
-        body = body[:-2]
-    elif body.endswith("\n"):
+    if body.endswith("\n"):
         body = body[:-1]
-    return body
+    return _dedent(body)
+
+
+def _dedent(body: str) -> str:
+    """Remove indentation the model copied out of the notebook listing.
+
+    assemble_initial renders every cell's source indented by four spaces so the
+    listing reads as a block. Models echo that indentation back inside the tag
+    body, which produces an "edit" where every single line differs from the
+    original by four leading spaces -- the whole cell then renders as one solid
+    add and one solid delete instead of a diff (docs/14 N1).
+
+    Only a uniform indent shared by every non-blank line is removed, so the
+    interior shape of the code is untouched. A body whose first line already
+    sits at column zero is left exactly as it is, which is the common case.
+    """
+    lines = body.split("\n")
+    indents = [
+        len(line) - len(line.lstrip(" \t")) for line in lines if line.strip()
+    ]
+    if not indents:
+        return body
+    common = min(indents)
+    if common == 0:
+        return body
+    return "\n".join(line[common:] if line.strip() else line for line in lines)
 
 
 def parse(text: str) -> list[Event]:

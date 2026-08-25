@@ -30,7 +30,9 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       if (!b) {
         b = new StatusBubble(
           () => app.commands.execute(CommandIDs.gotoFirst),
-          () => app.commands.execute(CommandIDs.rejectAll)
+          () => app.commands.execute(CommandIDs.rejectAll),
+          () => app.commands.execute(CommandIDs.undoRejectAll),
+          () => app.commands.execute(CommandIDs.cancel)
         );
         b.addClass('jv-bubble-host');
         Widget.attach(b, panel.node);
@@ -59,7 +61,15 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       const bubble = bubbleFor(panel);
 
       if (!pending.length) {
-        bubble.hide();
+        // A reject-all leaves nothing pending but is worth offering back for
+        // a moment, in case the click was not meant (docs/14 N3).
+        const undoable = proposals.undoableRejection(panel);
+        if (undoable) {
+          bubble.show();
+          bubble.showUndo(undoable);
+        } else {
+          bubble.hide();
+        }
         return;
       }
       bubble.show();
@@ -104,12 +114,18 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
 
     const attachControls = (host: HTMLElement, proposal: IProposal): Widget => {
       const yn = settings.acceptKey !== 'enter-backspace';
-      const controls = new ReviewControls(
-        () => app.commands.execute(CommandIDs.accept),
-        () => app.commands.execute(CommandIDs.reject),
-        yn ? 'Y' : '⏎',
-        yn ? 'N' : '⌫'
-      );
+      const controls = new ReviewControls({
+        onAccept: () => app.commands.execute(CommandIDs.accept),
+        onReject: () => app.commands.execute(CommandIDs.reject),
+        // Enter is the merge verdict only when accept is Y/N; in
+        // enter-backspace mode Enter already means accept.
+        onModify: yn
+          ? () => app.commands.execute(CommandIDs.editProposal)
+          : undefined,
+        acceptKey: yn ? 'Y' : '⏎',
+        rejectKey: yn ? 'N' : '⌫',
+        modifyKey: yn ? '⏎' : undefined
+      });
       void proposal;
       Widget.attach(controls, host);
       return controls;

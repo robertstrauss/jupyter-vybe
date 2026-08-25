@@ -21,8 +21,26 @@ export interface IHunk {
 
 const CONTEXT = 3;
 
+/**
+ * Line endings and a missing final newline are not edits.
+ *
+ * jsdiff tokenises on the newline *terminator*, so a line without one does not
+ * compare equal to the same line with one. The agent's body arrives trimmed of
+ * its trailing newline while the cell it replaces keeps one, and jsdiff then
+ * degenerates from "one line changed" to "every line removed, every line
+ * added" -- which is what N1 looked like on screen. Terminating both sides
+ * fixes it; CRLF would otherwise mark every line changed invisibly (docs/14).
+ */
+export function normaliseSource(source: string): string {
+  const unix = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (unix === '') {
+    return unix;
+  }
+  return unix.endsWith('\n') ? unix : `${unix}\n`;
+}
+
 export function diffLines(before: string, after: string): IHunk[] {
-  const parts = jsdiffLines(before, after);
+  const parts = jsdiffLines(normaliseSource(before), normaliseSource(after));
   const lines: IDiffLine[] = [];
   for (const part of parts) {
     const kind: LineKind = part.added

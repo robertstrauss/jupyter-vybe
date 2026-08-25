@@ -24,6 +24,8 @@ from typing import AsyncIterator
 from .base import Adapter, AdapterSpec, HealthStatus, Message
 
 DEFAULT_HOST = os.environ.get("TURBOFIELDFARE_HOST", "http://127.0.0.1:8080")
+# Only used if /v1/models cannot be read; the server's own default id.
+_FALLBACK_MODEL_ID = "gemma-4-26b-a4b-it"
 
 # Probe order copied from the vendored client's resolve_cli_bin / resolve_model_path.
 _CLI_CANDIDATES = [
@@ -56,7 +58,10 @@ class TurboFieldfareAdapter(Adapter):
         self.spec = spec
         self.host = host.rstrip("/")
         self.cli = _resolve(_CLI_CANDIDATES, must_be_exec=True)
+        # A filesystem path: what the CLI wants. The server wants its own model
+        # id instead, which is a different thing entirely (see _server_model).
         self.model = _resolve(_MODEL_CANDIDATES, must_be_exec=False)
+        self._server_model_id: str | None = None
 
     # -- health ------------------------------------------------------------
 
@@ -67,6 +72,24 @@ class TurboFieldfareAdapter(Adapter):
                 return resp.status == 200
         except Exception:
             return False
+
+    def _server_model(self) -> str:
+        """The id the server answers to, read from /v1/models.
+
+        Sending the model *directory* here returns 404: the server matches on
+        its own id ("gemma-4-26b-a4b-it"), not on a path. This is why the
+        server path was dead on arrival despite /health answering (docs/14 N4).
+        """
+        if self._server_model_id:
+            return self._server_model_id
+        try:
+            req = urllib.request.Request(f"{self.host}/v1/models", method="GET")
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                data = json.load(resp)
+            self._server_model_id = data["data"][0]["id"]
+        except Exception:
+            self._server_model_id = _FALLBACK_MODEL_ID
+        return self._server_model_id
 
     async def health(self) -> HealthStatus:
         if await asyncio.to_thread(self._server_up):
@@ -102,7 +125,7 @@ class TurboFieldfareAdapter(Adapter):
 
     async def _stream_server(self, prompt: str, cancel: asyncio.Event) -> AsyncIterator[str]:
         payload = {
-            "model": self.model or "gemma4",
+            "model": self._server_model(),
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": int(os.environ.get("MAX_TOKENS", "1024")),
             "temperature": float(os.environ.get("TEMPERATURE", "0.2")),

@@ -98,6 +98,14 @@ class Rounds implements IVybeRounds {
       return true;
     } finally {
       codeModel.executionState = 'idle';
+      // A round that reached review is still live -- Proposals owns it until
+      // the last verdict, and calls back to endReview. Anything else ends
+      // here, including a throw out of _drive: a round left in _active would
+      // silently refuse every later prompt in this notebook, which looks to
+      // the user like pressing shift-enter doing nothing at all.
+      if (round.state !== 'reviewing') {
+        this._finish(round, false);
+      }
       options.onCellExecuted({ cell, success: round.state !== 'cancelled' });
     }
   }
@@ -233,7 +241,12 @@ class Rounds implements IVybeRounds {
 
     if (this.proposals.pendingCount(panel, round.id) > 0) {
       round.state = 'reviewing';
-      this.proposals.beginReview(panel, round);
+      this.proposals.beginReview(panel, {
+        id: round.id,
+        log: round.log,
+        promptCellId: round.promptCellId,
+        endReview: () => this._finish(round, false)
+      });
     } else {
       this._finish(round, false);
     }
@@ -241,6 +254,9 @@ class Rounds implements IVybeRounds {
   }
 
   private _finish(round: Round, restorePromptCell: boolean): void {
+    if (this._active.get(round.panel.id) !== round) {
+      return; // already finished; _finish is called from several paths
+    }
     round.panel.node.classList.remove('jv-round-active');
     this._active.delete(round.panel.id);
     if (restorePromptCell) {
