@@ -229,6 +229,27 @@ class AgentSession:
         if event.name == "propose_edit":
             ref = args.get("cell", "")
             resolved = resolve_cell_ref(ref, self._cells)
+            # Record exactly what the model asked for, what it resolved to, and
+            # what is actually in that cell. A mis-aimed edit renders as a
+            # perfectly good diff, so this is the only way to see it went wrong.
+            target = next((c for c in self._cells if c.get("id") == resolved), None)
+            preview = ""
+            if target:
+                src = target.get("source") or ""
+                if isinstance(src, list):
+                    src = "".join(src)
+                preview = src.split("\n")[0][:70]
+            _record(
+                "resolve",
+                requested=ref,
+                resolved=resolved,
+                target_first_line=preview,
+                cell_count=len(self._cells),
+                listing=[
+                    f"[{i + 1}] {c.get('cell_type')} {c.get('id')}"
+                    for i, c in enumerate(self._cells)
+                ],
+            )
             if not resolved:
                 return {
                     "op": "protocolError",

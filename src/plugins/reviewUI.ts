@@ -89,7 +89,13 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
         cellWidget.node
           .querySelector('.jp-Cell-inputWrapper')
           ?.classList.add('jv-input-hidden');
-        const overlay = new DiffOverlay(proposal.hunks, proposal.note);
+        const label = proposal.targetLabel
+          ? `editing cell ${i + 1}: ${proposal.targetLabel}`
+          : `editing cell ${i + 1}`;
+        const overlay = new DiffOverlay(
+          proposal.hunks,
+          proposal.note ? `${label} — ${proposal.note}` : label
+        );
         Widget.attach(overlay, cellWidget.node);
         created.push(overlay);
       }

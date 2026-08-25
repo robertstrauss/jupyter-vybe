@@ -19,6 +19,7 @@ export interface IProposal {
   before: string;
   after: string;
   note?: string;
+  targetLabel?: string;
   hunks: IHunk[];
   wasRendered: boolean;
   state: 'pending' | 'accepted' | 'rejected' | 'stale';
@@ -85,6 +86,7 @@ export class Proposals implements IVybeProposals {
       before,
       after: req.after,
       note: req.note,
+      targetLabel: before.split('\n')[0].slice(0, 60),
       hunks: diffLines(before, req.after),
       wasRendered:
         model.type === 'markdown' ? this._isRendered(panel, req.cellId) : false,
