@@ -1,0 +1,7 @@
+Start <vybe:add_cell type="code">
+x = 1
+</vybe:add_cell> end
+---EXPECTED---
+{"kind":"prose","text":"Start "}
+{"kind":"tool","name":"add_cell","args":{"type":"code","body":"x = 1"}}
+{"kind":"prose","text":" end"}

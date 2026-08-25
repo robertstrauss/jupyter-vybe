@@ -1,0 +1,3 @@
+Hello, **world**!
+---EXPECTED---
+{"kind":"prose","text":"Hello, **world**!"}

@@ -1,0 +1,7 @@
+<vybe:add_cell type="markdown">
+```python
+print("literal")
+```
+</vybe:add_cell>
+---EXPECTED---
+{"kind":"tool","name":"add_cell","args":{"type":"markdown","body":"```python\nprint(\"literal\")\n```"}}

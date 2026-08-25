@@ -1,0 +1,7 @@
+<vybe:add_cell type="markdown">
+## Spectral analysis
+
+Details here.
+</vybe:add_cell>
+---EXPECTED---
+{"kind":"tool","name":"add_cell","args":{"type":"markdown","body":"## Spectral analysis\n\nDetails here."}}

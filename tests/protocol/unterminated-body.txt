@@ -1,0 +1,6 @@
+Before
+<vybe:add_cell type="code">
+x = 1
+---EXPECTED---
+{"kind":"prose","text":"Before\n"}
+{"kind":"protocol_error","text":"stream ended inside <vybe:add_cell> body; partial cell discarded"}

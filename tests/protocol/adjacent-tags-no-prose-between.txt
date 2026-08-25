@@ -1,0 +1,4 @@
+<vybe:complete prefix="a"/><vybe:ipython_help target="x"/>
+---EXPECTED---
+{"kind":"tool","name":"complete","args":{"prefix":"a"}}
+{"kind":"tool","name":"ipython_help","args":{"target":"x"}}

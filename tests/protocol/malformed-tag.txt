@@ -1,0 +1,3 @@
+<vybe:123>
+---EXPECTED---
+{"kind":"protocol_error","text":"malformed tool tag: '<vybe:123>'"}

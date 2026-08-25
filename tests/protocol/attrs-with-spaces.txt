@@ -1,0 +1,5 @@
+<vybe:propose_edit cell = "a3f91c2e" note = "keep spaces" >
+x = 2
+</vybe:propose_edit>
+---EXPECTED---
+{"kind":"tool","name":"propose_edit","args":{"cell":"a3f91c2e","note":"keep spaces","body":"x = 2"}}

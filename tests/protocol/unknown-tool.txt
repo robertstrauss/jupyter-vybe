@@ -1,0 +1,3 @@
+<vybe:delete_notebook />
+---EXPECTED---
+{"kind":"protocol_error","text":"unknown tool 'delete_notebook'; known tools: add_cell, complete, ipython_help, propose_edit"}
