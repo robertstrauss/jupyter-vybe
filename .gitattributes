@@ -1,0 +1,12 @@
+# Normalize line endings on checkin; check out platform-native.
+* text=auto
+
+# Notebooks: keep diffs readable and avoid CRLF mangling of embedded JSON.
+*.ipynb text eol=lf
+
+# Lockfiles are generated — collapse them in diffs and reviews.
+yarn.lock       linguist-generated=true -diff
+package-lock.json linguist-generated=true -diff
+
+# Shell scripts must stay LF even on Windows checkouts.
+*.sh text eol=lf
