@@ -1,0 +1,5 @@
+<vybe:propose_edit cell="a3f91c2e" note="vectorise the loop">
+result = values.mean()
+</vybe:propose_edit>
+---EXPECTED---
+{"kind":"tool","name":"propose_edit","args":{"cell":"a3f91c2e","note":"vectorise the loop","body":"result = values.mean()"}}

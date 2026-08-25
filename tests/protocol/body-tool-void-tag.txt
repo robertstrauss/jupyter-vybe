@@ -1,0 +1,3 @@
+<vybe:add_cell />
+---EXPECTED---
+{"kind":"protocol_error","text":"<vybe:add_cell> requires a body, got a void tag"}

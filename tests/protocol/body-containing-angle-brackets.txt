@@ -1,0 +1,6 @@
+<vybe:add_cell type="code">
+if x < y and y > 0:
+    print("<vybe:not_a_tag>")
+</vybe:add_cell>
+---EXPECTED---
+{"kind":"tool","name":"add_cell","args":{"type":"code","body":"if x < y and y > 0:\n    print(\"<vybe:not_a_tag>\")"}}

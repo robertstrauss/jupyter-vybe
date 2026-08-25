@@ -1,0 +1,3 @@
+<vybe:complete prefix="df">
+---EXPECTED---
+{"kind":"protocol_error","text":"<vybe:complete> is a void tool; use <vybe:complete ... />"}

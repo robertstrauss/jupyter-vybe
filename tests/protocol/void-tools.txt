@@ -1,0 +1,6 @@
+<vybe:ipython_help target="np.fft.rfft" />
+<vybe:complete prefix="df.gro" />
+---EXPECTED---
+{"kind":"tool","name":"ipython_help","args":{"target":"np.fft.rfft"}}
+{"kind":"prose","text":"\n"}
+{"kind":"tool","name":"complete","args":{"prefix":"df.gro"}}
