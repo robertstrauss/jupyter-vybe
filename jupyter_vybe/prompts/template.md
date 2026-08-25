@@ -10,7 +10,8 @@
 
 {{NOTEBOOK_JSON}}
 
-The cell you are responding to is `{{PROMPT_CELL_ID}}`. New cells you add go directly beneath it.
+Cells are numbered in brackets. Address a cell you want to edit by its number.
+New cells you add go directly beneath the prompt cell; you cannot place them elsewhere.
 
 ## User conventions
 

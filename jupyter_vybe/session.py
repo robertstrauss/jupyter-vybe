@@ -15,7 +15,7 @@ from collections import OrderedDict
 from typing import AsyncIterator
 
 from .adapters import Message, build_adapter
-from .assembler import assemble_followup, assemble_initial
+from .assembler import assemble_followup, assemble_initial, resolve_cell_ref
 from .protocol import (
     EventKind,
     StreamParser,
@@ -59,6 +59,7 @@ class AgentSession:
         self.touched = time.monotonic()
         self._cancel = asyncio.Event()
         self._tool_waiters: dict[str, asyncio.Future] = {}
+        self._cells: list[dict] = []  # last snapshot, for resolving cell references
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -94,12 +95,15 @@ class AgentSession:
 
         limits = msg.get("limits", {})
         snapshot_cells: list[dict] = []
+        # _translate needs the cell list to resolve index references.
         raw_snapshot = msg.get("snapshot")
         if raw_snapshot:
             try:
                 snapshot_cells = json.loads(raw_snapshot).get("cells", [])
             except (json.JSONDecodeError, AttributeError):
                 snapshot_cells = []
+        if snapshot_cells:
+            self._cells = snapshot_cells
         if force_full:
             prompt = assemble_initial(
                 notebook_json=msg["snapshot"],
@@ -212,7 +216,20 @@ class AgentSession:
         if event.name in BLOCKING_TOOLS:
             call_id = f"c{len(self._tool_waiters)}{int(time.time() * 1000) % 100000}"
             return None, (call_id, event.name, event.args)
-        return {"op": "tool", "name": event.name, "args": event.args}, None
+        args = dict(event.args)
+        if event.name == "propose_edit":
+            ref = args.get("cell", "")
+            resolved = resolve_cell_ref(ref, self._cells)
+            if not resolved:
+                return {
+                    "op": "protocolError",
+                    "message": (
+                        f"propose_edit named cell {ref!r}, which is not a cell in this "
+                        "notebook. Use the number in brackets from the listing."
+                    ),
+                }, None
+            args["cell"] = resolved
+        return {"op": "tool", "name": event.name, "args": args}, None
 
 
 def _tooling_with_limits(limits: dict) -> str | None:

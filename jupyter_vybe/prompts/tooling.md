@@ -21,11 +21,14 @@ SECOND_LINE_OF_YOUR_CELL
 
 ### Propose an edit to an existing cell
 
-Address the cell by the `id` shown in the notebook JSON. The body is the **complete new source**
-of that cell, not a patch and not a diff — the extension computes the diff and shows it to the
-user for approval.
+Address the cell by its **number in brackets** from the notebook listing above — `[3]` is
+`cell="3"`. The body is the **complete new source** of that cell, not a patch and not a diff;
+the extension computes the diff and shows it to the user for approval.
 
-<vybe:propose_edit cell="a3f91c2e" note="one short phrase saying why">
+When the user says "the cell above", they mean the cell marked as directly above the prompt in
+the listing. Use that cell's number.
+
+<vybe:propose_edit cell="3" note="one short phrase saying why">
 THE COMPLETE NEW SOURCE OF THAT CELL
 EVERY LINE OF IT, INCLUDING LINES YOU DID NOT CHANGE
 </vybe:propose_edit>
@@ -34,6 +37,11 @@ EVERY LINE OF IT, INCLUDING LINES YOU DID NOT CHANGE
 
 Do not propose edits to markdown cells that begin with a `>` blockquote: those are the user's
 own prompt history and are not yours to rewrite.
+
+**Changing an existing cell is an edit, not an addition.** If the user asks you to change, fix,
+rewrite, refactor, rename, or extend code that already exists, emit `propose_edit` for that
+cell. Emitting `add_cell` with a modified copy leaves the user with two versions of the same
+function, which is never what they asked for.
 
 ### Look something up before you answer
 

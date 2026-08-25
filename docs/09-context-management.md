@@ -103,6 +103,30 @@ most dangerous failure mode of incremental context.
 A full snapshot is also forced every `VYBE_RESYNC_EVERY` turns (default 10), which bounds drift
 from accumulated small errors.
 
+## Rendering: a numbered listing, not raw JSON
+
+The snapshot is *collected* as filtered nbformat JSON, but it is *rendered* for the agent as a
+numbered listing (`assembler.render_notebook`):
+
+```
+[3] code  id=gen-a3f9   <-- the cell directly above the prompt ("the cell above")
+    def normalize_x(x):
+        return (x - np.mean(x)) / np.std(x)
+```
+
+Measured, not assumed. With compact JSON, a 7B asked to "edit the above cell" had to locate and
+copy a uuid out of a dense one-line object, and frequently gave up and emitted a modified copy
+instead. With the listing — cells numbered from 1, the cell above the prompt called out
+explicitly, ids still shown so either form of address works — `propose_edit` compliance on three
+edit-shaped requests went to 3/3 each on `qwen2.5-coder:7b`.
+
+`resolve_cell_ref` accepts `"3"`, `"[3]"`, `"cell 3"`, or a raw id, and returns `""` for anything
+it cannot resolve, so an unresolvable reference becomes a protocol error rather than an edit to
+the wrong cell.
+
+Presentation lives on the server, not in `snapshot.ts`: the frontend supplies data, the assembler
+decides how to show it, and the rendering can be tuned without rebuilding the extension.
+
 ## Token estimation
 
 The status meter needs a number before the request is sent, so estimation is client-side:
