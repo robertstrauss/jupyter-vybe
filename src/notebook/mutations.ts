@@ -199,3 +199,45 @@ export function revertRound(panel: NotebookPanel, log: OperationLog): void {
     }
   });
 }
+
+/**
+ * Materialise the `Enter` merge into a cell: accepted lines live, replaced
+ * lines commented beneath (docs/03, decision D6). On demand only -- pending
+ * proposals never touch the model.
+ */
+export function materialiseMerge(
+  panel: NotebookPanel,
+  cellId: string,
+  merged: string,
+  log: OperationLog
+): void {
+  const cell = findCellModel(panel, cellId);
+  if (!cell) {
+    return;
+  }
+  const before = cell.sharedModel.getSource();
+  panel.content.model!.sharedModel.transact(() => {
+    cell.sharedModel.setSource(merged);
+  });
+  log.record({ kind: 'edit', cellId, before, after: merged });
+}
+
+/**
+ * Turn a settled markdown prompt cell back into an editable code prompt cell.
+ * Available forever, not just inside the undo window (docs/02).
+ */
+export function reopenPromptCell(panel: NotebookPanel, restored: string): void {
+  const model = panel.content.model;
+  const cell = panel.content.activeCell;
+  if (!model || !cell) {
+    return;
+  }
+  NotebookActions.changeCellType(panel.content, 'code');
+  const active = panel.content.activeCell;
+  if (active) {
+    model.sharedModel.transact(() => {
+      active.model.sharedModel.setSource(restored);
+    });
+  }
+  panel.content.mode = 'edit';
+}

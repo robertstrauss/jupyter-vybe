@@ -10,6 +10,7 @@ import { UUID } from '@lumino/coreutils';
 import { IVybeAgent, type IAgentFrame } from './agentClient';
 import { IVybeSettings, IVybeRounds } from '../tokens';
 import { IVybeProposals } from './proposals';
+import { setRounds } from '../roundRegistry';
 import {
   OperationLog,
   convertPromptToMarkdown,
@@ -291,7 +292,9 @@ export const roundsPlugin: JupyterFrontEndPlugin<IVybeRounds> = {
     proposals: IVybeProposals
   ): IVybeRounds => {
     void isPromptCell;
-    return new Rounds(tracker, agent, settings, proposals);
+    const rounds = new Rounds(tracker, agent, settings, proposals);
+    setRounds(rounds);
+    return rounds;
   }
 };
 

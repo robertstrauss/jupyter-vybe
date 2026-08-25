@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="39" failures="0" errors="0" time="1.022">
-  <testsuite name="StreamParser golden fixtures" errors="0" failures="0" skipped="0" timestamp="2026-08-25T17:29:09" time="0.73" tests="38">
+<testsuites name="jest tests" tests="39" failures="0" errors="0" time="0.97">
+  <testsuite name="StreamParser golden fixtures" errors="0" failures="0" skipped="0" timestamp="2026-08-25T17:37:34" time="0.553" tests="38">
     <testcase classname="StreamParser golden fixtures adjacent-tags-no-prose-between.txt parses in one shot" name="StreamParser golden fixtures adjacent-tags-no-prose-between.txt parses in one shot" time="0.001">
     </testcase>
     <testcase classname="StreamParser golden fixtures adjacent-tags-no-prose-between.txt is safe across every chunk boundary" name="StreamParser golden fixtures adjacent-tags-no-prose-between.txt is safe across every chunk boundary" time="0.003">
     </testcase>
-    <testcase classname="StreamParser golden fixtures attrs-with-spaces.txt parses in one shot" name="StreamParser golden fixtures attrs-with-spaces.txt parses in one shot" time="0.001">
+    <testcase classname="StreamParser golden fixtures attrs-with-spaces.txt parses in one shot" name="StreamParser golden fixtures attrs-with-spaces.txt parses in one shot" time="0">
     </testcase>
     <testcase classname="StreamParser golden fixtures attrs-with-spaces.txt is safe across every chunk boundary" name="StreamParser golden fixtures attrs-with-spaces.txt is safe across every chunk boundary" time="0.003">
     </testcase>
     <testcase classname="StreamParser golden fixtures body-containing-angle-brackets.txt parses in one shot" name="StreamParser golden fixtures body-containing-angle-brackets.txt parses in one shot" time="0">
     </testcase>
-    <testcase classname="StreamParser golden fixtures body-containing-angle-brackets.txt is safe across every chunk boundary" name="StreamParser golden fixtures body-containing-angle-brackets.txt is safe across every chunk boundary" time="0.003">
+    <testcase classname="StreamParser golden fixtures body-containing-angle-brackets.txt is safe across every chunk boundary" name="StreamParser golden fixtures body-containing-angle-brackets.txt is safe across every chunk boundary" time="0.002">
     </testcase>
-    <testcase classname="StreamParser golden fixtures body-containing-code-fence.txt parses in one shot" name="StreamParser golden fixtures body-containing-code-fence.txt parses in one shot" time="0">
+    <testcase classname="StreamParser golden fixtures body-containing-code-fence.txt parses in one shot" name="StreamParser golden fixtures body-containing-code-fence.txt parses in one shot" time="0.001">
     </testcase>
-    <testcase classname="StreamParser golden fixtures body-containing-code-fence.txt is safe across every chunk boundary" name="StreamParser golden fixtures body-containing-code-fence.txt is safe across every chunk boundary" time="0.007">
+    <testcase classname="StreamParser golden fixtures body-containing-code-fence.txt is safe across every chunk boundary" name="StreamParser golden fixtures body-containing-code-fence.txt is safe across every chunk boundary" time="0.002">
     </testcase>
     <testcase classname="StreamParser golden fixtures body-tool-void-tag.txt parses in one shot" name="StreamParser golden fixtures body-tool-void-tag.txt parses in one shot" time="0">
     </testcase>
@@ -35,15 +35,15 @@
     </testcase>
     <testcase classname="StreamParser golden fixtures markdown-cell.txt parses in one shot" name="StreamParser golden fixtures markdown-cell.txt parses in one shot" time="0">
     </testcase>
-    <testcase classname="StreamParser golden fixtures markdown-cell.txt is safe across every chunk boundary" name="StreamParser golden fixtures markdown-cell.txt is safe across every chunk boundary" time="0.002">
+    <testcase classname="StreamParser golden fixtures markdown-cell.txt is safe across every chunk boundary" name="StreamParser golden fixtures markdown-cell.txt is safe across every chunk boundary" time="0.005">
     </testcase>
     <testcase classname="StreamParser golden fixtures multiple-cells.txt parses in one shot" name="StreamParser golden fixtures multiple-cells.txt parses in one shot" time="0">
     </testcase>
     <testcase classname="StreamParser golden fixtures multiple-cells.txt is safe across every chunk boundary" name="StreamParser golden fixtures multiple-cells.txt is safe across every chunk boundary" time="0.003">
     </testcase>
-    <testcase classname="StreamParser golden fixtures only-prose.txt parses in one shot" name="StreamParser golden fixtures only-prose.txt parses in one shot" time="0">
+    <testcase classname="StreamParser golden fixtures only-prose.txt parses in one shot" name="StreamParser golden fixtures only-prose.txt parses in one shot" time="0.001">
     </testcase>
-    <testcase classname="StreamParser golden fixtures only-prose.txt is safe across every chunk boundary" name="StreamParser golden fixtures only-prose.txt is safe across every chunk boundary" time="0.001">
+    <testcase classname="StreamParser golden fixtures only-prose.txt is safe across every chunk boundary" name="StreamParser golden fixtures only-prose.txt is safe across every chunk boundary" time="0">
     </testcase>
     <testcase classname="StreamParser golden fixtures propose-edit-with-note.txt parses in one shot" name="StreamParser golden fixtures propose-edit-with-note.txt parses in one shot" time="0">
     </testcase>
@@ -59,27 +59,27 @@
     </testcase>
     <testcase classname="StreamParser golden fixtures unknown-tool.txt parses in one shot" name="StreamParser golden fixtures unknown-tool.txt parses in one shot" time="0">
     </testcase>
-    <testcase classname="StreamParser golden fixtures unknown-tool.txt is safe across every chunk boundary" name="StreamParser golden fixtures unknown-tool.txt is safe across every chunk boundary" time="0">
+    <testcase classname="StreamParser golden fixtures unknown-tool.txt is safe across every chunk boundary" name="StreamParser golden fixtures unknown-tool.txt is safe across every chunk boundary" time="0.001">
     </testcase>
     <testcase classname="StreamParser golden fixtures unterminated-body.txt parses in one shot" name="StreamParser golden fixtures unterminated-body.txt parses in one shot" time="0">
     </testcase>
     <testcase classname="StreamParser golden fixtures unterminated-body.txt is safe across every chunk boundary" name="StreamParser golden fixtures unterminated-body.txt is safe across every chunk boundary" time="0.001">
     </testcase>
-    <testcase classname="StreamParser golden fixtures void-tag-no-space-before-slash.txt parses in one shot" name="StreamParser golden fixtures void-tag-no-space-before-slash.txt parses in one shot" time="0.001">
+    <testcase classname="StreamParser golden fixtures void-tag-no-space-before-slash.txt parses in one shot" name="StreamParser golden fixtures void-tag-no-space-before-slash.txt parses in one shot" time="0">
     </testcase>
-    <testcase classname="StreamParser golden fixtures void-tag-no-space-before-slash.txt is safe across every chunk boundary" name="StreamParser golden fixtures void-tag-no-space-before-slash.txt is safe across every chunk boundary" time="0">
+    <testcase classname="StreamParser golden fixtures void-tag-no-space-before-slash.txt is safe across every chunk boundary" name="StreamParser golden fixtures void-tag-no-space-before-slash.txt is safe across every chunk boundary" time="0.001">
     </testcase>
     <testcase classname="StreamParser golden fixtures void-tool-body-tag.txt parses in one shot" name="StreamParser golden fixtures void-tool-body-tag.txt parses in one shot" time="0">
     </testcase>
     <testcase classname="StreamParser golden fixtures void-tool-body-tag.txt is safe across every chunk boundary" name="StreamParser golden fixtures void-tool-body-tag.txt is safe across every chunk boundary" time="0">
     </testcase>
-    <testcase classname="StreamParser golden fixtures void-tools.txt parses in one shot" name="StreamParser golden fixtures void-tools.txt parses in one shot" time="0">
+    <testcase classname="StreamParser golden fixtures void-tools.txt parses in one shot" name="StreamParser golden fixtures void-tools.txt parses in one shot" time="0.001">
     </testcase>
-    <testcase classname="StreamParser golden fixtures void-tools.txt is safe across every chunk boundary" name="StreamParser golden fixtures void-tools.txt is safe across every chunk boundary" time="0.003">
+    <testcase classname="StreamParser golden fixtures void-tools.txt is safe across every chunk boundary" name="StreamParser golden fixtures void-tools.txt is safe across every chunk boundary" time="0.002">
     </testcase>
   </testsuite>
-  <testsuite name="jupyter-vybe" errors="0" failures="0" skipped="0" timestamp="2026-08-25T17:29:10" time="0.012" tests="1">
-    <testcase classname="jupyter-vybe should be tested" name="jupyter-vybe should be tested" time="0">
+  <testsuite name="jupyter-vybe" errors="0" failures="0" skipped="0" timestamp="2026-08-25T17:37:34" time="0.01" tests="1">
+    <testcase classname="jupyter-vybe should be tested" name="jupyter-vybe should be tested" time="0.001">
     </testcase>
   </testsuite>
 </testsuites>

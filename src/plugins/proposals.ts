@@ -7,7 +7,7 @@ import { Signal, type ISignal } from '@lumino/signaling';
 import {
   applyProposal,
   findCellModel,
-  type OperationLog
+  OperationLog
 } from '../notebook/mutations';
 import { isSettledPromptCell } from '../notebook/promptCell';
 import { diffLines, type IHunk } from '../ui/diff';
@@ -47,6 +47,7 @@ export interface IVybeProposals {
   rejectAll(panel: NotebookPanel): void;
   activeProposal(panel: NotebookPanel): IProposal | null;
   clear(panel: NotebookPanel, roundId?: string): void;
+  logFor(panel: NotebookPanel): OperationLog;
   readonly changed: ISignal<IVybeProposals, NotebookPanel>;
 }
 export const IVybeProposals = new Token<IVybeProposals>(
@@ -94,6 +95,10 @@ export class Proposals implements IVybeProposals {
     this._byPanel.set(panel.id, list);
     this._changed.emit(panel);
     return true;
+  }
+
+  logFor(panel: NotebookPanel): OperationLog {
+    return this._rounds.get(panel.id)?.log ?? new OperationLog();
   }
 
   pendingCount(panel: NotebookPanel, roundId?: string): number {

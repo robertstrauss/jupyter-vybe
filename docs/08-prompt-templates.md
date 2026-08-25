@@ -156,11 +156,27 @@ rather than guessing.
 
 ## `tooling.md`
 
-Contains the grammar from [07](07-tool-protocol.md) rendered as instructions: one worked example
-per tool, the position constraint on `add_cell`, the "complete source, not a patch" rule for
+Contains the grammar from [07](07-tool-protocol.md) rendered as instructions: one **placeholder**
+example per tool, the position constraint on `add_cell`, the "complete source, not a patch" rule for
 `propose_edit`, the cell-id addressing scheme, the caps, and — when persistent context is on —
 how to read the notebook diff format from [09](09-context-management.md). Introspection tools are
 templated in or out based on `agentTools.kernelIntrospection`.
+
+### Examples must be placeholders, not plausible answers
+
+The first end-to-end run against `qwen2.5-coder:7b` returned the tooling prompt's own
+`propose_edit` example **verbatim** — a realistic `rollingMean` function — in response to
+"add a function to compute the rolling mean of x". The model did not generate code at all; it
+copied the nearest thing in context that looked like an answer.
+
+The example was realistic, and that was the flaw: at 7B, a plausible worked example in the
+instructions competes with the actual request. Every example in `tooling.md` is now
+unmistakably non-code (`FIRST_LINE_OF_YOUR_CELL`, `THE COMPLETE NEW SOURCE OF THAT CELL`), and
+the section closes with an explicit line saying the examples are shapes, never content to emit.
+
+Re-running the same prompt afterwards produced genuinely original code — a `np.convolve`
+implementation the examples never mention. This is the single highest-leverage prompt change
+found so far, and it generalises: **do not put runnable, plausible code in a tooling prompt.**
 
 ## `filtering.md`
 

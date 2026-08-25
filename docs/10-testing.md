@@ -81,6 +81,14 @@ The scaffold ships Galata; these are the flows that must pass on 4.6.3:
 12. Two notebooks open, prompt in each → sessions are independent; snapshot of one never appears
    in the other's assembled prompt.
 
+### Regression: example regurgitation
+
+`bench/no-example-copying`: run "add a function to compute the rolling mean of x" against a
+notebook containing only `import numpy as np`, and assert the reply contains none of the literal
+identifiers used in `tooling.md`'s examples. This caught a real failure where the 7B model
+returned the tooling prompt's own example verbatim ([08](08-prompt-templates.md)); it is cheap
+and it guards a class of bug that is invisible in unit tests.
+
 ## Manual / model-quality checks
 
 Automated tests cannot tell whether the prompts are any good. A scored bench of 20 realistic

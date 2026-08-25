@@ -110,7 +110,7 @@ jupyter-vybe/
 |---|---|---|---|
 | `jupyter-vybe:settings` | `IVybeSettings` | `ISettingRegistry` | `ITranslator` |
 | `jupyter-vybe:agent` | `IVybeAgent` | `IVybeSettings` | — |
-| `jupyter-vybe:cell-executor` | `INotebookCellExecutor` | `IVybeSettings` | `IVybeRounds` |
+| `jupyter-vybe:cell-executor` | `INotebookCellExecutor` | — | `IVybeSettings` (never `IVybeRounds` — see cycle above) |
 | `jupyter-vybe:rounds` | `IVybeRounds` | `INotebookTracker`, `IVybeAgent`, `IVybeProposals`, `IVybeSettings` | `IVybeHistory` |
 | `jupyter-vybe:proposals` | `IVybeProposals` | `INotebookTracker`, `IEditorExtensionRegistry` | — |
 | `jupyter-vybe:history` | `IVybeHistory` | `INotebookTracker` | `ILayoutRestorer` |
@@ -125,6 +125,21 @@ jupyter-vybe/
   "schemaDir": "schema"
 }
 ```
+
+### The dependency cycle (found in testing, not in review)
+
+`jupyter-vybe:cell-executor` must **not** declare `IVybeRounds` as a dependency, not even as
+`optional`. Doing so creates `rounds -> @jupyterlab/notebook-extension:tracker ->
+cell-executor -> rounds`, which Lumino rejects at plugin registration with
+`ReferenceError: Cycle detected` — and because the failure happens during registration, **the
+entire application fails to render**: a blank page, no notebooks, no error surfaced to the user.
+
+The first blueprint listed `optional: [IVybeRounds]` on the executor, and the first browser run
+was a blank page for exactly this reason. Optional dependencies are still edges in the graph.
+
+The fix is `src/roundRegistry.ts`: a module-level late binding. The rounds plugin registers
+itself on activation; the executor looks it up lazily inside `runCell` — which it already had to
+do, since nothing may be resolved during its own activate.
 
 ### The bootstrap ordering hazard
 

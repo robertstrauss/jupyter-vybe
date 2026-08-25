@@ -262,24 +262,17 @@
 <a name='L197'></a><a href='#L197'>197</a>
 <a name='L198'></a><a href='#L198'>198</a>
 <a name='L199'></a><a href='#L199'>199</a>
-<a name='L200'></a><a href='#L200'>200</a>
-<a name='L201'></a><a href='#L201'>201</a>
-<a name='L202'></a><a href='#L202'>202</a>
-<a name='L203'></a><a href='#L203'>203</a>
-<a name='L204'></a><a href='#L204'>204</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L200'></a><a href='#L200'>200</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -368,6 +361,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -442,8 +436,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -473,15 +465,12 @@
   JupyterFrontEnd,
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
-<span class="cstat-no" title="statement not covered" >import {</span>
-  INotebookTracker,
-  NotebookActions,
-  type NotebookPanel
-} from '@jupyterlab/notebook';
+<span class="cstat-no" title="statement not covered" >import { INotebookTracker, type NotebookPanel } from '@jupyterlab/notebook';</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >import { IVybeProposals } from './proposals';</span>
 <span class="cstat-no" title="statement not covered" >import { IVybeRounds, IVybeSettings } from '../tokens';</span>
 <span class="cstat-no" title="statement not covered" >import { commentFor, mergedSource } from '../ui/diff';</span>
+<span class="cstat-no" title="statement not covered" >import { materialiseMerge, reopenPromptCell } from '../notebook/mutations';</span>
 <span class="cstat-no" title="statement not covered" >import {</span>
   fromMarkdownSource,
   isSettledPromptCell
@@ -572,8 +561,9 @@ export const <span class="cstat-no" title="statement not covered" >commandsPlugi
                 ? '//'
                 : commentFor(kernelInfo(panel).language, cell.model.type);
         const merged = <span class="cstat-no" title="statement not covered" >mergedSource(p.hunks, p.after, comment);</span>
+        const cellId = <span class="cstat-no" title="statement not covered" >p.cellId;</span>
 <span class="cstat-no" title="statement not covered" >        proposals.accept(panel, p.id);</span>
-<span class="cstat-no" title="statement not covered" >        cell.model.sharedModel.setSource(merged);</span>
+<span class="cstat-no" title="statement not covered" >        materialiseMerge(panel, cellId, merged, proposals.logFor(panel));</span>
 <span class="cstat-no" title="statement not covered" >        panel.content.mode = 'edit';</span>
       }
     });
@@ -645,9 +635,7 @@ export const <span class="cstat-no" title="statement not covered" >commandsPlugi
           cell.model.sharedModel.getSource(),
           settings.prefix
         );
-<span class="cstat-no" title="statement not covered" >        NotebookActions.changeCellType(panel.content, 'code');</span>
-<span class="cstat-no" title="statement not covered" >        panel.content.activeCell?.model.sharedModel.setSource(restored);</span>
-<span class="cstat-no" title="statement not covered" >        panel.content.mode = 'edit';</span>
+<span class="cstat-no" title="statement not covered" >        reopenPromptCell(panel, restored);</span>
       }
     });
 &nbsp;
@@ -679,7 +667,7 @@ export const <span class="cstat-no" title="statement not covered" >commandsPlugi
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-25T17:29:10.337Z
+                at 2026-08-25T17:37:35.300Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

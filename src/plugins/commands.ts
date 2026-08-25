@@ -2,15 +2,12 @@ import type {
   JupyterFrontEnd,
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
-import {
-  INotebookTracker,
-  NotebookActions,
-  type NotebookPanel
-} from '@jupyterlab/notebook';
+import { INotebookTracker, type NotebookPanel } from '@jupyterlab/notebook';
 
 import { IVybeProposals } from './proposals';
 import { IVybeRounds, IVybeSettings } from '../tokens';
 import { commentFor, mergedSource } from '../ui/diff';
+import { materialiseMerge, reopenPromptCell } from '../notebook/mutations';
 import {
   fromMarkdownSource,
   isSettledPromptCell
@@ -101,8 +98,9 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
                 ? '//'
                 : commentFor(kernelInfo(panel).language, cell.model.type);
         const merged = mergedSource(p.hunks, p.after, comment);
+        const cellId = p.cellId;
         proposals.accept(panel, p.id);
-        cell.model.sharedModel.setSource(merged);
+        materialiseMerge(panel, cellId, merged, proposals.logFor(panel));
         panel.content.mode = 'edit';
       }
     });
@@ -174,9 +172,7 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
           cell.model.sharedModel.getSource(),
           settings.prefix
         );
-        NotebookActions.changeCellType(panel.content, 'code');
-        panel.content.activeCell?.model.sharedModel.setSource(restored);
-        panel.content.mode = 'edit';
+        reopenPromptCell(panel, restored);
       }
     });
 

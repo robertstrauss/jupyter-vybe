@@ -9,11 +9,12 @@ New cells appear directly below the prompt cell, in the order you emit them. You
 position — there is no position argument.
 
 <vybe:add_cell type="code">
-import numpy as np
+FIRST_LINE_OF_YOUR_CELL
+SECOND_LINE_OF_YOUR_CELL
 </vybe:add_cell>
 
 <vybe:add_cell type="markdown">
-## Spectral analysis
+## Your markdown heading
 </vybe:add_cell>
 
 `type` is `code` or `markdown`, default `code`.
@@ -24,11 +25,9 @@ Address the cell by the `id` shown in the notebook JSON. The body is the **compl
 of that cell, not a patch and not a diff — the extension computes the diff and shows it to the
 user for approval.
 
-<vybe:propose_edit cell="a3f91c2e" note="vectorise the loop">
-def rollingMean(x, w):
-    """Rolling mean via cumulative sums."""
-    c = np.cumsum(np.insert(x, 0, 0))
-    return (c[w:] - c[:-w]) / w
+<vybe:propose_edit cell="a3f91c2e" note="one short phrase saying why">
+THE COMPLETE NEW SOURCE OF THAT CELL
+EVERY LINE OF IT, INCLUDING LINES YOU DID NOT CHANGE
 </vybe:propose_edit>
 
 `note` is one short phrase saying why; it is shown beside the accept/reject buttons.
@@ -38,14 +37,20 @@ own prompt history and are not yours to rewrite.
 
 ### Look something up before you answer
 
-<vybe:ipython_help target="np.fft.rfft" />
-<vybe:complete prefix="df.gro" />
+<vybe:ipython_help target="SOME_OBJECT_OR_FUNCTION" />
+<vybe:complete prefix="SOME_PREFIX." />
 
 `ipython_help` returns the docstring and signature of a live object. `complete` returns the
 completions available for a prefix in the running namespace. Use them when you are unsure of an
 API rather than guessing. Generation pauses until the result arrives, then continues.
 
 These read the kernel's namespace. They do not run code, and you cannot run code.
+
+## The examples above are placeholders
+
+Every example in this section shows the *shape* of a tag, never content you should emit. The
+upper-case placeholders are not code. Never copy an example into your reply: write the code the
+user actually asked for.
 
 ## Limits
 

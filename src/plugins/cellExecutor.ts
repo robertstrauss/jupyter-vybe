@@ -5,7 +5,8 @@ import {
 } from '@jupyterlab/notebook';
 
 import { isPromptCell } from '../notebook/promptCell';
-import { IVybeRounds, IVybeSettings } from '../tokens';
+import { getRounds } from '../roundRegistry';
+import { IVybeSettings } from '../tokens';
 
 /**
  * Replaces `@jupyterlab/notebook-extension:cell-executor` (disabled in
@@ -29,16 +30,15 @@ export const cellExecutor: JupyterFrontEndPlugin<INotebookCellExecutor> = {
   description: 'Routes prompt cells to the agent instead of the kernel.',
   autoStart: true,
   provides: INotebookCellExecutor,
-  optional: [IVybeSettings, IVybeRounds],
-  activate: (
-    _app,
-    settings: IVybeSettings | null,
-    rounds: IVybeRounds | null
-  ): INotebookCellExecutor => {
+  optional: [IVybeSettings],
+  activate: (_app, settings: IVybeSettings | null): INotebookCellExecutor => {
     try {
       return Object.freeze({
         runCell: async (options: INotebookCellExecutor.IRunCellOptions) => {
           try {
+            // Looked up lazily: declaring rounds as a dependency would create
+            // the cycle rounds -> tracker -> cell-executor (see roundRegistry).
+            const rounds = getRounds();
             if (!settings?.enabled || !rounds) {
               return coreRunCell(options);
             }

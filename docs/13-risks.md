@@ -5,7 +5,16 @@ you it is happening and the mitigation already designed into the blueprint.
 
 ---
 
-## R1 · The cell-executor override breaks notebooks entirely · **high impact, low probability**
+## R1 · The cell-executor override breaks notebooks entirely · **REALISED IN TESTING**
+
+*This one happened.* Declaring `IVybeRounds` as an optional dependency of the executor created
+`rounds -> tracker -> cell-executor -> rounds`; Lumino rejected the registration and JupyterLab
+rendered a blank page with no notebooks and nothing shown to the user. Fixed by late binding
+through `src/roundRegistry.ts` ([01](01-architecture.md)). The lesson generalises: an optional
+dependency is still an edge, and a cycle here is fatal to the whole application, not to us.
+
+The mitigations below remain in force for the *other* way this fails — a throw during activate.
+
 
 `jupyter-vybe:cell-executor` is a hard `requires` of
 `@jupyterlab/notebook-extension:tracker`. If our `activate` throws, the tracker never activates

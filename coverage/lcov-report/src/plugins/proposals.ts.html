@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/103</span>
+                <span class='fraction'>0/104</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/50</span>
+                <span class='fraction'>0/52</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/22</span>
+                <span class='fraction'>0/23</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/99</span>
+                <span class='fraction'>0/100</span>
             </div>
         
             
@@ -313,7 +313,12 @@
 <a name='L248'></a><a href='#L248'>248</a>
 <a name='L249'></a><a href='#L249'>249</a>
 <a name='L250'></a><a href='#L250'>250</a>
-<a name='L251'></a><a href='#L251'>251</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L251'></a><a href='#L251'>251</a>
+<a name='L252'></a><a href='#L252'>252</a>
+<a name='L253'></a><a href='#L253'>253</a>
+<a name='L254'></a><a href='#L254'>254</a>
+<a name='L255'></a><a href='#L255'>255</a>
+<a name='L256'></a><a href='#L256'>256</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -364,15 +369,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -381,6 +377,16 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -408,6 +414,10 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -572,7 +582,7 @@ import type { Cell, MarkdownCell } from '@jupyterlab/cells';
 <span class="cstat-no" title="statement not covered" >import {</span>
   applyProposal,
   findCellModel,
-  type OperationLog
+  OperationLog
 } from '../notebook/mutations';
 <span class="cstat-no" title="statement not covered" >import { isSettledPromptCell } from '../notebook/promptCell';</span>
 <span class="cstat-no" title="statement not covered" >import { diffLines, type IHunk } from '../ui/diff';</span>
@@ -612,6 +622,7 @@ export interface IVybeProposals {
   rejectAll(panel: NotebookPanel): void;
   activeProposal(panel: NotebookPanel): IProposal | null;
   clear(panel: NotebookPanel, roundId?: string): void;
+  logFor(panel: NotebookPanel): OperationLog;
   readonly changed: ISignal&lt;IVybeProposals, NotebookPanel&gt;;
 }
 export const <span class="cstat-no" title="statement not covered" >IVybeProposals = new Token&lt;IVybeProposals&gt;(</span>
@@ -659,6 +670,10 @@ export const <span class="cstat-no" title="statement not covered" >IVybeProposal
 <span class="cstat-no" title="statement not covered" >    this._byPanel.set(panel.id, list);</span>
 <span class="cstat-no" title="statement not covered" >    this._changed.emit(panel);</span>
 <span class="cstat-no" title="statement not covered" >    return true;</span>
+  }
+&nbsp;
+<span class="fstat-no" title="function not covered" >  logFor(</span>panel: NotebookPanel): OperationLog {
+<span class="cstat-no" title="statement not covered" >    return this._rounds.get(panel.id)?.log ?? new OperationLog();</span>
   }
 &nbsp;
 <span class="fstat-no" title="function not covered" >  pendingCount(</span>panel: NotebookPanel, roundId?: string): number {
@@ -820,7 +835,7 @@ export const <span class="cstat-no" title="statement not covered" >proposalsPlug
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-25T17:29:10.337Z
+                at 2026-08-25T17:37:35.300Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
