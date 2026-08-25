@@ -260,3 +260,81 @@ def salvage_fenced_blocks(text: str) -> list[Event]:
 
 def has_tool_calls(events: list[Event]) -> bool:
     return any(e.kind is EventKind.TOOL for e in events)
+
+
+# Salvage can only ever produce add_cell, because a fenced block carries no
+# target. That turns "edit the cell above" into a near-duplicate copy, which is
+# the most annoying way for the fallback to be wrong. So when a recovered block
+# closely resembles an existing code cell, retarget it as an edit of that cell.
+# Textual similarity alone is a poor signal: two unrelated cells that both
+# start with imports score surprisingly high. So the strong signal is
+# redefining the same top-level name, and raw similarity has to clear a much
+# higher bar on its own.
+EDIT_SIMILARITY = 0.92  # no shared name: only a near-identical rewrite counts as an edit
+# A shared top-level name needs no text floor at all: a substantial rewrite of
+# the same function scores as low as 0.29 on raw similarity, which is exactly
+# the case worth catching. A wrong guess here costs one keystroke, since the
+# result is a reviewable diff rather than a silent write.
+EDIT_SIMILARITY_NAMED = 0.0
+_DEF_RE = re.compile(r"^[ \t]*(?:async[ \t]+)?(?:def|class)[ \t]+([A-Za-z_][A-Za-z0-9_]*)", re.M)
+
+
+def _defined_names(source: str) -> set[str]:
+    return set(_DEF_RE.findall(source))
+
+
+def retarget_salvage(
+    events: list[Event], cells: list[dict], exclude_ids: set[str] | None = None
+) -> list[Event]:
+    """Convert salvaged add_cell events into propose_edit where they clearly
+    rewrite an existing cell.
+
+    `cells` is the cell list from the snapshot the agent was given.
+    """
+    from difflib import SequenceMatcher
+
+    exclude = exclude_ids or set()
+    out: list[Event] = []
+    claimed: set[str] = set()
+    for event in events:
+        body = event.args.get("body", "")
+        best_id, best_ratio = None, 0.0
+        for cell in cells:
+            cid = cell.get("id")
+            if (
+                not cid
+                or cid in exclude
+                or cid in claimed
+                or cell.get("cell_type") != "code"
+            ):
+                continue
+            source = cell.get("source") or ""
+            if isinstance(source, list):
+                source = "".join(source)
+            if not source.strip():
+                continue
+            shared = _defined_names(source) & _defined_names(body)
+            ratio = SequenceMatcher(None, source, body).ratio()
+            floor = EDIT_SIMILARITY_NAMED if shared else EDIT_SIMILARITY
+            if ratio < floor or ratio >= 0.999:
+                continue
+            # Redefining the same name is the real signal; rank those first.
+            score = ratio + (1.0 if shared else 0.0)
+            if score > best_ratio:
+                best_id, best_ratio = cid, min(ratio, 0.99)
+        if best_id:
+            claimed.add(best_id)
+            out.append(
+                Event(
+                    EventKind.TOOL,
+                    name="propose_edit",
+                    args={
+                        "cell": best_id,
+                        "note": f"recovered from a plain code block ({int(best_ratio * 100)}% similar)",
+                        "body": body,
+                    },
+                )
+            )
+        else:
+            out.append(event)
+    return out

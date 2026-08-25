@@ -39,6 +39,17 @@ produced fences; three more produced tags. It is not a prompt-structure bug and 
 fixable by prompt volume — an A/B across no recap / one sentence / a 400-char recap scored 3/3
 compliance in *every* arm, including no recap at all.
 
+**Salvage alone is not enough, though.** A fenced block carries no target, so
+recovering it can only ever produce an `add_cell` — which turns "edit the cell
+above" into a near-duplicate copy. That was reported in use and is the most
+irritating way for the fallback to be wrong. `retarget_salvage()` now converts
+a recovered block into a `propose_edit` when it clearly rewrites an existing
+cell: a shared top-level `def`/`class` name is the strong signal (a large
+rewrite of the same function scores only ~0.29 on raw text similarity, so a
+similarity floor alone misses exactly the case worth catching), and without a
+shared name it takes near-identity, 0.92, to retarget. A wrong guess costs one
+keystroke, because the result is a reviewable diff rather than a silent write.
+
 The mitigation that matters is therefore **salvage, not instruction**:
 `salvage_fenced_blocks()` recovers a fenced reply as `add_cell` calls, and the session emits a
 `proseReset` so the code does not also land in the settled markdown cell. Any model can produce

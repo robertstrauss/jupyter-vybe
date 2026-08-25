@@ -16,7 +16,13 @@ from typing import AsyncIterator
 
 from .adapters import Message, build_adapter
 from .assembler import assemble_followup, assemble_initial
-from .protocol import EventKind, StreamParser, has_tool_calls, salvage_fenced_blocks
+from .protocol import (
+    EventKind,
+    StreamParser,
+    has_tool_calls,
+    retarget_salvage,
+    salvage_fenced_blocks,
+)
 
 IDLE_SECONDS = 1800
 MAX_SESSIONS = 8
@@ -87,6 +93,13 @@ class AgentSession:
             return
 
         limits = msg.get("limits", {})
+        snapshot_cells: list[dict] = []
+        raw_snapshot = msg.get("snapshot")
+        if raw_snapshot:
+            try:
+                snapshot_cells = json.loads(raw_snapshot).get("cells", [])
+            except (json.JSONDecodeError, AttributeError):
+                snapshot_cells = []
         if force_full:
             prompt = assemble_initial(
                 notebook_json=msg["snapshot"],
@@ -150,7 +163,17 @@ class AgentSession:
                 _record("reply", emitted_tool=emitted_tool, reply=reply)
                 if not emitted_tool:
                     salvaged = salvage_fenced_blocks(reply)
-                    _record("salvage", found=len(salvaged))
+                    # A fenced block carries no target, so salvage alone turns
+                    # "edit the cell above" into a near-duplicate copy. Retarget
+                    # a block that clearly rewrites an existing cell.
+                    salvaged = retarget_salvage(
+                        salvaged, snapshot_cells, exclude_ids={msg.get("promptCellId", "")}
+                    )
+                    _record(
+                        "salvage",
+                        found=len(salvaged),
+                        kinds=[e.name for e in salvaged],
+                    )
                     if salvaged:
                         yield {"op": "proseReset"}
                         for event in salvaged:
