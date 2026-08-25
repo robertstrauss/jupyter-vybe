@@ -149,6 +149,18 @@ existing client implements. Gemma 4 has **no system role**: the assembled system
 prepended to the first user turn, as `README_turbofieldfare.md` documents. Context window 128K
 (configurable); `supports_native_tools = False`.
 
+The API `model` field is the server's **own model id**, read from `/v1/models` — not the model
+directory, which is what the CLI takes and what the adapter sent at first. The server answers 404
+to an id it does not know, so the whole server path was dead while `/health` said it was fine
+(docs/14 N4).
+
+Measured 2026-08-25 against a resident server: 10/10 correct tool with zero fence fallbacks —
+better than qwen2.5-coder:7b's 13/15 — but ~24 s per call, against a ~1860-token prompt for a
+40–80-token reply. That is why qwen remains the default despite being the worse model. Prefix
+caching does not help: `--prompt-cache-mode single-prefix` caches the previous prompt *and its
+completion*, so it only hits when a request continues that conversation, never for independent
+requests that merely share a preamble.
+
 The vendored copy is pinned and a `make sync-vendor` target diffs it against the original so
 upstream fixes are visible rather than silently divergent.
 

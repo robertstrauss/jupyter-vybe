@@ -1,8 +1,8 @@
 # 14 — Next Steps
 
 Captured 2026-08-25 from live use, and revised the same day as the items were
-worked. N1–N3 are done; N4 is a measurement, running separately. The carried-
-over list at the bottom is unchanged.
+worked. N1–N3 and N5 are done; N4 is measured, and the answer it gives is
+"not yet". The carried-over list at the bottom is unchanged.
 
 ---
 
@@ -86,30 +86,53 @@ objects, and neither one alone can see it end.
 
 ---
 
-## N4 · Measure Gemma 4 with TurboFieldfareServer · **outstanding**
+## N4 · Gemma 4 through TurboFieldfareServer · **measured; Gemma stays non-default**
 
-Gemma 4 is the better model on the tool bench — 5/5 with zero fence fallbacks,
-against 13/15 with 2 fences for `qwen2.5-coder:7b`. The blocker is latency:
-roughly 90 s per call, because `TurboFieldfareAdapter` falls back to the CLI,
-which reloads the 13 GB model on every invocation.
+The server path had never run, and did not work when it did: the adapter sent
+the model *directory* as the API `model` field, and the server matches on its
+own id (`gemma-4-26b-a4b-it`), returning 404 for anything else. `/health`
+answering had been taken as proof the path worked. It now reads `/v1/models`,
+and `tests/test_turbofieldfare_server.py` drives a stub server end to end.
 
-`TurboFieldfareServer` keeps the model resident and the adapter already prefers
-it when `/health` answers — that path has never been exercised.
+With that fixed — Gemma 4 26B-A4B, `--max-context 32768
+--prompt-cache-mode single-prefix`, `bench-tools.py --runs 2`:
 
-```bash
-~/.turbofieldfare/turbo-fieldfare/.build/release/TurboFieldfareServer \
-  --model /Users/rrs/Desktop/thoughtcode/code-llm/scratch/gemma4.gturbo \
-  --port 8080 --max-context 32768 --prompt-cache-mode single-prefix
+```
+  tags emitted        10/10
+  fell back to fence   0/10
+  correct tool        10/10        <- add_cell and propose_edit, every case
+  first call     29.9s
+  after that     22.2s min / 23.9s mean / 25.2s max
 ```
 
-Then re-run `scripts/bench-tools.py --agent turbofieldfare-gemma4` and record
-wall-clock per call. **If it lands in single-digit seconds, make Gemma the
-default agent** — it is the better model and the only reason it is not the
-default is speed. Note `--prompt-cache-mode single-prefix`: our prompts share a
-long constant prefix (universal + tooling prompt), so prefix caching should
-help substantially.
+**On quality it is unambiguous**: 10/10 correct tool with zero fence fallbacks,
+against 13/15 with 2 fences for `qwen2.5-coder:7b`. **On latency it fails the
+bar**: ~24 s per call, not the single digits that would make it the default.
+It is still a large improvement on the ~90 s CLI path, which reloaded 13 GB per
+invocation. `bench-tools.py` now reports per-call wall clock, so this is
+repeatable.
 
----
+**Prefix caching never engages, and cannot as we use it.** Every request logged
+`cached=0`, including two consecutive identical prompts. Reading
+`ServerPromptCache.match`: the cached entry holds the previous prompt *plus its
+generated completion*, and a hit requires the new prompt to extend all of that
+— either as a token-prefix of the whole cached run, or as the same message list
+continued by an assistant turn. Two independent requests that merely share a
+long prefix diverge before the cached region ends, so they always miss. The
+mode is for continuing a conversation, not for amortising a shared preamble.
+
+The cost is where that matters most: ~1860 prompt tokens against 40–80
+completion tokens, so nearly all of the 24 s is prompt processing. Two ways
+forward, neither started:
+
+- **Send rounds as a continuing conversation** (prior user, prior assistant,
+  new user) instead of a fresh single message. This is what the cache is built
+  for, and it is close to what `diffSummary.ts` needs anyway. It only pays off
+  if the notebook snapshot stops being re-sent whole each turn — and that is
+  the same blocker as R13.
+- **Shrink the preamble.** The tooling prompt is most of the fixed cost and was
+  written for a 7B that needed convincing. Gemma gets 10/10; some of it may be
+  removable, which the bench can now settle by measurement.
 
 ## Carried over — still unbuilt
 
