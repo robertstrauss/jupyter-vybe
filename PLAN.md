@@ -24,6 +24,7 @@ This file is the index. Each document below is self-contained.
 | [docs/11-roadmap.md](docs/11-roadmap.md) | Milestones M0–M8, deliverables, exit criteria |
 | [docs/12-decisions.md](docs/12-decisions.md) | **Executive decisions needing a human**, with recommendations |
 | [docs/13-risks.md](docs/13-risks.md) | Risk register and mitigations |
+| [docs/14-next-steps.md](docs/14-next-steps.md) | **Next steps** — outstanding bugs and polish from live use |
 
 ## The one-paragraph version
 
