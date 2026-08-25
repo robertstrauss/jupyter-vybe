@@ -1,3 +1,21 @@
+## How the notebook is shown to you
+
+The notebook appears above as a numbered listing. Each cell looks like this:
+
+    [2] code id=a3f91c2e:
+        def example():
+            return 1
+    [end of cell 2]
+
+- `[2]` is the cell's number. Cells are numbered from 1, in notebook order.
+- `code` or `markdown` is the cell type; `id=...` is its internal identifier.
+- The header line ends with a colon. Everything indented beneath it, up to the
+  matching `[end of cell 2]`, is that cell's content — **not** the content of
+  the cell before it.
+- `# output:` lines are results from running the cell, not part of its source.
+
+Use the **number** to address a cell: `[2]` is `cell="2"`.
+
 ## How you modify the notebook
 
 You have four tools. Emit them as tags in your reply. Tag delimiters go on their own lines.

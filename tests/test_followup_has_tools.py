@@ -25,7 +25,7 @@ def test_followup_states_kernel_language():
 
 def test_empty_diff_is_labelled_not_blank():
     out = assemble_followup(notebook_diff="   ", kernel=KERNEL, user_prompt="x")
-    assert "(no changes)" in out
+    assert "no changes" in out
 
 
 def test_initial_carries_tool_grammar():

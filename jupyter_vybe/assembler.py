@@ -55,7 +55,8 @@ def render_notebook(cells: list[dict], prompt_cell_id: str = "") -> str:
 
         tag = f"[{n}] {kind}"
         if cid:
-            tag += f"  id={cid}"
+            tag += f" id={cid}"
+        tag += ":"
         if prompt_index is not None:
             if i == prompt_index:
                 tag += "   <-- this is the prompt cell you are answering"
@@ -73,6 +74,9 @@ def render_notebook(cells: list[dict], prompt_cell_id: str = "") -> str:
             text = _output_text(out)
             if text:
                 lines.append(f"    # output: {text}")
+        # Explicit terminator: without it a header can read as belonging to the
+        # block above it as easily as the block below.
+        lines.append(f"[end of cell {n}]")
         lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -166,15 +170,24 @@ TOOL_RECAP = (
 )
 
 
-def assemble_followup(*, notebook_diff: str, kernel: dict, user_prompt: str) -> str:
-    """Persistent-session turns send a diff, not the whole notebook (docs/09)."""
-    diff = notebook_diff.strip() or "(no changes)"
-    return (
-        f"{kernel_banner(kernel)}\n\n"
-        f"{TOOL_RECAP}\n\n"
-        f"Changes to the notebook since your last turn:\n\n{diff}\n\n"
-        f"## Request\n\n{user_prompt}\n"
-    )
+def assemble_followup(
+    *, notebook_diff: str, kernel: dict, user_prompt: str, notebook_listing: str = ""
+) -> str:
+    """A follow-up turn in a persistent session.
+
+    The listing is NOT optional in practice. Without it the agent has no cell
+    numbers to address, so a request like "edit the cell above" makes it invent
+    an index -- which then resolves to a real but wrong cell. That is a silent
+    wrong edit, the worst failure this tool can produce, so the listing goes on
+    every turn until diff summaries exist to replace it (docs/09).
+    """
+    diff = notebook_diff.strip() or "(no changes since your last turn)"
+    parts = [kernel_banner(kernel), TOOL_RECAP]
+    if notebook_listing:
+        parts.append(f"The notebook now contains:\n\n{notebook_listing}")
+    parts.append(f"Changes since your last turn:\n\n{diff}")
+    parts.append(f"## Request\n\n{user_prompt}")
+    return "\n\n".join(parts) + "\n"
 
 
 def _substitute(template: str, values: dict[str, str]) -> str:

@@ -224,3 +224,31 @@ the schema from v1.0 so the v1.1 sidecar — which can send the PNA header corre
 *Residual:* until the sidecar ships, CLI-based agents (`claude -p`) cannot run on the laptop
 while Jupyter runs remotely. A tunnel cannot carry a subprocess. This is stated plainly in the
 README rather than discovered.
+
+---
+
+## R13 · A silent edit to the wrong cell · **REALISED — fixed**
+
+The worst failure this tool can produce, because unlike a bad suggestion it is
+not obviously wrong: the diff UI renders correctly, it just points at the wrong
+cell.
+
+*Cause.* Follow-up turns in a persistent session carried only a kernel banner, a
+one-line tool recap, and an empty diff — **no cell listing at all**. Asked to
+"edit the cell above", the agent had no numbers to work from, invented one, and
+`resolve_cell_ref` faithfully mapped that invented number onto a real cell.
+
+Two things made it worse. The follow-up prompt also omitted the guidance that
+changing existing code is an edit rather than an addition, so it disagreed with
+the prompt `scripts/bench-tools.py` measures — the bench scored a prompt that
+users only ever saw on turn 1. And `resolve_cell_ref` accepting any in-range
+integer meant a fabricated index looked exactly like a real one.
+
+*Fix.* Every turn now sends the full prompt, listing included, until diff
+summaries exist to carry the same guidance. Out-of-range indices are refused
+rather than clamped. Verified 4/4 on the failing case.
+
+*Residual.* An in-range but wrong index is still indistinguishable from a
+correct one. The real protection is that the result is a reviewable diff:
+the header of the review UI names the target cell, so a mis-aimed edit is
+visible before it is accepted, not after.

@@ -15,7 +15,12 @@ from collections import OrderedDict
 from typing import AsyncIterator
 
 from .adapters import Message, build_adapter
-from .assembler import assemble_followup, assemble_initial, resolve_cell_ref
+from .assembler import (
+    assemble_followup,
+    assemble_initial,
+    render_notebook,
+    resolve_cell_ref,
+)
 from .protocol import (
     EventKind,
     StreamParser,
@@ -83,12 +88,13 @@ class AgentSession:
         self._cancel = asyncio.Event()
 
         seq = msg.get("snapshotSeq", 0)
-        force_full = (
-            not self.persistent
-            or not self.messages
-            or self.turns % RESYNC_EVERY == 0
-            or msg.get("snapshot") is not None and seq != self.snapshot_seq + 1
-        )
+        # Always send the full prompt for now. The follow-up form carries only a
+        # one-line recap, which never explains the listing format or that
+        # changing existing code is an edit rather than an addition -- so the
+        # measured behaviour in scripts/bench-tools.py was not what a user on
+        # turn 2 actually got. Restore the diff path when diffSummary lands and
+        # the follow-up prompt can carry the same guidance (docs/09).
+        force_full = True
         if force_full and msg.get("snapshot") is None:
             yield {"op": "resync"}
             return
@@ -120,6 +126,9 @@ class AgentSession:
                 notebook_diff=msg.get("diff", ""),
                 kernel=msg.get("kernelInfo", {}),
                 user_prompt=msg["prompt"],
+                notebook_listing=render_notebook(
+                    snapshot_cells, msg.get("promptCellId", "")
+                ),
             )
         self.snapshot_seq = seq
         self.messages.append(Message("user", prompt))
