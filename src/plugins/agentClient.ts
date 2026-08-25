@@ -15,6 +15,7 @@ export interface IAgentFrame {
   callId?: string;
   message?: string;
   stopReason?: string;
+  count?: number;
   promptTokens?: number;
   completionTokens?: number;
 }

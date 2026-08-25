@@ -14,7 +14,7 @@ from typing import AsyncIterator
 
 from .adapters import Message, build_adapter
 from .assembler import assemble_followup, assemble_initial
-from .protocol import EventKind, StreamParser
+from .protocol import EventKind, StreamParser, has_tool_calls, salvage_fenced_blocks
 
 IDLE_SECONDS = 1800
 MAX_SESSIONS = 8
@@ -95,11 +95,14 @@ class AgentSession:
         max_tool_turns = int(limits.get("maxToolTurns", 6))
         for _ in range(max_tool_turns + 1):
             reply, pending = "", None
+            emitted_tool = False
             parser = StreamParser()
 
             async for chunk in self.adapter.stream(self.messages, self._cancel):
                 reply += chunk
                 for event in parser.feed(chunk):
+                    if event.kind is EventKind.TOOL:
+                        emitted_tool = True
                     out, pending = self._translate(event)
                     if out is not None:
                         yield out
@@ -115,9 +118,24 @@ class AgentSession:
 
             if pending is None:
                 for event in parser.close():
+                    if event.kind is EventKind.TOOL:
+                        emitted_tool = True
                     out, _ = self._translate(event)
                     if out is not None:
                         yield out
+
+                # R2 fallback: a reply with no tool calls but with fenced code
+                # blocks is recovered rather than dumped into the notebook as
+                # prose. Any model can produce a fence; not every model will
+                # produce tags reliably.
+                if not emitted_tool:
+                    salvaged = salvage_fenced_blocks(reply)
+                    if salvaged:
+                        yield {"op": "proseReset"}
+                        for event in salvaged:
+                            yield {"op": "tool", "name": event.name, "args": event.args}
+                        yield {"op": "salvaged", "count": len(salvaged)}
+
                 self.messages.append(Message("assistant", reply))
                 self.turns += 1
                 yield {"op": "done", "stopReason": "end"}

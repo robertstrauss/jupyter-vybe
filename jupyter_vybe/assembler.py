@@ -55,11 +55,31 @@ def assemble_initial(
     return _substitute(template, values)
 
 
+# One-line recap of the tool grammar, repeated on follow-up turns.
+#
+# Measured, not assumed: with turn 1's full tooling prompt still in the message
+# history, a 3-request A/B across "no recap" / "one sentence" / "a 400-char
+# recap with tag shapes" scored 3/3 tool-tag compliance in every arm on
+# qwen2.5-coder:7b. Recap length simply did not matter. So this is one sentence
+# plus the two tag names -- enough to re-point at the grammar if history has
+# been truncated, and 57 characters instead of the 2281 of the full prompt.
+#
+# What actually protects against a lapse is salvage_fenced_blocks() in
+# protocol.py, not prompt volume: the same model, given the same prompt, emits
+# tags on one run and markdown fences on the next (docs/13 R2).
+TOOL_RECAP = (
+    "Reply only with <vybe:add_cell> / <vybe:propose_edit> tags, "
+    "never markdown code fences."
+)
+
+
 def assemble_followup(*, notebook_diff: str, kernel: dict, user_prompt: str) -> str:
     """Persistent-session turns send a diff, not the whole notebook (docs/09)."""
+    diff = notebook_diff.strip() or "(no changes)"
     return (
         f"{kernel_banner(kernel)}\n\n"
-        f"Changes to the notebook since your last turn:\n\n{notebook_diff}\n\n"
+        f"{TOOL_RECAP}\n\n"
+        f"Changes to the notebook since your last turn:\n\n{diff}\n\n"
         f"## Request\n\n{user_prompt}\n"
     )
 

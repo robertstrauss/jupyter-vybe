@@ -31,7 +31,24 @@ code" rather than "the cell did nothing".
 
 ---
 
-## R2 · A 7B model cannot follow the tool protocol reliably · **high impact, medium probability**
+## R2 · A 7B model cannot follow the tool protocol reliably · **REALISED — confirmed flaky**
+
+*Measured.* Given a byte-identical prompt, `qwen2.5-coder:7b` emits correct `<vybe:add_cell>`
+tags on one run and a plain markdown code fence on the next. Three consecutive session runs
+produced fences; three more produced tags. It is not a prompt-structure bug and it is not
+fixable by prompt volume — an A/B across no recap / one sentence / a 400-char recap scored 3/3
+compliance in *every* arm, including no recap at all.
+
+The mitigation that matters is therefore **salvage, not instruction**:
+`salvage_fenced_blocks()` recovers a fenced reply as `add_cell` calls, and the session emits a
+`proseReset` so the code does not also land in the settled markdown cell. Any model can produce
+a fence, so this closes the gap for models that will not produce tags reliably.
+
+Gemma 4 via TurboFieldfare produced correct tags on first contact, with tighter output than
+Qwen. It is a candidate default if it proves steadier over a larger sample.
+
+The layered mitigations below still apply.
+
 
 `qwen2.5-coder:7b` is the default and it has no native tool support. Malformed tags, code fenced
 inside a tool body, invented attributes, and prose where a tag belongs are all likely.

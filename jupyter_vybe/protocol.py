@@ -202,3 +202,39 @@ def parse(text: str) -> list[Event]:
     out = list(p.feed(text))
     out.extend(p.close())
     return out
+
+
+# --- salvage ------------------------------------------------------------
+# Risk R2 in docs/13: a model that will not emit tool tags reliably still has
+# to be usable. Any model can produce a fenced code block, so a reply that
+# carries no tool calls but does carry fences is recovered as add_cell calls
+# rather than dumped into the notebook as prose.
+
+_FENCE_RE = re.compile(
+    r"^[ \t]*```[ \t]*([A-Za-z0-9_+-]*)[ \t]*\n(.*?)(?:^[ \t]*```[ \t]*$|\Z)",
+    re.S | re.M,
+)
+
+MARKDOWN_LANGS = {"markdown", "md"}
+
+
+def salvage_fenced_blocks(text: str) -> list[Event]:
+    """Recover add_cell calls from a reply that used markdown fences instead.
+
+    Returns [] if there is nothing to recover, so the caller can tell the
+    difference between "salvaged" and "the model genuinely said nothing".
+    """
+    events: list[Event] = []
+    for lang, body in _FENCE_RE.findall(text):
+        source = body.rstrip("\n")
+        if not source.strip():
+            continue
+        cell_type = "markdown" if lang.lower() in MARKDOWN_LANGS else "code"
+        events.append(
+            Event(EventKind.TOOL, name="add_cell", args={"type": cell_type, "body": source})
+        )
+    return events
+
+
+def has_tool_calls(events: list[Event]) -> bool:
+    return any(e.kind is EventKind.TOOL for e in events)

@@ -137,6 +137,11 @@ class Rounds implements IVybeRounds {
       }
       if (frame.op === 'prose' && frame.delta) {
         round.prose += frame.delta;
+      } else if (frame.op === 'proseReset') {
+        // The server salvaged fenced code blocks from a reply that used no
+        // tool tags; the prose it already streamed was that code, and must
+        // not also land in the settled markdown cell (docs/13 R2).
+        round.prose = '';
       } else if (frame.op === 'tool') {
         const name = frame.name!;
         const args = frame.args ?? {};
