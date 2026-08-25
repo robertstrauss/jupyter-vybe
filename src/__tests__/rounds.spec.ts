@@ -44,8 +44,7 @@ function fakePanel(): any {
           ]
         })
       }
-    },
-    sessionContext: { session: null }
+    }
   };
 }
 
@@ -77,7 +76,6 @@ function options(cell: any) {
   return {
     cell,
     notebook: {} as any,
-    sessionContext: undefined,
     onCellExecuted: () => undefined,
     onCellExecutionScheduled: () => undefined
   } as any;
