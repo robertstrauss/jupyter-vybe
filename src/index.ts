@@ -1,32 +1,29 @@
-import {
-  JupyterFrontEnd,
-  JupyterFrontEndPlugin
-} from '@jupyterlab/application';
+import type { JupyterFrontEndPlugin } from '@jupyterlab/application';
 
-import { ISettingRegistry } from '@jupyterlab/settingregistry';
+import { cellExecutor } from './plugins/cellExecutor';
+import { settingsPlugin } from './plugins/settings';
+import { agentPlugin } from './plugins/agentClient';
+import { proposalsPlugin } from './plugins/proposals';
+import { roundsPlugin } from './plugins/rounds';
+import { commandsPlugin } from './plugins/commands';
+import { reviewUIPlugin } from './plugins/reviewUI';
 
 /**
- * Initialization data for the jupyter-vybe extension.
+ * Jupyter Vybe — fine-grained AI code generation in Jupyter notebooks.
+ *
+ * jupyter-vybe:cell-executor replaces the core provider (disabled in
+ * package.json) and must be listed first: it is a hard dependency of
+ * @jupyterlab/notebook-extension:tracker, so nothing else can matter if it
+ * fails to activate.
  */
-const plugin: JupyterFrontEndPlugin<void> = {
-  id: 'jupyter-vybe:plugin',
-  description: 'Fine-grained AI code generation in Jupyter notebooks',
-  autoStart: true,
-  optional: [ISettingRegistry],
-  activate: (app: JupyterFrontEnd, settingRegistry: ISettingRegistry | null) => {
-    console.log('JupyterLab extension jupyter-vybe is activated!');
+const plugins: JupyterFrontEndPlugin<any>[] = [
+  cellExecutor,
+  settingsPlugin,
+  agentPlugin,
+  proposalsPlugin,
+  roundsPlugin,
+  commandsPlugin,
+  reviewUIPlugin
+];
 
-    if (settingRegistry) {
-      settingRegistry
-        .load(plugin.id)
-        .then(settings => {
-          console.log('jupyter-vybe settings loaded:', settings.composite);
-        })
-        .catch(reason => {
-          console.error('Failed to load settings for jupyter-vybe.', reason);
-        });
-    }
-  }
-};
-
-export default plugin;
+export default plugins;

@@ -1,5 +1,168 @@
-/*
-    See the JupyterLab Developer Guide for useful CSS Patterns:
+/* Jupyter Vybe — all colours come from JupyterLab CSS variables so both
+   themes work without a second palette (docs/03). */
 
-    https://jupyterlab.readthedocs.io/en/stable/developer/css.html
-*/
+/* ---- prompt cells ---- */
+.jv-prompt-running .jp-InputArea-editor {
+  opacity: 0.65;
+}
+
+/* ---- diff overlay ---- */
+.jv-diff-overlay {
+  font-family: var(--jp-code-font-family);
+  font-size: var(--jp-code-font-size);
+  line-height: var(--jp-code-line-height);
+  border: 1px solid var(--jp-border-color2);
+  border-radius: 2px;
+  margin: 4px 0 4px var(--jp-cell-prompt-width, 64px);
+  overflow-x: auto;
+}
+
+.jv-diff-note {
+  padding: 4px 8px;
+  font-family: var(--jp-ui-font-family);
+  font-size: var(--jp-ui-font-size0);
+  color: var(--jp-ui-font-color2);
+  border-bottom: 1px solid var(--jp-border-color2);
+}
+
+.jv-diff-line {
+  display: flex;
+  white-space: pre;
+  padding: 0 8px;
+}
+
+.jv-diff-marker {
+  width: 1.2em;
+  flex: none;
+  color: var(--jp-ui-font-color3);
+  user-select: none;
+}
+
+.jv-diff-text {
+  flex: 1;
+}
+
+.jv-diff-add {
+  background: var(--jp-diff-added-color, rgb(46 160 67 / 15%));
+}
+
+.jv-diff-del {
+  background: var(--jp-diff-deleted-color, rgb(248 81 73 / 15%));
+}
+
+.jv-diff-sep {
+  padding: 0 8px;
+  color: var(--jp-ui-font-color3);
+  background: var(--jp-layout-color2);
+  user-select: none;
+}
+
+.jv-input-hidden .jp-InputArea-editor {
+  display: none;
+}
+
+/* ---- per-cell review controls ---- */
+.jv-review-controls {
+  position: absolute;
+  top: 4px;
+  right: -8px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.jv-review-button-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.jv-review-button {
+  width: 34px;
+  height: 34px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 4px;
+  background: var(--jp-layout-color1);
+  box-shadow: var(--jp-elevation-z2);
+}
+
+.jv-review-button.jv-accept {
+  color: var(--jp-success-color1);
+}
+
+.jv-review-button.jv-reject {
+  color: var(--jp-error-color1);
+}
+
+.jv-review-key {
+  margin-top: 2px;
+  font-family: var(--jp-ui-font-family);
+  font-size: 10px;
+  color: var(--jp-ui-font-color3);
+}
+
+.jv-proposal-active {
+  position: relative;
+}
+
+/* ---- status bubble ---- */
+.jv-status-bubble {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  font-family: var(--jp-ui-font-family);
+  font-size: var(--jp-ui-font-size1);
+  background: var(--jp-layout-color1);
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 6px;
+  box-shadow: var(--jp-elevation-z4);
+}
+
+.jv-bubble-main,
+.jv-bubble-sub {
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--jp-ui-font-color1);
+}
+
+.jv-bubble-sub {
+  margin-top: 2px;
+  font-size: var(--jp-ui-font-size0);
+  color: var(--jp-ui-font-color2);
+}
+
+.jv-status-bubble.jv-generating .jv-bubble-main {
+  color: var(--jp-warn-color1);
+}
+
+/* ---- inserted cells ---- */
+@keyframes jv-fade-accent {
+  from {
+    border-left-color: var(--jp-brand-color1);
+  }
+  to {
+    border-left-color: transparent;
+  }
+}
+
+.jv-inserted {
+  border-left: 3px solid transparent;
+  animation: jv-fade-accent 2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jv-inserted {
+    animation: none;
+  }
+}

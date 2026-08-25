@@ -1,8 +1,195 @@
 {
   "jupyter.lab.shortcuts": [],
-  "title": "jupyter-vybe",
-  "description": "jupyter-vybe settings.",
+  "title": "Jupyter Vybe",
+  "description": "Fine-grained AI code generation in Jupyter notebooks.",
   "type": "object",
-  "properties": {},
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enable Jupyter Vybe",
+      "description": "Master switch. When off, prompt cells execute as ordinary code.",
+      "default": true
+    },
+    "trigger": {
+      "type": "object",
+      "title": "Trigger",
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "title": "Prompt prefix",
+          "description": "First character(s) of a code cell that mark it as a prompt. Cannot be '!', '?', '%' or anything that parses as code.",
+          "default": ">"
+        }
+      },
+      "default": { "prefix": ">" }
+    },
+    "agent": {
+      "type": "object",
+      "title": "Agent",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Agent",
+          "default": "ollama-qwen25-coder-7b"
+        },
+        "host": {
+          "type": "string",
+          "title": "Where the agent runs",
+          "description": "'server' runs it beside Jupyter. 'client' uses the local sidecar (v1.1) for a model on your own machine while Jupyter is remote.",
+          "enum": ["server", "client"],
+          "default": "server"
+        },
+        "sidecarUrl": {
+          "type": "string",
+          "title": "Sidecar URL",
+          "default": "http://127.0.0.1:8137"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "title": "Per-turn timeout (seconds)",
+          "default": 120
+        }
+      },
+      "default": {
+        "id": "ollama-qwen25-coder-7b",
+        "host": "server",
+        "sidecarUrl": "http://127.0.0.1:8137",
+        "timeoutSeconds": 120
+      }
+    },
+    "context": {
+      "type": "object",
+      "title": "Context",
+      "properties": {
+        "persistent": {
+          "type": "boolean",
+          "title": "Persistent conversation",
+          "description": "Remember previous prompts and send notebook diffs. When off, every prompt is single-shot.",
+          "default": true
+        },
+        "windowTokens": {
+          "type": "integer",
+          "title": "Model context window (tokens)",
+          "default": 32768
+        },
+        "reserveTokens": {
+          "type": "integer",
+          "title": "Reserved for the reply (tokens)",
+          "default": 2048
+        },
+        "cellWindow": {
+          "type": "integer",
+          "title": "Full-fidelity cell window (0 = whole notebook)",
+          "default": 0
+        },
+        "includeOutputs": { "type": "boolean", "title": "Include cell outputs", "default": true },
+        "maxOutputChars": {
+          "type": "integer",
+          "title": "Max characters per output",
+          "default": 2000
+        }
+      },
+      "default": {
+        "persistent": true,
+        "windowTokens": 32768,
+        "reserveTokens": 2048,
+        "cellWindow": 0,
+        "includeOutputs": true,
+        "maxOutputChars": 2000
+      }
+    },
+    "prompts": {
+      "type": "object",
+      "title": "Prompts",
+      "properties": {
+        "global": {
+          "type": "string",
+          "title": "Global prompt",
+          "description": "Always sent to the agent. Describe conventions you want all generated code to follow. Leave blank to use the shipped default.",
+          "default": ""
+        },
+        "showAssembled": {
+          "type": "boolean",
+          "title": "Log the assembled prompt to the console",
+          "default": false
+        }
+      },
+      "default": { "global": "", "showAssembled": false }
+    },
+    "agentTools": {
+      "type": "object",
+      "title": "Agent tools",
+      "properties": {
+        "kernelIntrospection": {
+          "type": "string",
+          "title": "Kernel introspection",
+          "description": "Lets the agent read docstrings and completions from the running kernel. Never executes code.",
+          "enum": ["off", "inspect-only", "inspect+complete"],
+          "default": "inspect+complete"
+        },
+        "maxInsertions": { "type": "integer", "title": "Max added cells", "default": 8 },
+        "maxProposals": { "type": "integer", "title": "Max proposed edits", "default": 12 },
+        "maxToolTurns": { "type": "integer", "title": "Max lookups per request", "default": 6 }
+      },
+      "default": {
+        "kernelIntrospection": "inspect+complete",
+        "maxInsertions": 8,
+        "maxProposals": 12,
+        "maxToolTurns": 6
+      }
+    },
+    "review": {
+      "type": "object",
+      "title": "Review",
+      "properties": {
+        "autoScroll": { "type": "boolean", "title": "Smooth-scroll between edits", "default": true },
+        "acceptKey": {
+          "type": "string",
+          "title": "Accept / reject keys",
+          "enum": ["yn", "enter-backspace"],
+          "default": "yn"
+        },
+        "mergeCommentStyle": {
+          "type": "string",
+          "title": "Comment style for merged edits",
+          "enum": ["auto", "hash", "slashes", "none"],
+          "default": "auto"
+        }
+      },
+      "default": { "autoScroll": true, "acceptKey": "yn", "mergeCommentStyle": "auto" }
+    },
+    "history": {
+      "type": "object",
+      "title": "History",
+      "properties": {
+        "maxEntries": { "type": "integer", "title": "Entries rendered at once", "default": 200 },
+        "persist": {
+          "type": "boolean",
+          "title": "Keep prompt history across sessions",
+          "description": "The prompt record lives outside the notebook, so deleting a prompt cell never loses the prompt.",
+          "default": true
+        },
+        "location": {
+          "type": "string",
+          "title": "History location",
+          "enum": ["user", "adjacent"],
+          "default": "user"
+        }
+      },
+      "default": { "maxEntries": 200, "persist": true, "location": "user" }
+    },
+    "privacy": {
+      "type": "object",
+      "title": "Privacy",
+      "properties": {
+        "confirmRemoteAgents": {
+          "type": "boolean",
+          "title": "Confirm before sending a notebook to a non-local agent",
+          "default": true
+        }
+      },
+      "default": { "confirmRemoteAgents": true }
+    }
+  },
   "additionalProperties": false
 }
