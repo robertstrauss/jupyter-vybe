@@ -42,7 +42,8 @@ export class Round {
   ) {}
 }
 
-class Rounds implements IVybeRounds {
+/** Exported for tests; the plugin is the only production construction. */
+export class Rounds implements IVybeRounds {
   private _active = new Map<string, Round>();
   private _seq = new Map<string, number>();
 
