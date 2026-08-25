@@ -110,6 +110,10 @@ class TurboFieldfareAdapter(Adapter):
         }
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
+        # Never signal the caller's cancel event: setting it on normal
+        # completion made every turn look cancelled to the session, which
+        # returned before the post-stream salvage pass could run.
+        stop = asyncio.Event()
 
         def pump() -> None:
             req = urllib.request.Request(
@@ -120,7 +124,7 @@ class TurboFieldfareAdapter(Adapter):
             try:
                 with urllib.request.urlopen(req) as resp:
                     for raw in resp:
-                        if cancel.is_set():
+                        if cancel.is_set() or stop.is_set():
                             break
                         line = raw.decode("utf-8").strip()
                         if not line or line.startswith(":") or not line.startswith("data: "):
@@ -150,7 +154,7 @@ class TurboFieldfareAdapter(Adapter):
                     raise item
                 yield item
         finally:
-            cancel.set()
+            stop.set()
             task.cancel()
 
     async def _stream_cli(self, prompt: str, cancel: asyncio.Event) -> AsyncIterator[str]:
