@@ -25,6 +25,10 @@ if ! curl -s -o /dev/null --max-time 1 http://127.0.0.1:11434/; then
 fi
 ollama list | grep -q 'qwen2.5-coder:7b' || echo "warning: qwen2.5-coder:7b not pulled (ollama pull qwen2.5-coder:7b)"
 
+export VYBE_TRANSCRIPT="${VYBE_TRANSCRIPT:-/tmp/vybe-transcript.jsonl}"
+rm -f "$VYBE_TRANSCRIPT"
+echo "transcript: $VYBE_TRANSCRIPT"
+
 mkdir -p ~/vybe-scratch
 cat > ~/vybe-scratch/scratch.ipynb <<'NB'
 {"cells":[{"cell_type":"code","execution_count":null,"id":"setup001","metadata":{},"outputs":[],"source":"import numpy as np\nx = np.arange(20)"},{"cell_type":"code","execution_count":null,"id":"prompt01","metadata":{},"outputs":[],"source":"> add a function that normalises x to zero mean and unit variance"}],"metadata":{"kernelspec":{"display_name":"Python 3","language":"python","name":"python3"},"language_info":{"name":"python","version":"3.13"}},"nbformat":4,"nbformat_minor":5}

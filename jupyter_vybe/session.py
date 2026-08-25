@@ -8,6 +8,8 @@ impossible for the agent to rewrite its own instruction history (D12).
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import time
 from collections import OrderedDict
 from typing import AsyncIterator
@@ -21,6 +23,21 @@ MAX_SESSIONS = 8
 RESYNC_EVERY = 10
 
 BLOCKING_TOOLS = {"ipython_help", "complete"}
+
+# Set VYBE_TRANSCRIPT to a path to record every round: the assembled prompt,
+# the raw model reply, and every frame sent to the browser. This is the only
+# way to tell "the model misbehaved" apart from "we mishandled a good reply".
+TRANSCRIPT = os.environ.get("VYBE_TRANSCRIPT", "")
+
+
+def _record(kind: str, **fields) -> None:
+    if not TRANSCRIPT:
+        return
+    try:
+        with open(TRANSCRIPT, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"kind": kind, "ts": time.time(), **fields}) + "\n")
+    except Exception:  # logging must never break a round
+        pass
 
 
 class AgentSession:
@@ -90,6 +107,8 @@ class AgentSession:
         self.snapshot_seq = seq
         self.messages.append(Message("user", prompt))
 
+        _record("prompt", persistent=self.persistent, turns=self.turns,
+                force_full=force_full, prompt=prompt)
         yield {"op": "status", "state": "generating"}
 
         max_tool_turns = int(limits.get("maxToolTurns", 6))
@@ -128,8 +147,10 @@ class AgentSession:
                 # blocks is recovered rather than dumped into the notebook as
                 # prose. Any model can produce a fence; not every model will
                 # produce tags reliably.
+                _record("reply", emitted_tool=emitted_tool, reply=reply)
                 if not emitted_tool:
                     salvaged = salvage_fenced_blocks(reply)
+                    _record("salvage", found=len(salvaged))
                     if salvaged:
                         yield {"op": "proseReset"}
                         for event in salvaged:

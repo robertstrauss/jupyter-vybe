@@ -95,6 +95,63 @@ Be aware before you go looking for these:
 - The extension must be a symlink for edits to show up:
   `ls -la .venv/share/jupyter/labextensions/ | grep vybe` should print an arrow, not a directory.
 
+## Debugging what the model actually did
+
+When a prompt misbehaves, the first question is always: did the model return
+something wrong, or did we mishandle something right? From the notebook the two
+look identical. Two instruments answer it.
+
+### The proxy — what went over the wire
+
+Sits between Vybe and the model backend, forwards verbatim, records both sides.
+Streaming is preserved, so the notebook behaves normally.
+
+```bash
+# terminal 1
+.venv/bin/python scripts/vybe-proxy.py
+
+# terminal 2 -- point Vybe at the proxy
+CODELLM_HOST=http://127.0.0.1:11435 ./scripts/dev.sh
+
+# terminal 3 -- after reproducing, look at the exchange
+.venv/bin/python scripts/vybe-proxy.py --show          # last exchange
+.venv/bin/python scripts/vybe-proxy.py --show --last 5 # last five
+.venv/bin/python scripts/vybe-proxy.py --show --full   # do not elide the prompt
+```
+
+`--show` prints the full prompt sent, the reassembled reply, and a one-word
+verdict: **TOOL TAGS**, **MARKDOWN FENCE**, or **PLAIN PROSE**. It works for
+any HTTP backend — Ollama, a TurboFieldfare server, anything OpenAI-compatible.
+
+### The transcript — what the server did with it
+
+`scripts/dev.sh` sets `VYBE_TRANSCRIPT=/tmp/vybe-transcript.jsonl`, recording
+the assembled prompt, the raw reply, whether tool calls were seen, and how many
+blocks salvage recovered.
+
+```bash
+python -c "
+import json
+for l in open('/tmp/vybe-transcript.jsonl'):
+    r = json.loads(l)
+    if r['kind'] == 'reply':
+        print('tools seen:', r['emitted_tool'], '|', repr(r['reply'][:80]))
+    elif r['kind'] == 'salvage':
+        print('salvaged blocks:', r['found'])
+"
+```
+
+Together they localise any failure: proxy says MARKDOWN FENCE and the
+transcript says `salvaged blocks: 0` means salvage is broken; proxy says TOOL
+TAGS but no cell appears means the frontend is at fault.
+
+### What this has already established
+
+`qwen2.5-coder:7b` is genuinely unreliable here. The *same* prompt produced a
+markdown fence on one run and correct tool tags on the next, captured by the
+proxy both times. That is why salvage exists, and why it is not worth spending
+more prompt tokens trying to instruct the model out of it (docs/13 R2).
+
 ## Automated checks
 
 ```bash

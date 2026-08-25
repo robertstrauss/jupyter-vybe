@@ -135,7 +135,9 @@ class StreamParser:
                 self._body += self._buf[:idx]
                 self._buf = self._buf[idx + len(close) :]
                 args = dict(self._args)
-                args["body"] = _trim_body(self._body)
+                args["body"] = strip_body_fence(
+                    _trim_body(self._body), args.get("type", "code")
+                )
                 yield Event(EventKind.TOOL, name=self._tool, args=args)
                 self._tool, self._args, self._body = "", {}, ""
                 self._state = _State.TEXT
@@ -181,6 +183,26 @@ def _partial_suffix(buf: str, token: str) -> int:
         if buf[-n:] == token[:n]:
             return n
     return 0
+
+
+_BODY_FENCE_RE = re.compile(r"\A[ \t]*```[A-Za-z0-9_+-]*[ \t]*\n(.*?)\n?[ \t]*```[ \t]*\Z", re.S)
+
+
+def strip_body_fence(body: str, cell_type: str) -> str:
+    """Unwrap a markdown fence a model wrapped around a *code* body.
+
+    The tag already delimits the body, so a fence wrapping the whole of a code
+    cell is the model double-wrapping, and leaving it in produces a cell whose
+    first line is ```python -- a syntax error.
+
+    Markdown cells are left alone: a markdown cell whose content is a fenced
+    example is legitimate, and unwrapping it would destroy the example
+    (tests/protocol/body-containing-code-fence.txt).
+    """
+    if cell_type == "markdown":
+        return body
+    m = _BODY_FENCE_RE.match(body)
+    return m.group(1) if m else body
 
 
 def _trim_body(body: str) -> str:
