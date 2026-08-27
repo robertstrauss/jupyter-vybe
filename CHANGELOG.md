@@ -2,4 +2,56 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 0.1.0 (unreleased)
+
+First working version. Prompt cells, an agent behind them, and a review step
+before anything touches your notebook.
+
+### What it does
+
+- **Prompt cells.** A code cell starting with the trigger prefix (`>` by
+  default) runs against a model instead of a kernel. Every execution route in
+  JupyterLab funnels through one provider token, so the keyboard, toolbar,
+  menu, palette, and "run all" are covered by one interception point — and a
+  prompt cell never reaches a kernel, with or without one running.
+- **Generated cells** appear below the prompt as they stream. The prompt cell
+  settles into markdown holding your prompt as a blockquote.
+- **Proposed edits are reviewed, never applied.** A diff overlay replaces the
+  cell's editor while a proposal is pending; `Y` accepts, `N` rejects, `Enter`
+  opens the merged source for hand-editing with the replaced lines retained as
+  comments. The notebook model is untouched until you accept.
+- **Undo in two layers.** Every round is one ydoc transaction, so a plain
+  `Cmd+Z` reverts it atomically. Inside a round, `Cmd+Z` takes back one verdict
+  at a time; reject-all is recoverable with `⌥⇧Z`.
+- **A prompt record that outlives the cells.** Prompts, replies, insertions,
+  and every proposal with its verdict are kept in a sidecar JSONL file, so
+  deleting a settled prompt cell loses the rendering and nothing else. Readable
+  in a pane; click any entry to paste it back as a cell.
+- **Agents:** Ollama (Qwen2.5-Coder 3B/7B/14B), TurboFieldfare (Gemma 4
+  26B-A4B), any command that writes to stdout (`claude -p`), and any
+  OpenAI-compatible endpoint. All local by default; nothing leaves the machine
+  unless you point it somewhere that does.
+- **Context management.** Turn one sends the notebook; later turns send an
+  index and a diff. Under pressure, a truncation ladder drops outputs, then
+  distant prose, then distant code bodies — keeping signatures, the prompt
+  cell's neighbours, and every import.
+
+### Things worth knowing
+
+- **The default agent is qwen2.5-coder:7b, not the better model.** Gemma 4
+  scores higher on tool use (10/10 against 13/15) but costs ~17–30 s on a first
+  prompt against qwen's ~2 s. Both are selectable; the trade is documented in
+  `docs/14-next-steps.md`.
+- **Follow-up turns are much faster than the first** when the agent supports
+  prompt caching — measured at 28 s, then 8.5 s, then 7.0 s across one session.
+- **A model that will not emit tool tags is still usable**: a reply with fenced
+  code blocks and no tags is salvaged into cells rather than dumped into the
+  notebook as prose.
+- **Nothing is written to notebook metadata.** A collaborator without the
+  extension opens an ordinary notebook.
+
+### Requires
+
+JupyterLab ≥ 4.4, Python ≥ 3.9, and a model to talk to.
+
 <!-- <END NEW CHANGELOG ENTRY> -->

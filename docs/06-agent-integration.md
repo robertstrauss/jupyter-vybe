@@ -25,6 +25,31 @@ This is documented as a supported configuration, not a workaround, and the setti
 probe reports which machine actually answered (via Ollama's version endpoint and a hostname
 round-trip) so a misconfigured tunnel is visible rather than silently wrong.
 
+### Setting one up
+
+The port depends on which adapter the cluster will use:
+
+| Agent | Laptop port | Tunnel |
+|---|---|---|
+| `ollama-*` | 11434 | `ssh -N -R 11434:127.0.0.1:11434 user@cluster` |
+| `turbofieldfare-gemma4` | 8080 | `ssh -N -R 8080:127.0.0.1:8080 user@cluster` |
+| `openai-compat` | yours | `ssh -N -R <port>:127.0.0.1:<port> user@cluster`, then set `agent.endpoint` to `http://127.0.0.1:<port>` |
+
+`-N` because no remote command is wanted, and keep the tunnel in its own terminal or under
+`autossh` — an `ssh` that dies takes the agent with it, and the failure looks like "the model
+stopped answering" rather than "the tunnel dropped".
+
+Three things go wrong often enough to name:
+
+- **The cluster already has something on that port.** `sshd` refuses the forward and says so on
+  stderr, which is easy to miss under `-f`. The health probe then reports whatever *is* on that
+  port, which is why it prints the hostname that answered: if that is the cluster's own name
+  rather than your laptop's, the tunnel is not what you reached.
+- **`GatewayPorts` is irrelevant here** — the adapter runs on the cluster and dials loopback, so
+  the default (`no`, bind to the cluster's loopback only) is exactly right. Do not set it.
+- **`claude -p` cannot be tunnelled.** It needs the credentials on the machine it runs on, so a
+  split setup wanting the `command` adapter needs the v1.1 sidecar, not a tunnel.
+
 The v1.1 answer is the **sidecar**: `python -m jupyter_vybe.local` on the laptop, a ~150-line
 transport around the identical adapter package, which the browser talks to directly. It covers
 what a tunnel cannot — `claude -p` and CLI binaries need to run where the user's credentials
