@@ -24,6 +24,24 @@ else
   echo "pass  T-KERNEL-1b: kernel access confined to src/introspect.ts"
 fi
 
+# T-SCHEMA: the settings schema file is named after the plugin that loads it.
+# JupyterLab keys a schema by <package>:<basename>, so a mismatch means
+# registry.load() finds nothing and every setting sits silently at its default.
+# That shipped for weeks; only an end-to-end run caught it.
+plugin_id=$(grep -o "const PLUGIN_ID = '[^']*'" src/plugins/settings.ts | cut -d"'" -f2)
+schema_name="${plugin_id#*:}.json"
+package_name=$(grep -o '"name": "[^"]*"' package.json | head -1 | cut -d'"' -f4)
+if [ ! -f "schema/$schema_name" ]; then
+  echo "FAIL T-SCHEMA: settings.ts loads '$plugin_id' but schema/$schema_name does not exist:"
+  ls schema/
+  fail=1
+elif [ "${plugin_id%%:*}" != "$package_name" ]; then
+  echo "FAIL T-SCHEMA: plugin id '$plugin_id' does not start with package name '$package_name'"
+  fail=1
+else
+  echo "pass  T-SCHEMA: schema/$schema_name matches plugin id $plugin_id"
+fi
+
 # T-MUTATE: only mutations.ts may write to the notebook model.
 offenders=$(grep -rlE 'sharedModel\.(insertCell|deleteCell|setSource)' src/ 2>/dev/null \
   | grep -v 'src/notebook/mutations.ts' || true)

@@ -152,10 +152,12 @@ power to damage a notebook — finally has tests.
 
 What is left is not roadmap work but judgement calls that want a user:
 
-- **Is Gemma worth its first turn?** It is the better model on the bench and
-  single-digit seconds from turn 2, but ~17-30 s on turn 1 against qwen's ~2 s.
-  The default stays qwen; whether it should is a taste question about how a
-  first prompt in a fresh notebook should feel.
+- **Is Gemma worth its first turn?** On the twenty-prompt bench the two models
+  are now *tied* — 20/20 tool and 8/8 target each, no fence fallbacks — where
+  Gemma used to be clearly ahead. The prompt work closed the gap from the other
+  side, which leaves only latency: 1.7 s a call against 25 s. On this evidence
+  the default is right, and the interesting question is whether Gemma's ceiling
+  shows up on harder prompts than a bench contains.
 - **How aggressively should the ladder trim?** `context.windowTokens` minus a
   4096-token reserve is a guess that has never been wrong in testing because
   testing never used a 200-cell notebook.

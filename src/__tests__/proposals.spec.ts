@@ -30,6 +30,12 @@ function fakePanel(cells: FakeCell[]): any {
     context: { path: 'nb.ipynb' },
     node: { classList: { add: () => undefined, remove: () => undefined } },
     content: {
+      // The round marker lives on the content node -- the element carrying
+      // .jp-Notebook -- because that is what the keybinding selectors match.
+      node: {
+        classList: { add: () => undefined, remove: () => undefined },
+        focus: () => undefined
+      },
       activeCellIndex: 0,
       mode: 'command',
       widgets: models.map(() => ({
@@ -151,6 +157,10 @@ describe('round-scoped undo (docs/02 layer 2)', () => {
       context: { path: 'nb.ipynb' },
       node: { classList: { add: () => undefined, remove: () => undefined } },
       content: {
+        node: {
+          classList: { add: () => undefined, remove: () => undefined },
+          focus: () => undefined
+        },
         activeCellIndex: 0,
         mode: 'command',
         widgets: models.map(() => ({

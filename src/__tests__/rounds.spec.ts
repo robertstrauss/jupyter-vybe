@@ -28,6 +28,12 @@ function fakePanel(): any {
     node: { classList: { add: () => undefined, remove: () => undefined } },
     context: { path: 'nb.ipynb' },
     content: {
+      // The round marker lives on the content node -- the element carrying
+      // .jp-Notebook -- because that is what the keybinding selectors match.
+      node: {
+        classList: { add: () => undefined, remove: () => undefined },
+        focus: () => undefined
+      },
       activeCellIndex: 0,
       mode: 'command',
       widgets: [{ node: {} }],

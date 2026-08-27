@@ -89,7 +89,7 @@ jupyter-vybe/
 │   ├── introspect.ts            kernel inspect/complete — the only kernel-facing file
 │   └── tokenEstimate.ts
 ├── style/                       base.css, index.css, theme variables
-├── schema/plugin.json           ISettingRegistry schema (see 04)
+├── schema/settings.json         ISettingRegistry schema (see 04)
 ├── jupyter_vybe/                               ── Python server extension
 │   ├── __init__.py              _jupyter_server_extension_points
 │   ├── handlers.py              REST + WebSocket handlers

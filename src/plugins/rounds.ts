@@ -105,7 +105,11 @@ export class Rounds implements IVybeRounds {
     const source = cell.model.sharedModel.getSource();
     const round = new Round(panel, cell.model.id, source);
     this._active.set(panel.id, round);
-    panel.node.classList.add('jv-round-active');
+    // On the *content* node, which is the element carrying .jp-Notebook: the
+    // keybinding selectors require both classes on one element, and while this
+    // sat on the panel node they matched nothing and Y/N/Enter did nothing at
+    // all. Only the buttons worked, which is why it went unnoticed.
+    panel.content.node.classList.add('jv-round-active');
 
     // [*] with no kernel involvement. executionCount is never assigned, so the
     // cell contributes nothing to the notebook's execution history (docs/02).
@@ -316,7 +320,7 @@ export class Rounds implements IVybeRounds {
     if (this._active.get(round.panel.id) !== round) {
       return; // already finished; _finish is called from several paths
     }
-    round.panel.node.classList.remove('jv-round-active');
+    round.panel.content.node.classList.remove('jv-round-active');
     this._active.delete(round.panel.id);
     if (restorePromptCell) {
       const idx = this._indexOf(round.panel, round.promptCellId);

@@ -71,7 +71,7 @@ The load-bearing milestone. Everything else is ordinary UI work.
 
 ## M6 — Settings and history · ~3 days
 
-- `schema/plugin.json`, custom field renderers, agent discovery, prefix validation UI, meters.
+- `schema/settings.json`, custom field renderers, agent discovery, prefix validation UI, meters.
 - History pane with virtualised CM6 entries, grouping, cell-clipboard copy.
 - The durable history store ([12](12-decisions.md) D12): append-only JSONL, rename tracking via
   `pathChanged`, orphan adoption, `history.location`. **Moved forward from M6 into M3** in part —
@@ -101,7 +101,10 @@ the settings schema in place.
 
 - ✅ **The 20-prompt bench**, now checking *where* an edit lands as well as which tool was used —
   a proposal aimed at the wrong cell renders as a perfectly good diff, which is why that failure
-  went unnoticed for so long. qwen2.5-coder:7b scores 20/20 on tool and 8/8 on target.
+  went unnoticed for so long. Both models score **20/20 on tool and 8/8 on target**, with no
+  fence fallbacks: qwen2.5-coder:7b at 1.7 s a call, Gemma 4 at 25 s. The earlier gap between
+  them (13/15 against 10/10) has closed from the prompt side, so the choice is now purely about
+  latency.
 - ✅ **Performance**: the 200-cell target found a real O(n²) in the truncation ladder (it
   re-serialised the whole notebook per cell touched). 50 ms → 4 ms.
 - ✅ **Accessibility**: ARIA on the bubble and review controls, `role=status`/`aria-live` for

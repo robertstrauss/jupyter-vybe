@@ -147,6 +147,19 @@ export class Proposals implements IVybeProposals {
         this._setRendered(panel, p.cellId, false);
       }
     }
+    // Review is a keyboard flow, so it has to *start* on the keyboard: put the
+    // notebook in command mode on the first proposal and take focus. Settling
+    // the round leaves an editor focused otherwise, so the first Y went into a
+    // cell as the letter y.
+    const first = this.activeProposal(panel);
+    if (first) {
+      const idx = this._indexOf(panel, first.cellId);
+      if (idx !== -1) {
+        panel.content.activeCellIndex = idx;
+      }
+    }
+    panel.content.mode = 'command';
+    panel.content.node.focus();
     this._changed.emit(panel);
   }
 
@@ -236,7 +249,7 @@ export class Proposals implements IVybeProposals {
       this._rounds.set(panel.id, round);
     }
     this._undo.delete(panel.id);
-    panel.node.classList.add('jv-round-active');
+    panel.content.node.classList.add('jv-round-active');
     this._changed.emit(panel);
     const idx = this._indexOf(panel, p.cellId);
     if (idx !== -1) {

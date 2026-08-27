@@ -1,6 +1,13 @@
 # 04 — Settings
 
-Delivered as a standard `ISettingRegistry` schema at `schema/plugin.json`, which means the pane
+Delivered as a standard `ISettingRegistry` schema at `schema/settings.json`. **The file name is
+load-bearing**: JupyterLab keys a schema by `<package>:<basename>`, so it must match the id of the
+plugin that loads it (`jupyter-vybe:settings`). It was `plugin.json` for a long time, which meant
+`registry.load('jupyter-vybe:settings')` found nothing and every setting silently sat at its
+default — the first Galata run is what caught it. Renaming either side without the other brings
+it straight back.
+
+The schema means the pane
 is reachable three ways with no custom UI work: **Settings ▸ Settings Editor ▸ Jupyter Vybe**,
 the Advanced JSON editor, and the command palette (`Jupyter Vybe: Open Settings`). The extension
 additionally adds a gear item to the status bubble and a launcher entry, both of which just

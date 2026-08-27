@@ -105,8 +105,18 @@ above the cell toolbar but below dialogs):
 
 ## Navigation and keyboard map
 
-All bindings are registered against the selector `.jp-Notebook.jv-round-active` (added to the
-notebook node while a round is live) so they never shadow core shortcuts outside a round.
+All bindings are registered against the selector `.jp-Notebook.jv-round-active` so they never
+shadow core shortcuts outside a round.
+
+**The class goes on `panel.content.node`, not `panel.node`.** Those selectors need both classes on
+one element, and `.jp-Notebook` is the content node; while the marker sat on the panel node the
+selectors matched nothing and `Y` / `N` / `Enter` did nothing at all. Only the buttons worked,
+which is exactly why it went unnoticed for so long — the first end-to-end run of the review flow
+is what found it.
+
+Review also *begins* on the keyboard: `beginReview` selects the first proposal, puts the notebook
+in command mode, and takes focus. Settling a round leaves an editor focused otherwise, so the
+first `Y` went into a cell as the letter y.
 
 | Keys | Command | Context |
 |---|---|---|
