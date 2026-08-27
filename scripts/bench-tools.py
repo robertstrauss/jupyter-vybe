@@ -19,32 +19,69 @@ import time
 sys.path.insert(0, ".")
 
 from jupyter_vybe.adapters import Message, build_adapter
-from jupyter_vybe.assembler import assemble_initial
+from jupyter_vybe.assembler import assemble_initial, resolve_cell_ref
 from jupyter_vybe.protocol import parse
 from jupyter_vybe.session import _tooling_with_limits
 
 KERNEL = {"name": "python3", "language": "python", "version": "3.13"}
+
+# A notebook with the shapes that actually trip models up: an import cell, a
+# markdown heading, a function to edit, a cell that failed, and the prompt cell
+# last. Cell numbers below refer to this listing.
 SNAP = json.dumps({
     "nbformat": 4, "nbformat_minor": 5,
     "metadata": {"kernelspec": {"name": "python3"}, "language_info": {"name": "python"}},
     "cells": [
         {"id": "setup001", "cell_type": "code",
          "source": "import numpy as np\nx = np.arange(20)", "execution_count": 1},
+        {"id": "head0001", "cell_type": "markdown",
+         "source": "## Preprocessing"},
         {"id": "prompt01", "cell_type": "markdown",
          "source": "> add a function that normalises x"},
         {"id": "gen-a3f9", "cell_type": "code",
-         "source": "def normalize_x(x):\n    return (x - np.mean(x)) / np.std(x)"},
+         "source": "def normalize_x(x):\n    return (x - np.mean(x)) / np.std(x)",
+         "execution_count": 2},
+        {"id": "broke001", "cell_type": "code",
+         "source": "total = np.sum(x, axes=0)", "execution_count": 3,
+         "outputs": [{"output_type": "error", "ename": "TypeError",
+                      "evalue": "sum() got an unexpected keyword argument 'axes'"}]},
         {"id": "prompt02", "cell_type": "code", "source": "> ..."},
     ],
 })
 
-# (request, expected tool)
+# (request, expected tool). Twenty cases, weighted the way real use is: mostly
+# "write me something", with the edit cases that failure taught us to watch --
+# "the cell above", a named function, a numbered cell, and a fix for an error
+# that is visible in the outputs rather than stated in the prompt (M8).
+CELLS = json.loads(SNAP)["cells"]
+
 CASES = [
+    # -- additions ------------------------------------------------------
     ("add a function that returns the running maximum of x", "add_cell"),
     ("write a function to clip x between 0 and 5", "add_cell"),
-    ("edit the above cell to handle a zero standard deviation", "propose_edit"),
-    ("change normalize_x so it accepts an axis argument", "propose_edit"),
-    ("add a docstring to the normalise function", "propose_edit"),
+    ("add a function computing the median absolute deviation of x", "add_cell"),
+    ("write a helper that splits x into n chunks of equal length", "add_cell"),
+    ("add a function to compute a moving average of x with window w", "add_cell"),
+    ("give me a function that returns the indices of the k largest values", "add_cell"),
+    ("write a function that rescales x to the range 0 to 1", "add_cell"),
+    ("add a function that returns True if x is monotonically increasing", "add_cell"),
+    ("write a short function to compute the z-scores of an arbitrary array", "add_cell"),
+    ("add a markdown cell summarising what this notebook does so far", "add_cell"),
+    ("write a function that pads x to a multiple of 8 with zeros", "add_cell"),
+    ("add a function returning the first difference of x", "add_cell"),
+    # -- edits, by every form of address a user actually uses -------------
+    # The third element is the cell the edit must land on. A proposal aimed at
+    # the wrong cell renders as a perfectly good diff, which is what made
+    # wrong-cell edits so hard to notice; the bench checks the target because
+    # a human reading the output will not.
+    ("edit the cell above to use a keyword argument", "propose_edit", "broke001"),
+    ("change normalize_x so it accepts an axis argument", "propose_edit", "gen-a3f9"),
+    ("add a docstring to the normalise function", "propose_edit", "gen-a3f9"),
+    ("fix the error in cell 5", "propose_edit", "broke001"),
+    ("cell 4 should return float32, not float64", "propose_edit", "gen-a3f9"),
+    ("rename normalize_x to standardise, and update it", "propose_edit", "gen-a3f9"),
+    ("make normalize_x handle a list as well as an array", "propose_edit", "gen-a3f9"),
+    ("the Preprocessing heading should say Preprocessing and QA", "propose_edit", "head0001"),
 ]
 
 
@@ -57,10 +94,14 @@ async def run(agent: str, runs: int, tooling_file: str | None = None) -> int:
         raw = Path(tooling_file).read_text(encoding="utf-8")
         tooling = _tooling_with_limits({}, raw)
         print(f"tooling: {tooling_file} ({len(tooling or '')} chars)")
-    tally = {"tagged": 0, "fenced": 0, "correct_tool": 0, "total": 0}
+    tally = {"tagged": 0, "fenced": 0, "correct_tool": 0, "total": 0,
+             "targeted": 0, "target_cases": 0}
     timings: list[float] = []
+    targets: list[tuple] = []
     print(f"agent: {agent}\n")
-    for request, expected in CASES:
+    for case in CASES:
+        request, expected = case[0], case[1]
+        expected_cell = case[2] if len(case) > 2 else None
         got = []
         for _ in range(runs):
             prompt = assemble_initial(
@@ -73,7 +114,16 @@ async def run(agent: str, runs: int, tooling_file: str | None = None) -> int:
             async for chunk in adapter.stream([Message("user", prompt)], asyncio.Event()):
                 out += chunk
             timings.append(time.monotonic() - started)
-            tools = [e.name for e in parse(out) if e.kind.value == "tool"]
+            events = [e for e in parse(out) if e.kind.value == "tool"]
+            tools = [e.name for e in events]
+            if expected_cell:
+                tally["target_cases"] += 1
+                edit = next((e for e in events if e.name == "propose_edit"), None)
+                resolved = resolve_cell_ref(edit.args.get("cell", ""), CELLS) if edit else ""
+                if resolved == expected_cell:
+                    tally["targeted"] += 1
+                else:
+                    targets.append((request, edit.args.get("cell") if edit else None, resolved))
             tally["total"] += 1
             if tools:
                 tally["tagged"] += 1
@@ -89,6 +139,10 @@ async def run(agent: str, runs: int, tooling_file: str | None = None) -> int:
     print(f"\n  tags emitted   {tally['tagged']}/{t}")
     print(f"  fell back to fence {tally['fenced']}/{t}")
     print(f"  correct tool   {tally['correct_tool']}/{t}")
+    if tally["target_cases"]:
+        print(f"  correct cell   {tally['targeted']}/{tally['target_cases']}")
+        for request, asked, resolved in targets:
+            print(f"    MISS: {request!r} -> cell={asked!r} ({resolved or 'unresolved'})")
     if timings:
         # First call absorbs model load and cold prompt cache; the rest is the
         # latency a user actually feels, which is what decides the default
