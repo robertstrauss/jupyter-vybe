@@ -8,6 +8,7 @@ import { roundsPlugin } from './plugins/rounds';
 import { commandsPlugin } from './plugins/commands';
 import { reviewUIPlugin } from './plugins/reviewUI';
 import { historyPanePlugin } from './plugins/historyPane';
+import { settingsRenderersPlugin } from './plugins/settingsRenderers';
 
 /**
  * Jupyter Vybe — fine-grained AI code generation in Jupyter notebooks.
@@ -25,7 +26,8 @@ const plugins: JupyterFrontEndPlugin<any>[] = [
   roundsPlugin,
   commandsPlugin,
   reviewUIPlugin,
-  historyPanePlugin
+  historyPanePlugin,
+  settingsRenderersPlugin
 ];
 
 export default plugins;

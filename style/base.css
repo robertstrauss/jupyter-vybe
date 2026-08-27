@@ -345,3 +345,54 @@
     background: transparent;
   }
 }
+
+/* ---- settings widgets (docs/04) ---- */
+.jv-settings-field {
+  margin-bottom: 14px;
+}
+
+.jv-settings-label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: var(--jp-ui-font-color1);
+}
+
+.jv-settings-scope {
+  margin-left: 6px;
+  padding: 0 6px;
+  font-weight: 400;
+  font-size: var(--jp-ui-font-size0);
+  color: var(--jp-ui-font-color3);
+  background: var(--jp-layout-color2);
+  border-radius: 8px;
+}
+
+.jv-settings-select,
+.jv-settings-input {
+  width: 100%;
+  max-width: 420px;
+  padding: 4px 6px;
+  font-family: var(--jp-ui-font-family);
+  font-size: var(--jp-ui-font-size1);
+  color: var(--jp-ui-font-color1);
+  background: var(--jp-layout-color1);
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 3px;
+}
+
+/* Reachability and validation read as advice, not as an error state, until
+   they actually are one. */
+.jv-settings-status {
+  margin-top: 4px;
+  font-size: var(--jp-ui-font-size0);
+  color: var(--jp-ui-font-color3);
+}
+
+.jv-settings-status.jv-ok {
+  color: var(--jp-success-color1);
+}
+
+.jv-settings-status.jv-bad {
+  color: var(--jp-error-color1);
+}

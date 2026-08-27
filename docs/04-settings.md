@@ -6,10 +6,23 @@ the Advanced JSON editor, and the command palette (`Jupyter Vybe: Open Settings`
 additionally adds a gear item to the status bubble and a launcher entry, both of which just
 invoke `settingeditor:open`.
 
-A small number of controls need richer widgets than the default schema renderer produces (agent
-dropdown populated from the server, the context meter, the prefix validator). Those are
-registered through `IFormRendererRegistry` with `fieldRenderer` entries for the specific
+A small number of controls need richer widgets than the default schema renderer produces. Those
+are registered through `IFormRendererRegistry` with `fieldRenderer` entries for the specific
 properties — the supported JupyterLab 4 path for custom settings widgets, no forked editor.
+**Built** (`src/plugins/settingsRenderers.tsx`), for exactly three cases, because a custom
+renderer is a maintenance cost and a schema is free:
+
+- **`agent`** — the list comes from `GET /jupyter-vybe/agents`, and whether the chosen one is
+  *reachable* cannot be expressed in a schema at all. The probe result names the host that
+  answered, since a tunnel aimed at the wrong machine otherwise looks exactly like a working one
+  ([13](13-risks.md) R12).
+- **`trigger.prefix`** — a prefix that parses as code silently swallows real code cells, and
+  runtime is a bad time to discover that. The verdict shows as you type.
+- **`agent.command` / `agent.endpoint`** — each applies to one adapter and is noise for everyone
+  else, so each is labelled with the agent it belongs to.
+
+The context meter is *not* one of these: it lives in the status bubble, where the user already is
+while a request is being built, rather than in a pane they would have to go and open.
 
 ## Schema
 
@@ -19,8 +32,10 @@ properties — the supported JupyterLab 4 path for custom settings widgets, no f
 | `agent.id` | string | `"ollama-qwen25-coder-7b"` | dropdown | Populated at runtime from `GET /jupyter-vybe/agents`. |
 | `agent.host` | enum | `"server"` | dropdown | `server` \| `client`. Where the adapter runs — see [06](06-agent-integration.md). `client` requires the v1.1 sidecar; shown disabled until it is detected. |
 | `agent.sidecarUrl` | string | `"http://127.0.0.1:8137"` | text | Sidecar address when `agent.host == "client"`. |
-| `agent.customCommand` | string | `""` | text | argv for the `command` adapter, e.g. `claude -p --output-format stream-json`. Shown only when `agent.id == "command"`. |
-| `agent.endpoint` | string | `""` | text | Base URL for the `openai-compat` adapter. |
+| `agent.command` | string | `""` | text | argv for the `command` adapter, e.g. `claude -p`. Split with `shlex`, run without a shell. |
+| `agent.commandPersistent` | boolean | `false` | toggle | Keep the command alive between turns (stream-json). Falls back to one-shot if the handshake fails. |
+| `agent.endpoint` | string | `"http://127.0.0.1:8000"` | text | Base URL for the `openai-compat` adapter. |
+| `agent.model` | string | `""` | text | Model id as the endpoint names it in `/v1/models`. |
 | `agent.apiKeyEnv` | string | `"VYBE_API_KEY"` | text | **Name of an env var**, never the key itself — keys never enter settings JSON. |
 | `agent.timeoutSeconds` | integer | `120` | number | Per-turn wall clock. |
 | `context.persistent` | boolean | `true` | toggle | On ⇒ session keeps message history and sends notebook *diffs*; off ⇒ every prompt is single-shot with a full snapshot. |
@@ -47,10 +62,15 @@ properties — the supported JupyterLab 4 path for custom settings widgets, no f
 
 ## Read-only indicators in the pane
 
-- **Context meter** — a horizontal bar: notebook snapshot / tooling+universal prompt / global
-  prompt / history, stacked as segments against `context.windowTokens`, with the numeric total.
-  Recomputes on notebook change and after every round. Turns amber above 75%, red above 90%,
-  at which point truncation is already active and the pane says which cells were dropped.
+- **Context meter** — **built, in the status bubble rather than the pane**: while a round is
+  generating, the bubble reads `⚡ thinking… 6s` above `1.8k / 28.7k context · trimmed outputs
+  (3 cells)`. The estimate is the notebook portion, measured by `buildSnapshot`, against the
+  budget the truncation ladder works to; what the ladder dropped is named rather than merely
+  counted, so an unexpectedly small context is traceable to a cause.
+
+  It sits there because that is where the user is looking while a request is being built, and
+  because it is only actionable then — afterwards it is history, which is what the history pane
+  is for. A stacked bar in the settings pane would be prettier and less useful.
 - **Agent status** — adapter reachability (`GET /jupyter-vybe/health`), resolved model name,
   and for the Ollama adapter whether the daemon is running with a one-click "start it" that
   calls the server extension (the server runs `ollama serve` detached, exactly as `run.sh` does).

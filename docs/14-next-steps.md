@@ -141,29 +141,28 @@ contended for the GPU. Run arms sequentially, in one session, and say so.
 
 ---
 
-## Carried over — still unbuilt
+## Carried over — now built
 
-From [11-roadmap.md](11-roadmap.md), unchanged by the above:
+Everything on [11-roadmap.md](11-roadmap.md) through M6 is in: the durable
+prompt store and its pane (D12, both locations), diff summaries, the truncation
+ladder, round-scoped `Cmd+Z`, the `command` and OpenAI-compatible adapters,
+rename tracking, the context meter, the custom settings renderers, and Galata
+cover for the no-kernel prompt path. `mutations.ts` — the module with the most
+power to damage a notebook — finally has tests.
 
-Done since: the durable prompt store and its pane (D12), diff summaries, the
-truncation ladder, round-scoped `Cmd+Z`, the `command` and OpenAI-compatible
-adapters, and Galata cover for the no-kernel prompt path.
+What is left is not roadmap work but judgement calls that want a user:
 
-Still unbuilt:
-
-- **Settings custom renderers** — the agent options (command, endpoint, model,
-  key variable) are plain fields that apply to one adapter each; nothing hides
-  the ones that do not apply to the chosen agent.
-- **The context meter.** `buildSnapshot` returns `estimatedTokens` and a list of
-  what the ladder dropped; nothing displays either. The console line it logs is
-  a placeholder for a real indicator.
-- **`history.location: adjacent`** (D12's second option) — the store is always
-  under `~/.jupyter/vybe/history/`.
-- **Rename tracking in the running extension.** `HistoryStore.rekey` and the
-  orphan search exist and are tested; nothing yet listens to `pathChanged` to
-  call them.
-- **Jest coverage** for `mutations.ts`, which is still the least-tested module
-  that writes to the notebook.
+- **Is Gemma worth its first turn?** It is the better model on the bench and
+  single-digit seconds from turn 2, but ~17-30 s on turn 1 against qwen's ~2 s.
+  The default stays qwen; whether it should is a taste question about how a
+  first prompt in a fresh notebook should feel.
+- **How aggressively should the ladder trim?** `context.windowTokens` minus a
+  4096-token reserve is a guess that has never been wrong in testing because
+  testing never used a 200-cell notebook.
+- **The client-side sidecar (D2 v1.1).** Still the plan for "local model on my
+  laptop, notebook on a cluster"; the SSH reverse tunnel covers it today.
+- **Native tool calling (D3).** Deliberately deferred, and the tagged-text
+  protocol plus salvage has held up well enough that there is no pressure.
 
 ## A process note
 
