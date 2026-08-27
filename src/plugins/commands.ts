@@ -23,6 +23,7 @@ export namespace CommandIDs {
   export const rejectAll = 'jupyter-vybe:reject-all';
   export const cancel = 'jupyter-vybe:cancel-round';
   export const reopenPrompt = 'jupyter-vybe:reopen-prompt';
+  export const undo = 'jupyter-vybe:undo';
 }
 
 /**
@@ -153,6 +154,23 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
       }
     });
 
+    app.commands.addCommand(CommandIDs.undo, {
+      label: 'Undo the last review verdict',
+      execute: () => {
+        const panel = current();
+        if (!panel) {
+          return;
+        }
+        // Layer 2 of the undo table (docs/02): take back one verdict at a
+        // time, and when there are none left take back the round itself.
+        // Layer 1 -- plain Cmd+Z outside a round -- is untouched, because the
+        // binding is scoped to .jv-round-active.
+        if (!proposals.undoLast(panel)) {
+          rounds.cancel(panel);
+        }
+      }
+    });
+
     app.commands.addCommand(CommandIDs.cancel, {
       label: 'Cancel agent round',
       execute: () => {
@@ -200,6 +218,9 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
     bind(CommandIDs.gotoFirst, ['Alt E'], ROUND_SELECTOR);
     bind(CommandIDs.rejectAll, ['Alt Shift E'], ROUND_SELECTOR);
     bind(CommandIDs.cancel, ['Ctrl C'], ROUND_SELECTOR);
+    // More specific than core's notebook-wide Cmd+Z, and registered later, so
+    // Lumino resolves to ours while a round is live and to core's otherwise.
+    bind(CommandIDs.undo, ['Accel Z'], ROUND_SELECTOR);
     // Not scoped to ROUND_SELECTOR: after a reject-all the round is over, so
     // the class that selector matches is already gone.
     bind(

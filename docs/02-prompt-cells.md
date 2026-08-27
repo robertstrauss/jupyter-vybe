@@ -158,6 +158,13 @@ core binding, registered later — Lumino resolves to ours). Semantics, per READ
 | On a pending proposal | steps back to the previously resolved proposal and un-resolves it |
 | Back at the prompt cell, round settled | reverts the entire round: removes inserted cells, discards all proposals, restores the code prompt cell |
 
+Layer 2 is `jupyter-vybe:undo`, bound to `Accel Z` with the `.jv-round-active` selector so it
+wins over core's binding only while a round is live. It takes one verdict back per press, most
+recent first: an accepted proposal is restored to its previous source (recorded as an edit of its
+own, so a later revert still unwinds cleanly) and re-staged as pending, with the cell showing its
+diff again. A stale proposal is skipped -- the user's own edit is what settled it. When there is
+no verdict left to take back, the press reverts the round itself.
+
 Layer 2 is implemented as an explicit operation log on the `Round` object, not by reading ydoc
 history. When the round leaves `REVIEWING` and the user makes any non-vybe edit, the log is
 sealed and `Cmd+Z` reverts to core behaviour — no surprise time-travel days later.

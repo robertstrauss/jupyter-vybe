@@ -54,6 +54,7 @@ export interface IVybeProposals {
   accept(panel: NotebookPanel, proposalId: string): void;
   reject(panel: NotebookPanel, proposalId: string): void;
   rejectAll(panel: NotebookPanel): void;
+  undoLast(panel: NotebookPanel): boolean;
   undoRejectAll(panel: NotebookPanel): boolean;
   undoableRejection(panel: NotebookPanel): number;
   activeProposal(panel: NotebookPanel): IProposal | null;
@@ -70,6 +71,8 @@ export class Proposals implements IVybeProposals {
   private _rounds = new Map<string, IRoundHandle>();
   /** The last reject-all, kept so a mis-click is recoverable (docs/14 N3). */
   private _undo = new Map<string, { ids: string[]; round: IRoundHandle }>();
+  /** Verdicts in the order they were given, for round-scoped undo (docs/02). */
+  private _resolved = new Map<string, string[]>();
   private _changed = new Signal<this, NotebookPanel>(this);
 
   get changed() {
@@ -163,6 +166,7 @@ export class Proposals implements IVybeProposals {
       p.state = 'accepted';
       this._setRendered(panel, p.cellId, p.wasRendered);
     }
+    this._pushResolved(panel, p);
     this._recordVerdict(panel, p);
     this._advance(panel);
   }
@@ -174,6 +178,7 @@ export class Proposals implements IVybeProposals {
     }
     p.state = 'rejected';
     this._setRendered(panel, p.cellId, p.wasRendered);
+    this._pushResolved(panel, p);
     this._recordVerdict(panel, p);
     this._advance(panel);
   }
@@ -185,6 +190,7 @@ export class Proposals implements IVybeProposals {
       if (p.state === 'pending') {
         p.state = 'rejected';
         this._setRendered(panel, p.cellId, p.wasRendered);
+        this._pushResolved(panel, p);
         this._recordVerdict(panel, p);
         ids.push(p.id);
       }
@@ -194,6 +200,60 @@ export class Proposals implements IVybeProposals {
       this._undo.set(panel.id, { ids, round });
     }
     this._advance(panel);
+  }
+
+  /**
+   * Layer 2 of undo (docs/02): take back the most recent verdict.
+   *
+   * An accepted proposal is restored to its previous source and re-staged as
+   * pending, so the cell shows its diff again and the review resumes there.
+   * Returns false when there is no verdict left to take back -- the caller
+   * then reverts the whole round, which is the last row of the undo table.
+   */
+  undoLast(panel: NotebookPanel): boolean {
+    const order = this._resolved.get(panel.id) ?? [];
+    const id = order.pop();
+    if (!id) {
+      return false;
+    }
+    const p = this.list(panel).find(x => x.id === id);
+    if (!p || p.state === 'pending') {
+      return false;
+    }
+    const round = this._undo.get(panel.id)?.round ?? this._rounds.get(panel.id);
+    if (p.state === 'accepted' && round) {
+      // Put the cell back the way it was. Recorded as an edit of its own, so
+      // a later revertRound still unwinds cleanly.
+      applyProposal(panel, p.cellId, p.before, round.log);
+    }
+    p.state = 'pending';
+    this._setRendered(panel, p.cellId, false);
+    if (round) {
+      this._rounds.set(panel.id, round);
+    }
+    this._undo.delete(panel.id);
+    panel.node.classList.add('jv-round-active');
+    this._changed.emit(panel);
+    const idx = this._indexOf(panel, p.cellId);
+    if (idx !== -1) {
+      panel.content.activeCellIndex = idx;
+      panel.content.mode = 'command';
+      panel.content.widgets[idx]?.node.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+    return true;
+  }
+
+  private _pushResolved(panel: NotebookPanel, p: IProposal): void {
+    if (p.state === 'stale') {
+      // Nothing to take back: the user's own edit is what settled it.
+      return;
+    }
+    const order = this._resolved.get(panel.id) ?? [];
+    order.push(p.id);
+    this._resolved.set(panel.id, order);
   }
 
   /** Put the last reject-all back up for review. */
@@ -236,6 +296,7 @@ export class Proposals implements IVybeProposals {
     }
     this._byPanel.set(panel.id, keep);
     this._undo.delete(panel.id);
+    this._resolved.delete(panel.id);
     const round = this._rounds.get(panel.id);
     if (round && (roundId === undefined || round.id === roundId)) {
       // Cleared, not reviewed: the caller (a cancel) finishes the round
