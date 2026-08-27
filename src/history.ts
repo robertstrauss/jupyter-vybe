@@ -34,11 +34,13 @@ function url(): string {
 
 export async function readHistory(
   path: string,
-  limit?: number
+  limit?: number,
+  location: 'user' | 'adjacent' = 'user'
 ): Promise<IHistoryPayload> {
   const settings = ServerConnection.makeSettings();
   const query = URLExt.objectToQueryString({
     path,
+    location,
     ...(limit ? { limit: String(limit) } : {})
   });
   const response = await ServerConnection.makeRequest(
@@ -53,18 +55,41 @@ export async function readHistory(
 }
 
 /**
- * Append one entry. Never throws into a caller: losing a history line is not
- * worth failing a review keystroke over, and the round itself is unaffected.
+ * Follow a rename, so the record stays attached to the notebook. Renames done
+ * outside JupyterLab are not visible to us; the read side finds those by name
+ * and offers to adopt them (docs/05).
  */
-export async function appendHistory(
-  path: string,
-  entry: IHistoryEntry
+export async function renameHistory(
+  from: string,
+  to: string,
+  location: 'user' | 'adjacent' = 'user'
 ): Promise<void> {
   try {
     const settings = ServerConnection.makeSettings();
     await ServerConnection.makeRequest(
       url(),
-      { method: 'POST', body: JSON.stringify({ path, entry }) },
+      { method: 'PATCH', body: JSON.stringify({ from, to, location }) },
+      settings
+    );
+  } catch (err) {
+    console.warn('[jupyter-vybe] history rename failed', err);
+  }
+}
+
+/**
+ * Append one entry. Never throws into a caller: losing a history line is not
+ * worth failing a review keystroke over, and the round itself is unaffected.
+ */
+export async function appendHistory(
+  path: string,
+  entry: IHistoryEntry,
+  location: 'user' | 'adjacent' = 'user'
+): Promise<void> {
+  try {
+    const settings = ServerConnection.makeSettings();
+    await ServerConnection.makeRequest(
+      url(),
+      { method: 'POST', body: JSON.stringify({ path, entry, location }) },
       settings
     );
   } catch (err) {

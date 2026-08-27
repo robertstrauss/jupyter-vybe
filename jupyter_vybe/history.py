@@ -52,13 +52,29 @@ def key_for(notebook_path: str) -> str:
 
 @dataclass
 class HistoryStore:
-    """One notebook's record. Cheap to construct; the file opens per append."""
+    """One notebook's record. Cheap to construct; the file opens per append.
+
+    `location` is D12's open sub-question, left to the user:
+
+    * ``user`` keeps records under ~/.jupyter/vybe/history, so nothing stray
+      appears in a repository -- at the cost of history not travelling with the
+      notebook.
+    * ``adjacent`` writes ``.vybe/<name>.ipynb.jsonl`` beside the notebook, so
+      the record is version-controlled alongside the work. For a research audit
+      trail -- *why* does this cell exist -- that is a reasonable thing to want.
+    """
 
     notebook_path: str
     root: Path = DEFAULT_ROOT
+    location: str = "user"
 
     @property
     def path(self) -> Path:
+        if self.location == "adjacent":
+            notebook = Path(self.notebook_path)
+            # Named after the notebook, not hashed: the point of this mode is
+            # that a human reading the repository can tell what it belongs to.
+            return notebook.parent / ".vybe" / f"{notebook.name}.jsonl"
         return Path(self.root) / f"{key_for(self.notebook_path)}.jsonl"
 
     def append(self, entry: dict[str, Any]) -> dict[str, Any]:
@@ -88,7 +104,7 @@ class HistoryStore:
         not see -- `mv` in a terminal -- would otherwise orphan the file with
         nothing pointing at where it went (docs/05).
         """
-        target = HistoryStore(new_path, self.root)
+        target = HistoryStore(new_path, self.root, self.location)
         if not self.path.exists() or target.path == self.path:
             return target
         target.path.parent.mkdir(parents=True, exist_ok=True)

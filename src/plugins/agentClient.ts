@@ -133,6 +133,7 @@ class VybeAgent implements IVybeAgent {
           // The sidecar prompt record is written server-side as the round
           // streams (docs/05, D12); this is the user's switch for it.
           historyPersist: this.settings.historyPersist,
+          historyLocation: this.settings.historyLocation,
           ...this.settings.agentOptions
         }
       });

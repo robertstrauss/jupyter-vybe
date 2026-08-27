@@ -6,7 +6,7 @@ import { INotebookTracker, type NotebookPanel } from '@jupyterlab/notebook';
 import { Widget } from '@lumino/widgets';
 
 import { IVybeProposals, type IProposal } from './proposals';
-import { IVybeSettings } from '../tokens';
+import { IVybeRounds, IVybeSettings, type IRoundStatus } from '../tokens';
 import { CommandIDs } from './commands';
 import { DiffOverlay, ReviewControls, StatusBubble } from '../ui/DiffOverlay';
 
@@ -15,12 +15,13 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-vybe:review-ui',
   description: 'Diff overlays, accept/reject controls, and the status bubble.',
   autoStart: true,
-  requires: [INotebookTracker, IVybeProposals, IVybeSettings],
+  requires: [INotebookTracker, IVybeProposals, IVybeSettings, IVybeRounds],
   activate: (
     app: JupyterFrontEnd,
     tracker: INotebookTracker,
     proposals: IVybeProposals,
-    settings: IVybeSettings
+    settings: IVybeSettings,
+    rounds: IVybeRounds
   ): void => {
     const bubbles = new Map<string, StatusBubble>();
     const overlays = new Map<string, Widget[]>();
@@ -130,6 +131,34 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       Widget.attach(controls, host);
       return controls;
     };
+
+    /**
+     * The context meter (docs/09): estimated tokens against the budget the
+     * ladder works to, plus what it had to drop. Shown while generating,
+     * which is when it is actionable -- afterwards it is history.
+     */
+    const meter = (status: IRoundStatus): string => {
+      if (!status.contextTokens) {
+        return '';
+      }
+      const k = (n: number) =>
+        n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+      const budget = status.budgetTokens ? ` / ${k(status.budgetTokens)}` : '';
+      const trimmed = status.dropped.length
+        ? ` · trimmed ${status.dropped.join(', ')}`
+        : '';
+      return `${k(status.contextTokens)}${budget} context${trimmed}`;
+    };
+
+    rounds.statusChanged.connect((_r, status: IRoundStatus) => {
+      const bubble = bubbleFor(status.panel);
+      if (status.phase === 'generating') {
+        bubble.show();
+        bubble.showGenerating(status.elapsedSeconds, meter(status));
+      } else if (!proposals.pendingCount(status.panel)) {
+        bubble.hide();
+      }
+    });
 
     proposals.changed.connect((_s, panel) => render(panel));
     tracker.currentChanged.connect((_t, panel) => {

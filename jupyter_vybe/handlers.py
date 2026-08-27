@@ -74,7 +74,8 @@ class HistoryHandler(APIHandler):
     async def get(self) -> None:
         path = self.get_query_argument("path")
         limit = self.get_query_argument("limit", default=None)
-        store = HistoryStore(path)
+        location = self.get_query_argument("location", default="user")
+        store = HistoryStore(path, location=location)
         entries = store.read(int(limit) if limit else None)
         payload = {
             "path": path,
@@ -90,13 +91,28 @@ class HistoryHandler(APIHandler):
         self.finish(json.dumps(payload))
 
     @web.authenticated
+    async def patch(self) -> None:
+        """A rename: carry the record forward (docs/05).
+
+        JupyterLab sees renames it performs; one done in a terminal it does
+        not, which is what find_orphan is for on the read side.
+        """
+        body = json.loads(self.request.body or b"{}")
+        old, new = body.get("from"), body.get("to")
+        if not old or not new:
+            raise web.HTTPError(400, "from and to are required")
+        location = body.get("location", "user")
+        store = HistoryStore(old, location=location).rekey(new)
+        self.finish(json.dumps({"ok": True, "file": str(store.path)}))
+
+    @web.authenticated
     async def post(self) -> None:
         body = json.loads(self.request.body or b"{}")
         path = body.get("path")
         entry = body.get("entry")
         if not path or not isinstance(entry, dict):
             raise web.HTTPError(400, "path and entry are required")
-        written = HistoryStore(path).append(entry)
+        written = HistoryStore(path, location=body.get("location", "user")).append(entry)
         self.finish(json.dumps({"ok": True, "entry": written}))
 
 

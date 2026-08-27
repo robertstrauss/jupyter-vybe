@@ -10,6 +10,7 @@ import {
   OperationLog
 } from '../notebook/mutations';
 import { isSettledPromptCell } from '../notebook/promptCell';
+import { IVybeSettings } from '../tokens';
 import { appendHistory } from '../history';
 import { diffLines, normaliseSource, type IHunk } from '../ui/diff';
 
@@ -67,6 +68,9 @@ export const IVybeProposals = new Token<IVybeProposals>(
 );
 
 export class Proposals implements IVybeProposals {
+  /** Where the record lives; only used when posting a verdict (D12). */
+  constructor(private readonly _location: 'user' | 'adjacent' = 'user') {}
+
   private _byPanel = new Map<string, IProposal[]>();
   private _rounds = new Map<string, IRoundHandle>();
   /** The last reject-all, kept so a mis-click is recoverable (docs/14 N3). */
@@ -312,13 +316,17 @@ export class Proposals implements IVybeProposals {
    * "the user edited this cell before deciding" is history worth keeping.
    */
   private _recordVerdict(panel: NotebookPanel, p: IProposal): void {
-    void appendHistory(panel.context.path, {
-      kind: 'verdict',
-      roundId: p.roundId,
-      cellId: p.cellId,
-      outcome: p.state,
-      cellLabel: p.targetLabel
-    });
+    void appendHistory(
+      panel.context.path,
+      {
+        kind: 'verdict',
+        roundId: p.roundId,
+        cellId: p.cellId,
+        outcome: p.state,
+        cellLabel: p.targetLabel
+      },
+      this._location
+    );
   }
 
   private _advance(panel: NotebookPanel): void {
@@ -388,8 +396,12 @@ export const proposalsPlugin: JupyterFrontEndPlugin<IVybeProposals> = {
   autoStart: true,
   provides: IVybeProposals,
   requires: [INotebookTracker],
-  activate: (_app, _tracker: INotebookTracker): IVybeProposals =>
-    new Proposals()
+  optional: [IVybeSettings],
+  activate: (
+    _app,
+    _tracker: INotebookTracker,
+    settings: IVybeSettings | null
+  ): IVybeProposals => new Proposals(settings?.historyLocation ?? 'user')
 };
 
 export default proposalsPlugin;

@@ -62,6 +62,8 @@ function fakeCell(panel: any): any {
 
 const settings: any = {
   enabled: true,
+  windowTokens: 32768,
+  cellWindow: 0,
   prefix: '#%',
   includeOutputs: false,
   maxOutputChars: 100,
@@ -155,5 +157,37 @@ describe('Rounds', () => {
       'adapter died'
     );
     expect(rounds.hasActiveRound(panel)).toBe(false);
+  });
+
+  // The context meter's data path (docs/09).
+  it('reports elapsed time and the measured context while generating', async () => {
+    const panel = fakePanel();
+    const { rounds } = build([{ op: 'prose', delta: 'ok' }], 0);
+    (rounds as any)._panelFor = () => panel;
+    const seen: any[] = [];
+    rounds.statusChanged.connect((_r, status) => seen.push(status));
+
+    await rounds.begin(options(fakeCell(panel)));
+
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(seen[0].phase).toBe('generating');
+    expect(seen[seen.length - 1].phase).toBe('ended');
+    // Measured from the snapshot the round actually sent, not guessed.
+    expect(seen[seen.length - 1].contextTokens).toBeGreaterThan(0);
+    expect(seen[seen.length - 1].budgetTokens).toBeGreaterThan(0);
+  });
+
+  it('stops ticking when the round ends', async () => {
+    jest.useFakeTimers();
+    try {
+      const panel = fakePanel();
+      const { rounds } = build([{ op: 'prose', delta: 'ok' }], 0);
+      (rounds as any)._panelFor = () => panel;
+      await rounds.begin(options(fakeCell(panel)));
+      const after = jest.getTimerCount();
+      expect(after).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

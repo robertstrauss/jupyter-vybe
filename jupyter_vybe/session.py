@@ -73,8 +73,10 @@ class AgentSession:
         # by default: a durable record cannot be opt-in when losing it is the
         # normal consequence of tidying up a cell.
         self.history_enabled = bool(options.get("historyPersist", True))
+        # "user" (default) or "adjacent" -- see HistoryStore (D12).
+        self.history_location = str(options.get("historyLocation", "user"))
         self._prose = ""
-        self.store = HistoryStore(notebook_path)
+        self.store = HistoryStore(notebook_path, location=self.history_location)
 
     # -- lifecycle ---------------------------------------------------------
 

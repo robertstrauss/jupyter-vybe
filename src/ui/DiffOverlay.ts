@@ -156,9 +156,12 @@ export class StatusBubble extends Widget {
   private _onRejectAll: () => void;
   private _onCancel: () => void;
 
-  showGenerating(elapsedSeconds: number): void {
+  showGenerating(elapsedSeconds: number, context = ''): void {
     this._label.textContent = `⚡ thinking… ${elapsedSeconds}s`;
-    this._hint.textContent = '';
+    // The context meter lives here rather than in its own widget: it is only
+    // interesting while a request is being built, and this is where the user
+    // is already looking (docs/04).
+    this._hint.textContent = context;
     this._sub.textContent = 'cancel  ⌃C';
     // The button said "cancel" but still ran reject-all: it was wired once in
     // the constructor and never rebound (docs/14 N3).

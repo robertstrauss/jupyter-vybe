@@ -84,3 +84,33 @@ def test_a_notebook_that_still_exists_is_not_an_orphan(tmp_path):
     present.write_text("{}")
     HistoryStore(str(present), root).append({"kind": "prompt", "text": "x"})
     assert find_orphan("present.ipynb", root) is None
+
+
+def test_adjacent_location_writes_beside_the_notebook(tmp_path):
+    """D12's second option: the record version-controlled with the work."""
+    notebook = tmp_path / "project" / "analysis.ipynb"
+    notebook.parent.mkdir()
+    notebook.write_text("{}")
+    store = HistoryStore(str(notebook), tmp_path / "unused", location="adjacent")
+
+    store.append({"kind": "prompt", "text": "why does this cell exist"})
+
+    assert store.path == notebook.parent / ".vybe" / "analysis.ipynb.jsonl"
+    assert store.path.exists()
+    # Named after the notebook, not hashed: a human reading the repo can tell
+    # what it belongs to.
+    assert "analysis" in store.path.name
+    assert [e["text"] for e in store.read()] == ["why does this cell exist"]
+
+
+def test_adjacent_rename_follows_the_notebook(tmp_path):
+    old = tmp_path / "old.ipynb"
+    old.write_text("{}")
+    store = HistoryStore(str(old), tmp_path / "unused", location="adjacent")
+    store.append({"kind": "prompt", "text": "kept"})
+
+    new = HistoryStore(str(tmp_path / "new.ipynb"), tmp_path / "unused", "adjacent")
+    moved = store.rekey(str(tmp_path / "new.ipynb"))
+
+    assert moved.path == new.path
+    assert [e["text"] for e in moved.read() if e["kind"] == "prompt"] == ["kept"]

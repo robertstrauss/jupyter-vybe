@@ -9,7 +9,7 @@ import { Clipboard } from '@jupyterlab/apputils';
 
 import { IVybeProposals } from './proposals';
 import { IVybeSettings } from '../tokens';
-import { readHistory, type IHistoryEntry } from '../history';
+import { readHistory, renameHistory, type IHistoryEntry } from '../history';
 import { diffLines } from '../ui/diff';
 import { DiffOverlay } from '../ui/DiffOverlay';
 
@@ -56,7 +56,8 @@ class HistoryPane extends Widget {
     try {
       const payload = await readHistory(
         this._path,
-        this.settings.historyMaxEntries
+        this.settings.historyMaxEntries,
+        this.settings.historyLocation
       );
       if (!payload.entries.length) {
         this._render(
@@ -207,7 +208,30 @@ export const historyPanePlugin: JupyterFrontEndPlugin<void> = {
     restorer?.add(pane, 'jupyter-vybe-history');
 
     const refresh = () => void pane.showFor(tracker.currentWidget);
-    tracker.currentChanged.connect(refresh);
+
+    // Follow renames: the record is keyed by path, so without this a rename
+    // orphans it and the pane goes blank on a notebook with real history.
+    const watched = new WeakSet<NotebookPanel>();
+    const watchRenames = (panel: NotebookPanel | null) => {
+      if (!panel || watched.has(panel)) {
+        return;
+      }
+      watched.add(panel);
+      let previous = panel.context.path;
+      panel.context.pathChanged.connect((_ctx, next: string) => {
+        const from = previous;
+        previous = next;
+        void renameHistory(from, next, settings.historyLocation).then(refresh);
+      });
+    };
+
+    tracker.widgetAdded.connect((_t, panel) => watchRenames(panel));
+    tracker.forEach(watchRenames);
+    watchRenames(tracker.currentWidget);
+    tracker.currentChanged.connect((_t, panel) => {
+      watchRenames(panel);
+      refresh();
+    });
     // A verdict is the last thing written for a round, so refreshing on the
     // proposals signal keeps the pane current without polling.
     proposals.changed.connect(refresh);

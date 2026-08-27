@@ -91,6 +91,12 @@ class VybeSettings implements IVybeSettings {
     // Bounds what the pane renders, never what is stored.
     return (this.group<number>('history')['maxEntries'] as number) ?? 200;
   }
+  get historyLocation(): 'user' | 'adjacent' {
+    return (
+      (this.group<string>('history')['location'] as 'user' | 'adjacent') ??
+      'user'
+    );
+  }
   get globalPrompt(): string {
     return (this.group<string>('prompts')['global'] as string) ?? '';
   }

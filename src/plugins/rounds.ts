@@ -7,8 +7,10 @@ import {
 import type { CodeCell } from '@jupyterlab/cells';
 import { UUID } from '@lumino/coreutils';
 
+import { Signal } from '@lumino/signaling';
+
 import { IVybeAgent, type IAgentFrame } from './agentClient';
-import { IVybeSettings, IVybeRounds } from '../tokens';
+import { IVybeSettings, IVybeRounds, type IRoundStatus } from '../tokens';
 import { IVybeProposals } from './proposals';
 import { setRounds } from '../roundRegistry';
 import {
@@ -53,6 +55,16 @@ export class Round {
 export class Rounds implements IVybeRounds {
   private _active = new Map<string, Round>();
   private _seq = new Map<string, number>();
+  private _statusChanged = new Signal<this, IRoundStatus>(this);
+  /** Latest context measurement per panel, so a tick can repeat it. */
+  private _context = new Map<
+    string,
+    { tokens: number; budget: number; dropped: string[] }
+  >();
+
+  get statusChanged() {
+    return this._statusChanged;
+  }
 
   constructor(
     private readonly tracker: INotebookTracker,
@@ -101,10 +113,21 @@ export class Rounds implements IVybeRounds {
     codeModel.executionState = 'running';
     options.onCellExecutionScheduled({ cell });
 
+    // A local model can take half a minute to answer. Without a ticking
+    // indicator the only feedback is [*], which reads the same at one second
+    // and at forty (docs/03).
+    const startedAt = Date.now();
+    const tick = window.setInterval(() => {
+      this._emit(round, 'generating', startedAt);
+    }, 1000);
+    this._emit(round, 'generating', startedAt);
+
     try {
       await this._drive(round, cell);
       return true;
     } finally {
+      window.clearInterval(tick);
+      this._emit(round, 'ended', startedAt);
       codeModel.executionState = 'idle';
       // A round that reached review is still live -- Proposals owns it until
       // the last verdict, and calls back to endReview. Anything else ends
@@ -132,11 +155,11 @@ export class Rounds implements IVybeRounds {
       cellWindow: this.settings.cellWindow,
       promptCellId: round.promptCellId
     });
-    if (snap.dropped.length) {
-      console.info(
-        `[jupyter-vybe] notebook trimmed to fit: ${snap.dropped.join(', ')}`
-      );
-    }
+    this._context.set(panel.id, {
+      tokens: snap.estimatedTokens,
+      budget: Math.max(0, this.settings.windowTokens - RESERVE_TOKENS),
+      dropped: snap.dropped
+    });
     const seq = (this._seq.get(path) ?? -1) + 1;
     this._seq.set(path, seq);
 
@@ -222,6 +245,22 @@ export class Rounds implements IVybeRounds {
       return;
     }
     this._settle(round, cell);
+  }
+
+  private _emit(
+    round: Round,
+    phase: 'generating' | 'ended',
+    startedAt: number
+  ): void {
+    const measured = this._context.get(round.panel.id);
+    this._statusChanged.emit({
+      panel: round.panel,
+      phase,
+      elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),
+      contextTokens: measured?.tokens ?? 0,
+      budgetTokens: measured?.budget ?? 0,
+      dropped: measured?.dropped ?? []
+    });
   }
 
   /** Insertions anchor to the prompt cell, or to the previous insertion. */

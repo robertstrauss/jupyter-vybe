@@ -27,16 +27,31 @@ export interface IVybeSettings {
   readonly windowTokens: number;
   readonly historyPersist: boolean;
   readonly historyMaxEntries: number;
+  readonly historyLocation: 'user' | 'adjacent';
   readonly changed: ISignal<IVybeSettings, void>;
 }
 export const IVybeSettings = new Token<IVybeSettings>(
   'jupyter-vybe:IVybeSettings'
 );
 
+/** What the status bubble needs to know while a round is in flight. */
+export interface IRoundStatus {
+  panel: NotebookPanel;
+  phase: 'generating' | 'ended';
+  elapsedSeconds: number;
+  /** Estimated tokens in the notebook portion of the prompt (docs/09). */
+  contextTokens: number;
+  /** Budget the ladder was working against; 0 when truncation is off. */
+  budgetTokens: number;
+  /** What the ladder had to drop to fit, in the order it dropped it. */
+  dropped: string[];
+}
+
 /** The round state machine; the cell executor hands prompt cells to it. */
 export interface IVybeRounds {
   begin(options: INotebookCellExecutor.IRunCellOptions): Promise<boolean>;
   cancel(panel: NotebookPanel): void;
   readonly hasActiveRound: (panel: NotebookPanel) => boolean;
+  readonly statusChanged: ISignal<IVybeRounds, IRoundStatus>;
 }
 export const IVybeRounds = new Token<IVybeRounds>('jupyter-vybe:IVybeRounds');
