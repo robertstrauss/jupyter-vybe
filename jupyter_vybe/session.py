@@ -15,6 +15,7 @@ from collections import OrderedDict
 from typing import AsyncIterator
 
 from .adapters import Message, build_adapter
+from .diffsummary import render_index, summarise
 from .history import HistoryStore
 from .assembler import (
     assemble_followup,
@@ -118,7 +119,10 @@ class AgentSession:
         # for the same tokens sent cold (docs/14 N4). Re-sending the full
         # preamble each turn threw that away.
         first_turn = not self.persistent or not self.messages
-        force_full = first_turn or msg.get("forceFull", False)
+        # A full snapshot every RESYNC_EVERY turns bounds drift from
+        # accumulated small errors in the diff path (docs/09).
+        periodic = self.turns > 0 and self.turns % RESYNC_EVERY == 0
+        force_full = first_turn or periodic or msg.get("forceFull", False)
         if force_full and msg.get("snapshot") is None:
             yield {"op": "resync"}
             return
@@ -132,6 +136,7 @@ class AgentSession:
                 snapshot_cells = json.loads(raw_snapshot).get("cells", [])
             except (json.JSONDecodeError, AttributeError):
                 snapshot_cells = []
+        previous_cells = self._cells
         if snapshot_cells:
             self._cells = snapshot_cells
         if force_full:
@@ -146,11 +151,16 @@ class AgentSession:
             if not self.persistent:
                 self.messages = []
         else:
+            # An index rather than the whole notebook: the agent still has to
+            # name a cell, and a number it cannot see is a number it invents
+            # (docs/09). The bodies it needs are in the conversation already.
             prompt = assemble_followup(
-                notebook_diff=msg.get("diff", ""),
+                notebook_diff=summarise(
+                    previous_cells, snapshot_cells, msg.get("promptCellId", "")
+                ),
                 kernel=msg.get("kernelInfo", {}),
                 user_prompt=msg["prompt"],
-                notebook_listing=render_notebook(
+                notebook_listing=render_index(
                     snapshot_cells, msg.get("promptCellId", "")
                 ),
             )

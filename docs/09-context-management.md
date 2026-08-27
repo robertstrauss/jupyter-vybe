@@ -69,7 +69,17 @@ actually falls through to the language default.
 
 PROMPT §6: "don't repeat the entire notebook, use the proper edit/difference based summary".
 
-After each round, `last_snapshot` is retained server-side. The next turn sends a cell-level diff:
+**Built** (`jupyter_vybe/diffsummary.py`). After each round the last snapshot is retained
+server-side, and the next turn sends a one-line-per-cell *index* plus a cell-level diff. The index
+is not optional: the agent has to name a cell to edit it, and a number it cannot see is a number
+it invents — which is how silent edits to the wrong cell happened. What the index drops is the
+cell *bodies*, which are already in the conversation.
+
+A cell whose index shifted because something above it was deleted is not reported as moved; only
+a change in order relative to the other surviving cells is a move. Reporting the shift as a move
+buries the one cell that actually moved.
+
+The next turn sends a cell-level diff:
 
 ```markdown
 Changes since your last turn:
