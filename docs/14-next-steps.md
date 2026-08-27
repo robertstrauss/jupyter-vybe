@@ -1,8 +1,9 @@
 # 14 — Next Steps
 
-Captured 2026-08-25 from live use, and revised the same day as the items were
-worked. N1–N3 and N5 are done; N4 is measured, and the answer it gives is
-"not yet". The carried-over list at the bottom is unchanged.
+Captured 2026-08-25 from live use, revised 2026-08-26 as the items were worked.
+N1, N2, N3 and N5 are done; N4 is resolved, with qwen keeping the default for a
+reason that is now measured rather than assumed. What is left is listed at the
+bottom.
 
 ---
 
@@ -86,73 +87,83 @@ objects, and neither one alone can see it end.
 
 ---
 
-## N4 · Gemma 4 through TurboFieldfareServer · **measured; Gemma stays non-default**
+## N4 · Gemma 4 through TurboFieldfareServer · **resolved; qwen still the default**
 
 The server path had never run, and did not work when it did: the adapter sent
-the model *directory* as the API `model` field, and the server matches on its
-own id (`gemma-4-26b-a4b-it`), returning 404 for anything else. `/health`
-answering had been taken as proof the path worked. It now reads `/v1/models`,
-and `tests/test_turbofieldfare_server.py` drives a stub server end to end.
+the model *directory* as the API `model` field, where the server matches on its
+own id (`gemma-4-26b-a4b-it`) and 404s otherwise. `/health` answering had been
+taken as proof the path worked.
 
-With that fixed — Gemma 4 26B-A4B, `--max-context 32768
---prompt-cache-mode single-prefix`, `bench-tools.py --runs 2`:
+Three fixes came out of measuring it, each revealed by the one before:
 
-```
-  tags emitted        10/10
-  fell back to fence   0/10
-  correct tool        10/10        <- add_cell and propose_edit, every case
-  first call     29.9s
-  after that     22.2s min / 23.9s mean / 25.2s max
-```
+1. **The model id.** Read from `/v1/models` now, with a stub-server test.
+2. **The conversation was folded into one message.** True that Gemma 4 has no
+   *system* role — but user and assistant turns are turns, and the server's
+   prompt cache only hits when a request continues the cached conversation. A
+   re-folded blob is a new conversation every time and never hit.
+3. **An abandoned stream parked a thread on the socket.** A thread cannot be
+   cancelled, so a cancelled round left the request open server-side; one turn
+   the client finished with in 25 s was logged as 1015 s of generating. The
+   response is closed from the consumer side now.
 
-**On quality it is unambiguous**: 10/10 correct tool with zero fence fallbacks,
-against 13/15 with 2 fences for `qwen2.5-coder:7b`. **On latency it fails the
-bar**: ~24 s per call, not the single digits that would make it the default.
-It is still a large improvement on the ~90 s CLI path, which reloaded 13 GB per
-invocation. `bench-tools.py` now reports per-call wall clock, so this is
-repeatable.
+With those, and follow-up turns re-enabled, three turns of one session:
 
-**Prefix caching never engages, and cannot as we use it.** Every request logged
-`cached=0`, including two consecutive identical prompts. Reading
-`ServerPromptCache.match`: the cached entry holds the previous prompt *plus its
-generated completion*, and a hit requires the new prompt to extend all of that
-— either as a token-prefix of the whole cached run, or as the same message list
-continued by an assistant turn. Two independent requests that merely share a
-long prefix diverge before the cached region ends, so they always miss. The
-mode is for continuing a conversation, not for amortising a shared preamble.
+| turn | prompt | cached | wall clock |
+|---|---|---|---|
+| 0 | 1822 | 0 | 28.0 s |
+| 1 | 2171 | 1862 | 8.5 s |
+| 2 | 2562 | 2251 | 7.0 s |
 
-The cost is where that matters most: ~1860 prompt tokens against 40–80
-completion tokens, so nearly all of the 24 s is prompt processing. Two ways
-forward, neither started:
+**Steady state clears the single-digit bar; a first turn does not.** Gemma is
+the better model — 10/10 correct tool with zero fence fallbacks, repeatedly,
+against qwen's 13/15 — but a first prompt costs ~17-30 s against qwen's ~2 s,
+so **qwen stays the default**. That is now a real trade rather than a foregone
+conclusion, and a user who wants the better model can pick it in settings.
 
-- **Send rounds as a continuing conversation** (prior user, prior assistant,
-  new user) instead of a fresh single message. This is what the cache is built
-  for, and it is close to what `diffSummary.ts` needs anyway. It only pays off
-  if the notebook snapshot stops being re-sent whole each turn — and that is
-  the same blocker as R13.
-- **Shrink the preamble.** The tooling prompt is most of the fixed cost and was
-  written for a 7B that needed convincing. Gemma gets 10/10; some of it may be
-  removable, which the bench can now settle by measurement.
+### What the prompt-size curve says
+
+`scripts/bench-latency.py sweep`, one uninterrupted run:
+
+| prompt tokens | 34 | 580 | 1700 | 3660 | 7020 |
+|---|---|---|---|---|---|
+| seconds | 6.1 | 6.7 | 17.8 | 55.7 | 129.9 |
+
+Prefill grows faster than linearly. That is why `tooling.md` is now half its
+old size (docs/08) and why the truncation ladder is a latency feature as much
+as a budget one (docs/09).
+
+**A caution about these numbers.** Machine throughput drifts by up to 2× across
+runs under sustained load: the same 1298-token prompt averaged 17.0 s in one
+run and 29.9 s in another an hour later. Comparisons *within* a single
+uninterrupted run are sound; comparisons across runs are not. An earlier A/B of
+mine was worthless for a dumber reason — I ran both arms at once and they
+contended for the GPU. Run arms sequentially, in one session, and say so.
+
+---
 
 ## Carried over — still unbuilt
 
 From [11-roadmap.md](11-roadmap.md), unchanged by the above:
 
-- **Durable prompt history store (D12).** Deleting a settled prompt cell still
-  loses the prompt, contrary to the decision.
-- **History pane.** Not started.
-- **`diffSummary.ts`.** Every turn currently sends a full snapshot; the
-  follow-up prompt path is disabled until this exists, because the short
-  follow-up form lacked the cell listing and caused edits to the wrong cell
-  ([13-risks.md](13-risks.md) R13).
-- **The truncation ladder** in `snapshot.ts` — only output filtering is built.
-- **Round-scoped `Cmd+Z`.** `OperationLog` and `revertRound` exist; the command
-  is not wired.
-- **Remaining adapters** — `claude -p` and OpenAI-compatible.
-- **Galata e2e**, settings custom renderers, context meter.
-- **Jest coverage for our own modules.** Now covers the protocol parser, the
-  differ, and the review lifecycle. `mutations.ts` and `snapshot.ts` are still
-  untested on the frontend side.
+Done since: the durable prompt store and its pane (D12), diff summaries, the
+truncation ladder, round-scoped `Cmd+Z`, the `command` and OpenAI-compatible
+adapters, and Galata cover for the no-kernel prompt path.
+
+Still unbuilt:
+
+- **Settings custom renderers** — the agent options (command, endpoint, model,
+  key variable) are plain fields that apply to one adapter each; nothing hides
+  the ones that do not apply to the chosen agent.
+- **The context meter.** `buildSnapshot` returns `estimatedTokens` and a list of
+  what the ladder dropped; nothing displays either. The console line it logs is
+  a placeholder for a real indicator.
+- **`history.location: adjacent`** (D12's second option) — the store is always
+  under `~/.jupyter/vybe/history/`.
+- **Rename tracking in the running extension.** `HistoryStore.rekey` and the
+  orphan search exist and are tested; nothing yet listens to `pathChanged` to
+  call them.
+- **Jest coverage** for `mutations.ts`, which is still the least-tested module
+  that writes to the notebook.
 
 ## A process note
 

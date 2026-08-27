@@ -1,21 +1,26 @@
 import { expect, test } from '@jupyterlab/galata';
 
 /**
- * Don't load JupyterLab webpage before running the tests.
- * This is required to ensure we capture all log messages.
+ * The extension has to load at all, and it has to load without breaking the
+ * notebook tracker -- jupyter-vybe:cell-executor is a hard dependency of it,
+ * so a throw during activation takes notebooks with it (docs/13 R1).
  */
+
 test.use({ autoGoto: false });
 
-test('should emit an activation console message', async ({ page }) => {
-  const logs: string[] = [];
-
+test('activates without errors, and notebooks still work', async ({ page }) => {
+  const errors: string[] = [];
   page.on('console', message => {
-    logs.push(message.text());
+    if (message.type() === 'error') {
+      errors.push(message.text());
+    }
   });
 
   await page.goto();
+  await page.notebook.createNew();
 
-  expect(
-    logs.filter(s => s === 'JupyterLab extension jupyter-vybe is activated!')
-  ).toHaveLength(1);
+  expect(errors.filter(e => e.includes('Cycle detected'))).toHaveLength(0);
+  expect(errors.filter(e => e.includes('jupyter-vybe'))).toHaveLength(0);
+  // A notebook opened at all, which is the R1 canary.
+  expect(await page.notebook.isAnyActive()).toBe(true);
 });

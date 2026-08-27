@@ -178,7 +178,7 @@ Re-running the same prompt afterwards produced genuinely original code — a `np
 implementation the examples never mention. This is the single highest-leverage prompt change
 found so far, and it generalises: **do not put runnable, plausible code in a tooling prompt.**
 
-### Length buys nothing, and costs real time
+### Length buys no compliance, and prompt size costs time
 
 `tooling.md` was 3813 characters, written to convince a 7B. Halving it to 1581 was measured, not
 guessed — `scripts/bench-tools.py --tooling FILE` runs both versions through the same five cases:
@@ -188,10 +188,17 @@ guessed — `scripts/bench-tools.py --tooling FILE` runs both versions through t
 | full, 3813 chars | 13/15 | 10/10 | 23.0 s |
 | compact, 1581 chars | 14/15 | 10/10 | 17.0 s |
 
-Compliance is unchanged on both models — the qwen difference is one flip either way, which is
-the run-to-run flakiness R2 already documents. The latency difference is not noise: prefill cost
-grows faster than linearly in prompt length (docs/14 N4), so the preamble is paid for on every
-first turn, and superlinearly.
+**Compliance is the solid result here**: unchanged on both models, and the qwen difference is one
+flip either way, which is the run-to-run flakiness R2 already documents. A later run of the
+shipped compact prompt scored 10/10 again.
+
+**Treat the latency column as directional, not as a measurement.** That same later run averaged
+29.9 s for the same 1298-token prompt that averaged 17.0 s here — the machine's throughput drifts
+by up to 2× across runs under sustained load, which is larger than the effect being measured.
+What *is* solid is the controlled sweep inside a single uninterrupted run
+(`scripts/bench-latency.py sweep`): 580 tokens in 6.7 s, 1700 in 17.8 s, 3660 in 55.7 s, 7020 in
+129.9 s. Prefill grows faster than linearly in prompt length, so a shorter preamble is worth
+having — the honest claim is "the shape of the curve", not "6 seconds".
 
 What survived the cut is what failure taught us to keep: the listing's indent is layout not code,
 address cells by bracket number, changing existing code is an edit, examples are placeholders.
