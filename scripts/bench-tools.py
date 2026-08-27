@@ -48,8 +48,15 @@ CASES = [
 ]
 
 
-async def run(agent: str, runs: int) -> int:
+async def run(agent: str, runs: int, tooling_file: str | None = None) -> int:
     adapter = build_adapter(agent)
+    tooling = None
+    if tooling_file:
+        from pathlib import Path
+
+        raw = Path(tooling_file).read_text(encoding="utf-8")
+        tooling = _tooling_with_limits({}, raw)
+        print(f"tooling: {tooling_file} ({len(tooling or '')} chars)")
     tally = {"tagged": 0, "fenced": 0, "correct_tool": 0, "total": 0}
     timings: list[float] = []
     print(f"agent: {agent}\n")
@@ -58,7 +65,8 @@ async def run(agent: str, runs: int) -> int:
         for _ in range(runs):
             prompt = assemble_initial(
                 notebook_json=SNAP, kernel=KERNEL, prompt_cell_id="prompt02",
-                user_prompt=request, tooling=_tooling_with_limits({}),
+                user_prompt=request,
+                tooling=tooling if tooling is not None else _tooling_with_limits({}),
             )
             out = ""
             started = time.monotonic()
@@ -98,8 +106,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--agent", default="ollama-qwen25-coder-7b")
     ap.add_argument("--runs", type=int, default=3)
+    ap.add_argument(
+        "--tooling",
+        help="alternative tooling prompt file, for measuring what its length buys",
+    )
     args = ap.parse_args()
-    return asyncio.run(run(args.agent, args.runs))
+    return asyncio.run(run(args.agent, args.runs, args.tooling))
 
 
 if __name__ == "__main__":

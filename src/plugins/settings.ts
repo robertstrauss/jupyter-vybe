@@ -69,6 +69,15 @@ class VybeSettings implements IVybeSettings {
   get maxOutputChars(): number {
     return (this.group<number>('context')['maxOutputChars'] as number) ?? 2000;
   }
+  get historyPersist(): boolean {
+    // On by default (D12): a record that vanishes when a cell is tidied away
+    // is not a record.
+    return (this.group<boolean>('history')['persist'] as boolean) ?? true;
+  }
+  get historyMaxEntries(): number {
+    // Bounds what the pane renders, never what is stored.
+    return (this.group<number>('history')['maxEntries'] as number) ?? 200;
+  }
   get globalPrompt(): string {
     return (this.group<string>('prompts')['global'] as string) ?? '';
   }

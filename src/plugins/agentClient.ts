@@ -128,7 +128,12 @@ class VybeAgent implements IVybeAgent {
         op: 'hello',
         notebookPath,
         agentId: this.settings.agentId,
-        persistent: this.settings.persistent
+        persistent: this.settings.persistent,
+        options: {
+          // The sidecar prompt record is written server-side as the round
+          // streams (docs/05, D12); this is the user's switch for it.
+          historyPersist: this.settings.historyPersist
+        }
       });
       this._channels.set(notebookPath, ch);
     }

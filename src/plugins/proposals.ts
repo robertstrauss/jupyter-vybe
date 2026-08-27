@@ -10,6 +10,7 @@ import {
   OperationLog
 } from '../notebook/mutations';
 import { isSettledPromptCell } from '../notebook/promptCell';
+import { appendHistory } from '../history';
 import { diffLines, normaliseSource, type IHunk } from '../ui/diff';
 
 export interface IProposal {
@@ -162,6 +163,7 @@ export class Proposals implements IVybeProposals {
       p.state = 'accepted';
       this._setRendered(panel, p.cellId, p.wasRendered);
     }
+    this._recordVerdict(panel, p);
     this._advance(panel);
   }
 
@@ -172,6 +174,7 @@ export class Proposals implements IVybeProposals {
     }
     p.state = 'rejected';
     this._setRendered(panel, p.cellId, p.wasRendered);
+    this._recordVerdict(panel, p);
     this._advance(panel);
   }
 
@@ -182,6 +185,7 @@ export class Proposals implements IVybeProposals {
       if (p.state === 'pending') {
         p.state = 'rejected';
         this._setRendered(panel, p.cellId, p.wasRendered);
+        this._recordVerdict(panel, p);
         ids.push(p.id);
       }
     }
@@ -239,6 +243,21 @@ export class Proposals implements IVybeProposals {
       this._rounds.delete(panel.id);
     }
     this._changed.emit(panel);
+  }
+
+  /**
+   * The verdict is the half of a proposal the server cannot see, so it is
+   * posted rather than inferred (docs/05). A stale proposal is recorded too:
+   * "the user edited this cell before deciding" is history worth keeping.
+   */
+  private _recordVerdict(panel: NotebookPanel, p: IProposal): void {
+    void appendHistory(panel.context.path, {
+      kind: 'verdict',
+      roundId: p.roundId,
+      cellId: p.cellId,
+      outcome: p.state,
+      cellLabel: p.targetLabel
+    });
   }
 
   private _advance(panel: NotebookPanel): void {

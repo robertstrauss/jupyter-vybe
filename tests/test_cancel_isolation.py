@@ -51,6 +51,12 @@ def _session(adapter) -> AgentSession:
     s.touched = 0.0
     s._cancel = asyncio.Event()
     s._tool_waiters = {}
+    s._cells = []
+    s._prose = ""
+    # No sidecar writes from a unit test: the record is covered by
+    # tests/test_history.py, and this suite should not touch $HOME.
+    s.history_enabled = False
+    s.store = None
     return s
 
 

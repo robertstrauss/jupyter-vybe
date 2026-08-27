@@ -152,21 +152,26 @@ def assemble_initial(
     return _substitute(template, values)
 
 
-# One-line recap of the tool grammar, repeated on follow-up turns.
+# Repeated on every follow-up turn, where turn 1's full tooling prompt is still
+# in the message history and still in context. So this is a reminder, not a
+# re-explanation -- measured: a 3-request A/B across "no recap" / "one sentence"
+# / "a 400-char recap" scored 3/3 tool-tag compliance in every arm. Recap length
+# did not matter to compliance.
 #
-# Measured, not assumed: with turn 1's full tooling prompt still in the message
-# history, a 3-request A/B across "no recap" / "one sentence" / "a 400-char
-# recap with tag shapes" scored 3/3 tool-tag compliance in every arm on
-# qwen2.5-coder:7b. Recap length simply did not matter. So this is one sentence
-# plus the two tag names -- enough to re-point at the grammar if history has
-# been truncated, and 57 characters instead of the 2281 of the full prompt.
-#
-# What actually protects against a lapse is salvage_fenced_blocks() in
-# protocol.py, not prompt volume: the same model, given the same prompt, emits
-# tags on one run and markdown fences on the next (docs/13 R2).
+# It names the four rules whose absence produced real, silent damage anyway: a
+# fence instead of a tag, an invented cell number, a duplicate instead of an
+# edit, and a body indented to match the listing. What actually protects against
+# a lapse is salvage_fenced_blocks() in protocol.py, not prompt volume: the same
+# model, given the same prompt, emits tags on one run and fences on the next
+# (docs/13 R2).
 TOOL_RECAP = (
     "Reply only with <vybe:add_cell> / <vybe:propose_edit> tags, "
-    "never markdown code fences."
+    "never markdown code fences.\n"
+    "Address a cell by its bracket number in the listing below, e.g. cell=\"3\".\n"
+    "Changing code that already exists is a propose_edit with the complete new "
+    "source of that cell, not an add_cell with a modified copy.\n"
+    "The listing indents each cell by four spaces for layout; write cell bodies "
+    "at column zero."
 )
 
 

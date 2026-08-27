@@ -23,6 +23,8 @@ export interface IVybeSettings {
   readonly maxOutputChars: number;
   readonly cellWindow: number;
   readonly windowTokens: number;
+  readonly historyPersist: boolean;
+  readonly historyMaxEntries: number;
   readonly changed: ISignal<IVybeSettings, void>;
 }
 export const IVybeSettings = new Token<IVybeSettings>(

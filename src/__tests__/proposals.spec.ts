@@ -1,3 +1,7 @@
+// The verdict is posted to the sidecar record; the network is not the
+// subject here (docs/05).
+jest.mock('../history', () => ({ appendHistory: jest.fn() }));
+
 import { Proposals, type IRoundHandle } from '../plugins/proposals';
 import { OperationLog } from '../notebook/mutations';
 
@@ -23,6 +27,7 @@ function fakePanel(cells: FakeCell[]): any {
   }));
   return {
     id: 'panel-1',
+    context: { path: 'nb.ipynb' },
     node: { classList: { add: () => undefined, remove: () => undefined } },
     content: {
       activeCellIndex: 0,

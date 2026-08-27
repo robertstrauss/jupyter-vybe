@@ -15,6 +15,7 @@ from collections import OrderedDict
 from typing import AsyncIterator
 
 from .adapters import Message, build_adapter
+from .history import HistoryStore
 from .assembler import (
     assemble_followup,
     assemble_initial,
@@ -65,11 +66,28 @@ class AgentSession:
         self._cancel = asyncio.Event()
         self._tool_waiters: dict[str, asyncio.Future] = {}
         self._cells: list[dict] = []  # last snapshot, for resolving cell references
+        # The prompt record is a sidecar, not the notebook (D12, docs/05). On
+        # by default: a durable record cannot be opt-in when losing it is the
+        # normal consequence of tidying up a cell.
+        self.history_enabled = bool(options.get("historyPersist", True))
+        self._prose = ""
+        self.store = HistoryStore(notebook_path)
 
     # -- lifecycle ---------------------------------------------------------
 
     def cancel(self) -> None:
         self._cancel.set()
+
+    def record(self, entry: dict) -> None:
+        """Append to the prompt record. Never fails a round (docs/05)."""
+        if not self.history_enabled:
+            return
+        try:
+            self.store.notebook_path = self.notebook_path
+            self.store.append(entry)
+        except OSError as exc:
+            # A read-only home directory loses the record, not the answer.
+            _record("history_error", error=str(exc))
 
     def reset(self) -> None:
         self.messages.clear()
@@ -88,13 +106,19 @@ class AgentSession:
         self._cancel = asyncio.Event()
 
         seq = msg.get("snapshotSeq", 0)
-        # Always send the full prompt for now. The follow-up form carries only a
-        # one-line recap, which never explains the listing format or that
-        # changing existing code is an edit rather than an addition -- so the
-        # measured behaviour in scripts/bench-tools.py was not what a user on
-        # turn 2 actually got. Restore the diff path when diffSummary lands and
-        # the follow-up prompt can carry the same guidance (docs/09).
-        force_full = True
+        # Turn 0 sends everything; later turns in a persistent session send the
+        # short form. This was pinned to always-full while the follow-up prompt
+        # lacked a cell listing, which made the model invent cell numbers and
+        # edit the wrong cell. The listing now goes on every turn and TOOL_RECAP
+        # carries the rules whose absence caused real damage (docs/09).
+        #
+        # It is also the single largest latency win available. Measured against
+        # TurboFieldfareServer: a request that continues the conversation reuses
+        # the cached prefix and prefills only what is new -- 0.8 s against 48 s
+        # for the same tokens sent cold (docs/14 N4). Re-sending the full
+        # preamble each turn threw that away.
+        first_turn = not self.persistent or not self.messages
+        force_full = first_turn or msg.get("forceFull", False)
         if force_full and msg.get("snapshot") is None:
             yield {"op": "resync"}
             return
@@ -135,6 +159,14 @@ class AgentSession:
 
         _record("prompt", persistent=self.persistent, turns=self.turns,
                 force_full=force_full, prompt=prompt)
+        round_id = msg.get("roundId", "")
+        self.record({
+            "kind": "prompt",
+            "roundId": round_id,
+            "text": msg["prompt"],
+            "agentId": self.agent_id,
+            "promptChars": len(prompt),
+        })
         yield {"op": "status", "state": "generating"}
 
         max_tool_turns = int(limits.get("maxToolTurns", 6))
@@ -150,6 +182,7 @@ class AgentSession:
                         emitted_tool = True
                     out, pending = self._translate(event)
                     if out is not None:
+                        self._record_frame(round_id, out)
                         yield out
                     if pending is not None:
                         break
@@ -158,6 +191,7 @@ class AgentSession:
 
             if self._cancel.is_set():
                 self.messages.append(Message("assistant", reply))
+                self._flush_prose(round_id)
                 yield {"op": "done", "stopReason": "cancelled"}
                 return
 
@@ -167,6 +201,7 @@ class AgentSession:
                         emitted_tool = True
                     out, _ = self._translate(event)
                     if out is not None:
+                        self._record_frame(round_id, out)
                         yield out
 
                 # R2 fallback: a reply with no tool calls but with fenced code
@@ -190,11 +225,14 @@ class AgentSession:
                     if salvaged:
                         yield {"op": "proseReset"}
                         for event in salvaged:
-                            yield {"op": "tool", "name": event.name, "args": event.args}
+                            frame = {"op": "tool", "name": event.name, "args": event.args}
+                            self._record_frame(round_id, frame)
+                            yield frame
                         yield {"op": "salvaged", "count": len(salvaged)}
 
                 self.messages.append(Message("assistant", reply))
                 self.turns += 1
+                self._flush_prose(round_id)
                 yield {"op": "done", "stopReason": "end"}
                 return
 
@@ -214,7 +252,63 @@ class AgentSession:
             )
 
         self.turns += 1
+        self._flush_prose(round_id)
         yield {"op": "done", "stopReason": "limit"}
+
+    # -- the prompt record -------------------------------------------------
+
+    def _record_frame(self, round_id: str, frame: dict) -> None:
+        """Mirror an outgoing frame into the store (docs/05 entry model)."""
+        op = frame.get("op")
+        if op == "prose":
+            self._prose += frame.get("delta", "")
+            return
+        if op == "proseReset":
+            # The prose was salvaged code, not commentary; it never belonged
+            # in the record either.
+            self._prose = ""
+            return
+        if op != "tool":
+            return
+        name = frame.get("name")
+        args = frame.get("args") or {}
+        if name == "add_cell":
+            self.record({
+                "kind": "insertion",
+                "roundId": round_id,
+                "cellType": args.get("type", "code"),
+                "source": args.get("body", ""),
+            })
+        elif name == "propose_edit":
+            cell_id = args.get("cell", "")
+            self.record({
+                "kind": "proposal",
+                "roundId": round_id,
+                "cellId": cell_id,
+                "cellLabel": self._first_line(cell_id),
+                "before": self._source_of(cell_id),
+                "after": args.get("body", ""),
+                "note": args.get("note", ""),
+                # The verdict is the user's and arrives later, by POST from the
+                # frontend once they accept or reject (docs/05).
+                "outcome": "pending",
+            })
+
+    def _flush_prose(self, round_id: str) -> None:
+        text = self._prose.strip()
+        self._prose = ""
+        if text:
+            self.record({"kind": "prose", "roundId": round_id, "text": text})
+
+    def _source_of(self, cell_id: str) -> str:
+        cell = next((c for c in self._cells if c.get("id") == cell_id), None)
+        if not cell:
+            return ""
+        src = cell.get("source") or ""
+        return "".join(src) if isinstance(src, list) else src
+
+    def _first_line(self, cell_id: str) -> str:
+        return self._source_of(cell_id).split("\n")[0][:70]
 
     def _translate(self, event):
         """Map a parser event to a wire frame, flagging blocking tools."""
@@ -262,10 +356,12 @@ class AgentSession:
         return {"op": "tool", "name": event.name, "args": args}, None
 
 
-def _tooling_with_limits(limits: dict) -> str | None:
+def _tooling_with_limits(limits: dict, source: str | None = None) -> str | None:
+    """Fill the limit placeholders. `source` overrides the packaged prompt,
+    which is how scripts/bench-tools.py measures what prompt length buys."""
     from .assembler import _load
 
-    tooling = _load("tooling.md")
+    tooling = source if source is not None else _load("tooling.md")
     if not tooling:
         return None
     return (

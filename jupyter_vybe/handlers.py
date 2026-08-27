@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 
 from jupyter_server.base.handlers import APIHandler
@@ -10,6 +11,7 @@ from jupyter_server.utils import url_path_join
 from tornado import web, websocket
 
 from .adapters import ADAPTER_REGISTRY, build_adapter
+from .history import HistoryStore, find_orphan
 from .session import SessionManager
 
 NAMESPACE = "jupyter-vybe"
@@ -51,6 +53,45 @@ class HealthHandler(APIHandler):
             raise web.HTTPError(404, f"unknown agent {agent_id!r}")
         status = await adapter.health()
         self.finish(json.dumps(status.to_json()))
+
+
+class HistoryHandler(APIHandler):
+    """The prompt record for one notebook (docs/05, D12).
+
+    GET returns it; POST appends. The verdict on a proposal is the one entry
+    the server cannot know on its own -- accept and reject happen entirely in
+    the frontend -- so the frontend posts it here rather than the record being
+    silently incomplete.
+    """
+
+    @web.authenticated
+    async def get(self) -> None:
+        path = self.get_query_argument("path")
+        limit = self.get_query_argument("limit", default=None)
+        store = HistoryStore(path)
+        entries = store.read(int(limit) if limit else None)
+        payload = {
+            "path": path,
+            "file": str(store.path),
+            "entries": entries,
+        }
+        if not entries:
+            # Renamed outside JupyterLab? Say so, rather than showing an empty
+            # pane that looks like nothing ever happened.
+            orphan = find_orphan(os.path.basename(path))
+            if orphan is not None:
+                payload["orphan"] = str(orphan)
+        self.finish(json.dumps(payload))
+
+    @web.authenticated
+    async def post(self) -> None:
+        body = json.loads(self.request.body or b"{}")
+        path = body.get("path")
+        entry = body.get("entry")
+        if not path or not isinstance(entry, dict):
+            raise web.HTTPError(400, "path and entry are required")
+        written = HistoryStore(path).append(entry)
+        self.finish(json.dumps({"ok": True, "entry": written}))
 
 
 class AgentSocket(websocket.WebSocketHandler):
@@ -135,6 +176,7 @@ def setup_handlers(web_app) -> None:
         [
             (url_path_join(base, NAMESPACE, "agents"), AgentsHandler),
             (url_path_join(base, NAMESPACE, "health"), HealthHandler),
+            (url_path_join(base, NAMESPACE, "history"), HistoryHandler),
             (url_path_join(base, NAMESPACE, "ws"), AgentSocket),
         ],
     )

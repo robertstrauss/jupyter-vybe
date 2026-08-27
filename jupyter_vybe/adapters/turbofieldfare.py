@@ -24,6 +24,9 @@ from typing import AsyncIterator
 from .base import Adapter, AdapterSpec, HealthStatus, Message
 
 DEFAULT_HOST = os.environ.get("TURBOFIELDFARE_HOST", "http://127.0.0.1:8080")
+# Between-token read timeout. Generous: a cold prefill on a long prompt can
+# take a minute before the first token appears.
+READ_TIMEOUT = float(os.environ.get("TURBOFIELDFARE_READ_TIMEOUT", "180"))
 # Only used if /v1/models cannot be read; the server's own default id.
 _FALLBACK_MODEL_ID = "gemma-4-26b-a4b-it"
 
@@ -38,6 +41,33 @@ _MODEL_CANDIDATES = [
     "/Users/rrs/Desktop/thoughtcode/code-llm/scratch/gemma4.gturbo",
     os.path.expanduser("~/.turbofieldfare/turbo-fieldfare/scratch/gemma4.gturbo"),
 ]
+
+
+def _as_turns(messages: list[Message]) -> list[dict]:
+    """Keep the conversation as turns rather than folding it into one.
+
+    Gemma 4 has no *system* role, so a system message is merged into the first
+    user turn -- but user and assistant turns are kept as turns, and that is
+    what makes the server's prompt cache usable at all: a hit requires the new
+    request to continue the cached conversation, and a single re-folded user
+    message is a different conversation every time. Measured: 0.8 s for a
+    continuation against 48.5 s for the same tokens sent as one blob
+    (docs/14 N4).
+    """
+    wire: list[dict] = []
+    pending_system = ""
+    for message in messages:
+        if message.role == "system":
+            pending_system = f"{pending_system}\n\n{message.content}".strip()
+            continue
+        content = message.content
+        if pending_system and message.role == "user":
+            content = f"{pending_system}\n\n{content}"
+            pending_system = ""
+        wire.append({"role": message.role, "content": content})
+    if pending_system:
+        wire.append({"role": "user", "content": pending_system})
+    return wire
 
 
 def _resolve(candidates: list[str], must_be_exec: bool) -> str | None:
@@ -111,22 +141,23 @@ class TurboFieldfareAdapter(Adapter):
     # -- streaming ---------------------------------------------------------
 
     async def stream(self, messages: list[Message], cancel: asyncio.Event) -> AsyncIterator[str]:
-        # Gemma 4 has no system role; fold the transcript into one user turn.
-        prompt = "\n\n".join(m.content for m in messages)
+        wire = _as_turns(messages)
         if await asyncio.to_thread(self._server_up):
-            async for chunk in self._stream_server(prompt, cancel):
+            async for chunk in self._stream_server(wire, cancel):
                 yield chunk
             return
         if not (self.cli and self.model):
             status = await self.health()
             raise RuntimeError(status.detail)
-        async for chunk in self._stream_cli(prompt, cancel):
+        async for chunk in self._stream_cli(wire, cancel):
             yield chunk
 
-    async def _stream_server(self, prompt: str, cancel: asyncio.Event) -> AsyncIterator[str]:
+    async def _stream_server(
+        self, wire: list[dict], cancel: asyncio.Event
+    ) -> AsyncIterator[str]:
         payload = {
             "model": self._server_model(),
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": wire,
             "max_tokens": int(os.environ.get("MAX_TOKENS", "1024")),
             "temperature": float(os.environ.get("TEMPERATURE", "0.2")),
             "stream": True,
@@ -138,6 +169,14 @@ class TurboFieldfareAdapter(Adapter):
         # returned before the post-stream salvage pass could run.
         stop = asyncio.Event()
 
+        # The read blocks between tokens, and a thread cannot be cancelled. So
+        # the response object is shared with the consumer, which closes it to
+        # unblock the read. Without this a cancelled round leaves a thread
+        # parked on a socket, the process unable to exit, and the request open
+        # on the server -- one such request logged 1015 s of "generating" for a
+        # turn the client had finished with in 25 s.
+        handle: dict[str, object] = {}
+
         def pump() -> None:
             req = urllib.request.Request(
                 f"{self.host}/v1/chat/completions",
@@ -145,7 +184,8 @@ class TurboFieldfareAdapter(Adapter):
                 headers={"Content-Type": "application/json"},
             )
             try:
-                with urllib.request.urlopen(req) as resp:
+                with urllib.request.urlopen(req, timeout=READ_TIMEOUT) as resp:
+                    handle["resp"] = resp
                     for raw in resp:
                         if cancel.is_set() or stop.is_set():
                             break
@@ -178,11 +218,19 @@ class TurboFieldfareAdapter(Adapter):
                 yield item
         finally:
             stop.set()
+            resp = handle.get("resp")
+            if resp is not None:
+                try:
+                    resp.close()  # unblocks the thread parked in read()
+                except Exception:  # noqa: BLE001 — closing is best effort
+                    pass
             task.cancel()
 
-    async def _stream_cli(self, prompt: str, cancel: asyncio.Event) -> AsyncIterator[str]:
+    async def _stream_cli(
+        self, wire: list[dict], cancel: asyncio.Event
+    ) -> AsyncIterator[str]:
         with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as tf:
-            json.dump([{"role": "user", "content": prompt}], tf)
+            json.dump(wire, tf)
             messages_file = tf.name
         cmd = [
             self.cli,

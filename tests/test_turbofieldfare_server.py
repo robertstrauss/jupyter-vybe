@@ -9,6 +9,7 @@ running (docs/14 N4).
 import asyncio
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -95,3 +96,30 @@ def test_health_reports_the_server_when_it_answers(server):
     status = asyncio.run(adapter.health())
     assert status.ok
     assert status.detail == "server"
+
+
+def test_a_consumer_that_stops_early_does_not_leave_the_read_parked(server):
+    """Abandoning a stream must close it, not park a thread on the socket.
+
+    A thread cannot be cancelled, so the response is closed from the consumer
+    side. Without that, a cancelled round left the request open on the server
+    long after the client had moved on (docs/14 N4).
+    """
+    import threading
+
+    before = threading.active_count()
+    adapter = build_adapter("turbofieldfare-gemma4")
+    adapter.host = server
+
+    async def take_one():
+        agen = adapter.stream([Message("user", "hi")], asyncio.Event())
+        async for _ in agen:
+            break
+        await agen.aclose()
+
+    asyncio.run(take_one())
+
+    deadline = time.time() + 5
+    while threading.active_count() > before and time.time() < deadline:
+        time.sleep(0.05)
+    assert threading.active_count() == before
