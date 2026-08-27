@@ -113,7 +113,13 @@ the settings schema in place.
   so the `+`/`-` markers carry the add/remove distinction where colour cannot.
 - ✅ **CHANGELOG**, README installation, and the reverse-tunnel configuration with its three
   common failure modes.
-- Galata beyond the smoke tests: the review keyboard matrix, the history pane, cancel mid-round.
+- ✅ **Galata**, and it earned its cost immediately: the first run of the review flow found that
+  the settings schema was never loading (file named for the wrong plugin) and that `Y` / `N` /
+  `Enter` had never worked, because the round marker sat on the panel node while the keybinding
+  selectors ask for it on the content node. Only the buttons had ever worked. Five tests now
+  cover activation, a prompt cell with no kernel, a plain cell left alone, and accept and reject
+  from the keyboard.
+- Galata beyond that: the history pane, cancel mid-round, the undo table.
 - The quality of the *code* generated, which no bench here measures — tool selection and edit
   targeting are automatable, "is this good code" is not.
 - v1.0.0 tag.
