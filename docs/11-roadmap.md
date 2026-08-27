@@ -81,7 +81,7 @@ The load-bearing milestone. Everything else is ordinary UI work.
 
 **Exit:** every control in [04](04-settings.md) and [05](05-history-pane.md) is live.
 
-## M7 — Remaining adapters and packaging · ~4 days
+## M7 — Remaining adapters and packaging · ~4 days · **done**
 
 - `TurboFieldfareAdapter` with the vendored client; `CommandAdapter` (one-shot + persistent,
   validated against `claude -p`); `OpenAICompatAdapter`. No native-tools path
@@ -92,16 +92,28 @@ The load-bearing milestone. Everything else is ordinary UI work.
   location), add the screenshots the README marks `[HUMAN TODO]`.
 - `pip install jupyter-vybe` from a built wheel on a clean venv.
 
-**Exit:** all four adapters selectable and working; wheel installs clean.
+**Exit:** all four adapters selectable and working; wheel installs clean. ✅ Verified: a fresh
+venv with nothing but the built wheel and JupyterLab reports
+`jupyter-vybe v0.1.0 enabled OK (python, jupyter_vybe)` and the server extension enabled, with
+the settings schema in place.
 
-## M8 — Hardening and release · ~3 days
+## M8 — Hardening and release · ~3 days · **in progress**
 
-- Full Galata matrix; the 20-prompt quality bench across all three models; prompt tuning against
-  the results.
-- Performance: 200-cell notebook, 50-entry history, snapshot under 100ms.
-- Accessibility: focus order, ARIA on bubble and review controls, `prefers-reduced-motion`,
-  contrast on diff colours in both themes.
-- Docs, CHANGELOG, v1.0.0 tag.
+- ✅ **The 20-prompt bench**, now checking *where* an edit lands as well as which tool was used —
+  a proposal aimed at the wrong cell renders as a perfectly good diff, which is why that failure
+  went unnoticed for so long. qwen2.5-coder:7b scores 20/20 on tool and 8/8 on target.
+- ✅ **Performance**: the 200-cell target found a real O(n²) in the truncation ladder (it
+  re-serialised the whole notebook per cell touched). 50 ms → 4 ms.
+- ✅ **Accessibility**: ARIA on the bubble and review controls, `role=status`/`aria-live` for
+  round progress, visible focus on every control that decides what happens to the user's code,
+  keyboard operation for the history entries, `prefers-reduced-motion`, and `forced-colors` rules
+  so the `+`/`-` markers carry the add/remove distinction where colour cannot.
+- ✅ **CHANGELOG**, README installation, and the reverse-tunnel configuration with its three
+  common failure modes.
+- Galata beyond the smoke tests: the review keyboard matrix, the history pane, cancel mid-round.
+- The quality of the *code* generated, which no bench here measures — tool selection and edit
+  targeting are automatable, "is this good code" is not.
+- v1.0.0 tag.
 
 **Total: ~32 working days (~6.5 weeks).**
 
