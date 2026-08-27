@@ -145,7 +145,8 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
 
     app.commands.addCommand(CommandIDs.undoRejectAll, {
       label: 'Undo reject all proposed edits',
-      isEnabled: () => !!current() && proposals.undoableRejection(current()!) > 0,
+      isEnabled: () =>
+        !!current() && proposals.undoableRejection(current()!) > 0,
       execute: () => {
         const panel = current();
         if (panel && proposals.undoRejectAll(panel)) {
