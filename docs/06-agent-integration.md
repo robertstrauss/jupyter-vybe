@@ -154,19 +154,34 @@ directory, which is what the CLI takes and what the adapter sent at first. The s
 to an id it does not know, so the whole server path was dead while `/health` said it was fine
 (docs/14 N4).
 
-Measured 2026-08-25 against a resident server: 10/10 correct tool with zero fence fallbacks —
-better than qwen2.5-coder:7b's 13/15 — but ~24 s per call, against a ~1860-token prompt for a
-40–80-token reply. That is why qwen remains the default despite being the worse model. Prefix
-caching does not help: `--prompt-cache-mode single-prefix` caches the previous prompt *and its
-completion*, so it only hits when a request continues that conversation, never for independent
-requests that merely share a preamble.
+The conversation is sent as **turns**, not folded into one user message. Gemma 4 has no *system*
+role, which is what the folding was for, but user and assistant turns are turns — and that is what
+makes the server's prompt cache usable: `--prompt-cache-mode single-prefix` caches the previous
+prompt *and its completion*, and hits only when the next request continues that conversation. A
+re-folded blob is a different conversation every time and never hits.
+
+Measured against a resident server (2026-08-26, after both fixes), three turns of one session:
+
+| turn | prompt | cached | wall clock |
+|---|---|---|---|
+| 0 | 1822 | 0 | 28.0 s |
+| 1 | 2171 | 1862 | 8.5 s |
+| 2 | 2562 | 2251 | 7.0 s |
+
+Steady state is single-digit seconds. The first turn is the fixed preamble prefilled cold, which
+is why `tooling.md` was cut in half ([08](08-prompt-templates.md)) and why the truncation ladder
+is a latency feature ([09](09-context-management.md)).
+
+On quality Gemma is the better model: 10/10 correct tool with zero fence fallbacks, against
+qwen2.5-coder:7b's 13/15. On a first turn it is still ~17 s to qwen's ~2 s, so **qwen remains the
+default** — the choice is now a genuine trade rather than a foregone one.
 
 The vendored copy is pinned and a `make sync-vendor` target diffs it against the original so
 upstream fixes are visible rather than silently divergent.
 
 ### CommandAdapter — `claude -p`, or any binary
 
-Two modes:
+**Built** (`adapters/command.py`). Two modes:
 
 - **one-shot** (default): spawn `argv + [prompt]` per turn, read stdout to EOF. History is
   replayed by re-serialising the transcript into the prompt. Robust, works with anything.
@@ -187,7 +202,10 @@ adapter goes through the tagged-text protocol.
 
 ### OpenAICompatAdapter
 
-`POST {endpoint}/v1/chat/completions`, SSE streaming, key read from `os.environ[apiKeyEnv]`.
+**Built** (`adapters/openai_compat.py`). `POST {endpoint}/v1/chat/completions`, SSE streaming,
+key read from `os.environ[apiKeyEnv]`. Health reports which models the endpoint actually serves
+when the configured id is not among them — a wrong model id is the most common misconfiguration
+and the server's own answer for it is one request away.
 Covers vLLM, llama.cpp server, LM Studio, and hosted providers. `supports_native_tools = True`
 by default, overridable — though unused in v1.0 ([12](12-decisions.md) D3).
 

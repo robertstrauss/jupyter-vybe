@@ -178,6 +178,24 @@ Re-running the same prompt afterwards produced genuinely original code — a `np
 implementation the examples never mention. This is the single highest-leverage prompt change
 found so far, and it generalises: **do not put runnable, plausible code in a tooling prompt.**
 
+### Length buys nothing, and costs real time
+
+`tooling.md` was 3813 characters, written to convince a 7B. Halving it to 1581 was measured, not
+guessed — `scripts/bench-tools.py --tooling FILE` runs both versions through the same five cases:
+
+| | qwen2.5-coder:7b | Gemma 4 | Gemma turn-0 latency |
+|---|---|---|---|
+| full, 3813 chars | 13/15 | 10/10 | 23.0 s |
+| compact, 1581 chars | 14/15 | 10/10 | 17.0 s |
+
+Compliance is unchanged on both models — the qwen difference is one flip either way, which is
+the run-to-run flakiness R2 already documents. The latency difference is not noise: prefill cost
+grows faster than linearly in prompt length (docs/14 N4), so the preamble is paid for on every
+first turn, and superlinearly.
+
+What survived the cut is what failure taught us to keep: the listing's indent is layout not code,
+address cells by bracket number, changing existing code is an edit, examples are placeholders.
+
 ## `filtering.md`
 
 Doubles as human documentation and as the spec `snapshot.ts` implements, with the rule table from
