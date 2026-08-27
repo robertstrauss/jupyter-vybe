@@ -81,3 +81,16 @@ def test_the_registry_builds_it_from_settings():
     adapter = build_adapter("command", {"command": "claude -p", "persistent": "true"})
     assert adapter.argv == ["claude", "-p"]
     assert adapter.persistent is True
+
+
+def test_options_reach_the_adapter_from_the_session(tmp_path):
+    """The hello frame's options are how a command is configured at all."""
+    from jupyter_vybe.session import AgentSession
+
+    session = AgentSession(
+        str(tmp_path / "n.ipynb"),
+        "command",
+        True,
+        {"command": "claude -p", "historyPersist": False},
+    )
+    assert session.adapter.argv == ["claude", "-p"]

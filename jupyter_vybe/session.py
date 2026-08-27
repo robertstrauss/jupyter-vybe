@@ -59,7 +59,9 @@ class AgentSession:
         self.agent_id = agent_id
         self.persistent = persistent
         self.options = options
-        self.adapter = build_adapter(agent_id)
+        # Adapter configuration rides in the hello options: which command to
+        # run, which endpoint, which environment variable holds the key.
+        self.adapter = build_adapter(agent_id, options)
         self.messages: list[Message] = []
         self.turns = 0
         self.snapshot_seq = -1

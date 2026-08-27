@@ -52,6 +52,19 @@ class VybeSettings implements IVybeSettings {
       'http://127.0.0.1:8137'
     );
   }
+  get agentOptions(): Record<string, string> {
+    // Whatever the chosen adapter needs. Sent as strings: the server owns
+    // the meaning of each key, and the API key is a variable *name*, never
+    // the key itself.
+    const agent = this.group<unknown>('agent');
+    return {
+      command: String(agent['command'] ?? ''),
+      persistent: String(agent['commandPersistent'] ?? false),
+      endpoint: String(agent['endpoint'] ?? ''),
+      model: String(agent['model'] ?? ''),
+      apiKeyEnv: String(agent['apiKeyEnv'] ?? '')
+    };
+  }
   get persistent(): boolean {
     return (this.group<boolean>('context')['persistent'] as boolean) ?? true;
   }

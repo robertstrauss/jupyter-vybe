@@ -48,7 +48,13 @@ class HealthHandler(APIHandler):
             self.finish(json.dumps({"ok": True, "adapters": list(ADAPTER_REGISTRY)}))
             return
         try:
-            adapter = build_adapter(agent_id, self.get_query_arguments)
+            # Health is a GET, so its options come from the query string.
+            options = {
+                k: v[0].decode() if isinstance(v[0], bytes) else v[0]
+                for k, v in self.request.query_arguments.items()
+                if v
+            }
+            adapter = build_adapter(agent_id, options)
         except KeyError:
             raise web.HTTPError(404, f"unknown agent {agent_id!r}")
         status = await adapter.health()

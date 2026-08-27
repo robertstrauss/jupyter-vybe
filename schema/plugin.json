@@ -30,7 +30,45 @@
         "id": {
           "type": "string",
           "title": "Agent",
+          "description": "Gemma 4 is the stronger model on the tool bench but slower on a first turn; qwen is the default for that reason alone.",
+          "enum": [
+            "ollama-qwen25-coder-7b",
+            "ollama-qwen25-coder-14b",
+            "ollama-qwen25-coder-3b",
+            "turbofieldfare-gemma4",
+            "command",
+            "openai-compat"
+          ],
           "default": "ollama-qwen25-coder-7b"
+        },
+        "command": {
+          "type": "string",
+          "title": "Command (agent \"command\")",
+          "description": "Run with shell=False after shlex splitting, e.g. claude -p. The prompt is appended as the last argument.",
+          "default": ""
+        },
+        "commandPersistent": {
+          "type": "boolean",
+          "title": "Keep the command running between turns",
+          "description": "Newline-delimited JSON on stdin/stdout, as claude -p --input-format stream-json. Falls back to one-shot if the handshake fails.",
+          "default": false
+        },
+        "endpoint": {
+          "type": "string",
+          "title": "Endpoint (agent \"openai-compat\")",
+          "default": "http://127.0.0.1:8000"
+        },
+        "model": {
+          "type": "string",
+          "title": "Model id (agent \"openai-compat\")",
+          "description": "As the endpoint names it in /v1/models. A wrong id is the most common misconfiguration; the health check lists what is actually served.",
+          "default": ""
+        },
+        "apiKeyEnv": {
+          "type": "string",
+          "title": "API key environment variable",
+          "description": "Read from the server's environment by name. The key itself is never stored in settings.",
+          "default": ""
         },
         "host": {
           "type": "string",
@@ -52,6 +90,11 @@
       },
       "default": {
         "id": "ollama-qwen25-coder-7b",
+        "command": "",
+        "commandPersistent": false,
+        "endpoint": "http://127.0.0.1:8000",
+        "model": "",
+        "apiKeyEnv": "",
         "host": "server",
         "sidecarUrl": "http://127.0.0.1:8137",
         "timeoutSeconds": 120
