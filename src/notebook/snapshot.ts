@@ -11,6 +11,11 @@ import type * as nbformat from '@jupyterlab/nbformat';
 export interface ISnapshotOptions {
   includeOutputs: boolean;
   maxOutputChars: number;
+  /** Token budget for the notebook portion. 0 disables truncation. */
+  budgetTokens?: number;
+  /** Cells this far from the prompt cell are "distant" (0 = no window). */
+  cellWindow?: number;
+  promptCellId?: string;
 }
 
 export interface IKernelInfo {
@@ -23,6 +28,9 @@ export interface ISnapshot {
   json: string;
   kernel: IKernelInfo;
   cellIds: string[];
+  /** What the ladder had to drop, in the order it dropped it (docs/09). */
+  dropped: string[];
+  estimatedTokens: number;
 }
 
 const RICH_TEXT = ['text/html', 'text/markdown', 'text/latex'];
@@ -52,7 +60,9 @@ export function buildSnapshot(
     return {
       json: '{}',
       kernel: { name: '', language: '', version: '' },
-      cellIds: []
+      cellIds: [],
+      dropped: [],
+      estimatedTokens: 0
     };
   }
   const meta = content.metadata as Record<string, any>;
@@ -99,8 +109,17 @@ export function buildSnapshot(
     cells
   };
 
+  const dropped = truncate(cells, opts);
+
   // Compact JSON: ~15% cheaper in tokens, no loss of comprehension.
-  return { json: JSON.stringify(filtered), kernel: kernelInfo(panel), cellIds };
+  const json = JSON.stringify(filtered);
+  return {
+    json,
+    kernel: kernelInfo(panel),
+    cellIds,
+    dropped,
+    estimatedTokens: estimateTokens(json)
+  };
 }
 
 function normaliseSource(source: string | string[]): string {
@@ -171,4 +190,142 @@ export function elide(text: string, limit: number): string {
   const half = Math.floor((limit - 24) / 2);
   const dropped = text.length - half * 2;
   return `${text.slice(0, half)}\n… ${dropped} chars elided …\n${text.slice(-half)}`;
+}
+
+/**
+ * Deliberately not a real tokenizer (docs/09): shipping one costs ~2MB of WASM
+ * and several hundred ms of startup, for a number that only has to be right to
+ * within about 10%.
+ */
+export function estimateTokens(
+  text: string,
+  kind: 'code' | 'prose' = 'code'
+): number {
+  return Math.ceil(text.length / (kind === 'code' ? 3.6 : 4.2));
+}
+
+const IMPORT_RE = /^[ \t]*(?:import|from|require|library|using)\b/m;
+const SIGNATURE_RE =
+  /^[ \t]*(?:async[ \t]+)?(?:def|class|function|const|let|var|import|from)\b.*$/gm;
+
+/** The signature summary from ladder stage 4: the namespace at ~5% of the cost. */
+function signatureSummary(source: string): string {
+  const lines = source.match(SIGNATURE_RE) ?? [];
+  const body = lines.map(l => `${l.trim()} …`).join('\n');
+  return body || '# (body omitted to fit the context window)';
+}
+
+/**
+ * Drop content until the notebook fits, in the order docs/09 specifies.
+ *
+ * The prompt cell, its immediate neighbours, and every import-bearing cell are
+ * never touched: the first two are what the request is about, and the third is
+ * the namespace the agent needs to write code that runs. Stage 4 keeps
+ * signatures rather than deleting bodies outright, which also keeps the
+ * identifier casing that style inference reads (D8) -- so style degrades
+ * gracefully instead of falling back to the language default.
+ *
+ * Mutates `cells` in place and returns a description of what went.
+ */
+export function truncate(
+  cells: Record<string, any>[],
+  opts: ISnapshotOptions
+): string[] {
+  const budget = opts.budgetTokens ?? 0;
+  if (!budget) {
+    return [];
+  }
+  const dropped: string[] = [];
+  const size = () => estimateTokens(JSON.stringify(cells));
+  if (size() <= budget) {
+    return dropped;
+  }
+
+  const promptIndex = cells.findIndex(c => c.id === opts.promptCellId);
+  const near = (i: number, window: number) =>
+    promptIndex === -1 || Math.abs(i - promptIndex) <= window;
+  const protectedCell = (c: Record<string, any>, i: number) =>
+    near(i, 3) || IMPORT_RE.test(String(c.source ?? ''));
+
+  const stage = (
+    label: string,
+    apply: (cell: Record<string, any>, index: number) => boolean
+  ): boolean => {
+    let touched = 0;
+    for (let i = 0; i < cells.length; i++) {
+      if (protectedCell(cells[i], i)) {
+        continue;
+      }
+      if (apply(cells[i], i)) {
+        touched++;
+      }
+      if (size() <= budget) {
+        break;
+      }
+    }
+    if (touched) {
+      dropped.push(`${label} (${touched} cell${touched === 1 ? '' : 's'})`);
+    }
+    return size() <= budget;
+  };
+
+  const window = opts.cellWindow ?? 0;
+  const hasOutputs = (c: Record<string, any>) => (c.outputs ?? []).length > 0;
+
+  if (
+    window &&
+    stage('outputs of distant cells', (c, i) => {
+      if (near(i, window) || !hasOutputs(c)) {
+        return false;
+      }
+      delete c.outputs;
+      return true;
+    })
+  ) {
+    return dropped;
+  }
+  if (
+    stage('outputs except errors', c => {
+      if (!hasOutputs(c)) {
+        return false;
+      }
+      const errors = (c.outputs as any[]).filter(
+        o => o.output_type === 'error'
+      );
+      if (errors.length === c.outputs.length) {
+        return false;
+      }
+      if (errors.length) {
+        c.outputs = errors;
+      } else {
+        delete c.outputs;
+      }
+      return true;
+    })
+  ) {
+    return dropped;
+  }
+  if (
+    stage('markdown sources', c => {
+      if (c.cell_type !== 'markdown' || !c.source) {
+        return false;
+      }
+      c.source = '<markdown omitted to fit the context window>';
+      return true;
+    })
+  ) {
+    return dropped;
+  }
+  stage('code bodies, signatures kept', c => {
+    if (c.cell_type !== 'code' || !c.source) {
+      return false;
+    }
+    const summary = signatureSummary(String(c.source));
+    if (summary.length >= String(c.source).length) {
+      return false;
+    }
+    c.source = summary;
+    return true;
+  });
+  return dropped;
 }

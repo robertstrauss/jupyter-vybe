@@ -26,6 +26,13 @@ import {
 import { buildSnapshot } from '../notebook/snapshot';
 import { runIntrospection } from '../introspect';
 
+/**
+ * Room kept back from the context window for the preamble, the conversation so
+ * far, and the reply. The notebook is the only part the ladder can trim, so it
+ * is budgeted against what is left rather than against the whole window.
+ */
+const RESERVE_TOKENS = 4096;
+
 /** One prompt execution and everything it produces (docs/02). */
 export class Round {
   readonly id = UUID.uuid4();
@@ -116,8 +123,20 @@ export class Rounds implements IVybeRounds {
     const path = panel.context.path;
     const snap = buildSnapshot(panel, {
       includeOutputs: this.settings.includeOutputs,
-      maxOutputChars: this.settings.maxOutputChars
+      maxOutputChars: this.settings.maxOutputChars,
+      // The notebook gets what is left after the preamble and the reply. The
+      // ladder is a latency feature as much as a budget one: prefill cost
+      // grows faster than linearly in prompt length, so an oversized notebook
+      // is paid for on every single turn (docs/14 N4).
+      budgetTokens: Math.max(0, this.settings.windowTokens - RESERVE_TOKENS),
+      cellWindow: this.settings.cellWindow,
+      promptCellId: round.promptCellId
     });
+    if (snap.dropped.length) {
+      console.info(
+        `[jupyter-vybe] notebook trimmed to fit: ${snap.dropped.join(', ')}`
+      );
+    }
     const seq = (this._seq.get(path) ?? -1) + 1;
     this._seq.set(path, seq);
 
