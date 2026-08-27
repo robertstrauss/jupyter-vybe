@@ -130,3 +130,56 @@ describe('estimateTokens', () => {
     expect(estimateTokens(text, 'prose')).toBeLessThan(100);
   });
 });
+
+describe('performance on a large notebook (M8)', () => {
+  const bigNotebook = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `cell-${i}`,
+      cell_type: i % 5 === 0 ? 'markdown' : 'code',
+      source:
+        i % 5 === 0
+          ? `## Section ${i}\n\n${'explanatory prose '.repeat(40)}`
+          : `def step_${i}(frame):\n` +
+            `    """Stage ${i} of the pipeline."""\n` +
+            Array.from({ length: 12 }, (_, l) => `    value_${l} = frame[${l}] * ${i}`).join('\n'),
+      ...(i % 5 === 0
+        ? {}
+        : {
+            outputs: [
+              {
+                output_type: 'stream',
+                name: 'stdout',
+                text: `shape: (4096, 3)\n${'row '.repeat(50)}`
+              }
+            ]
+          })
+    }));
+
+  it('trims a 200-cell notebook to budget in well under 100ms', () => {
+    const cells = bigNotebook(200);
+    cells.push({ id: 'prompt', cell_type: 'code', source: '#% summarise this' });
+
+    const started = Date.now();
+    const dropped = truncate(cells, opts({ budgetTokens: 8000, promptCellId: 'prompt' }));
+    const elapsed = Date.now() - started;
+
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(estimateTokens(JSON.stringify(cells))).toBeLessThanOrEqual(8000);
+    expect(elapsed).toBeLessThan(100);
+  });
+
+  it('keeps the prompt cell and every import even at a hard budget', () => {
+    const cells = bigNotebook(200);
+    cells[7] = {
+      id: 'imports',
+      cell_type: 'code',
+      source: 'import numpy as np\nimport pandas as pd'
+    };
+    cells.push({ id: 'prompt', cell_type: 'code', source: '#% summarise this' });
+
+    truncate(cells, opts({ budgetTokens: 2000, promptCellId: 'prompt' }));
+
+    expect(cells[7].source).toContain('import pandas as pd');
+    expect(cells[cells.length - 1].source).toBe('#% summarise this');
+  });
+});

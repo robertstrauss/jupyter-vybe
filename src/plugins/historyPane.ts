@@ -40,6 +40,8 @@ class HistoryPane extends Widget {
     header.textContent = 'Prompt history';
     this._status = document.createElement('div');
     this._status.className = 'jv-history-status';
+    this._status.setAttribute('role', 'status');
+    this._status.setAttribute('aria-live', 'polite');
     this._list = document.createElement('div');
     this._list.className = 'jv-history-list';
     this.node.append(header, this._status, this._list);
@@ -132,6 +134,16 @@ class HistoryPane extends Widget {
       const source = String(entry.source ?? '');
       el.appendChild(this._label(`inserted ${entry.cellType} cell`));
       el.appendChild(this._code(source));
+      // Clickable, therefore reachable and operable from the keyboard.
+      el.tabIndex = 0;
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', 'Copy this inserted cell to the clipboard');
+      el.onkeydown = event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          this._copyCell(String(entry.cellType ?? 'code'), source, el);
+        }
+      };
       // Clicking copies to the *cell* clipboard, so `v` in command mode
       // pastes it as a cell -- the same MIME core copy/paste uses (docs/05).
       el.onclick = () =>
@@ -150,6 +162,15 @@ class HistoryPane extends Widget {
         )
       );
       el.appendChild(DiffOverlay.build(diffLines(before, after)));
+      el.tabIndex = 0;
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', `Copy the new source of ${String(entry.cellLabel || entry.cellId)}`);
+      el.onkeydown = event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          this._copyCell('code', after, el);
+        }
+      };
       // The net "after" source is what a reader wants to reuse, whether or
       // not they took it at the time -- rejected proposals especially.
       el.onclick = () => this._copyCell('code', after, el);

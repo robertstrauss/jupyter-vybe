@@ -14,6 +14,9 @@ export class DiffOverlay extends Widget {
 
   static build(hunks: IHunk[], note?: string): HTMLElement {
     const root = document.createElement('div');
+    // Announced as a group, not as 30 unrelated lines of text.
+    root.setAttribute('role', 'region');
+    root.setAttribute('aria-label', note ? `Proposed edit: ${note}` : 'Proposed edit');
     if (note) {
       const n = document.createElement('div');
       n.className = 'jv-diff-note';
@@ -34,6 +37,14 @@ export class DiffOverlay extends Widget {
         marker.className = 'jv-diff-marker';
         marker.textContent =
           line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' ';
+        // Colour is the only cue for add/remove otherwise, which fails both
+        // screen readers and anyone who cannot distinguish the two greens.
+        if (line.kind !== 'context') {
+          marker.setAttribute(
+            'aria-label',
+            line.kind === 'add' ? 'added line' : 'removed line'
+          );
+        }
         const text = document.createElement('span');
         text.className = 'jv-diff-text';
         text.textContent = line.text;
@@ -60,6 +71,8 @@ export class ReviewControls extends Widget {
   constructor(actions: IReviewActions) {
     const node = document.createElement('div');
     node.className = 'jv-review-controls';
+    node.setAttribute('role', 'group');
+    node.setAttribute('aria-label', 'Review this proposed edit');
 
     const make = (
       glyph: string,
@@ -74,6 +87,8 @@ export class ReviewControls extends Widget {
       btn.className = `jv-review-button ${cls}`;
       btn.textContent = glyph;
       btn.title = `${title} (${key})`;
+      // The glyph is a symbol; the button needs a name.
+      btn.setAttribute('aria-label', `${title} (keyboard: ${key})`);
       btn.onclick = fn;
       const label = document.createElement('div');
       label.className = 'jv-review-key';
@@ -122,6 +137,9 @@ export class StatusBubble extends Widget {
   ) {
     const node = document.createElement('div');
     node.className = 'jv-status-bubble';
+    // Polite: a round's progress should not interrupt what is being read.
+    node.setAttribute('role', 'status');
+    node.setAttribute('aria-live', 'polite');
 
     // The main button is the whole top of the bubble and does the safe thing:
     // take me to the first edit. Reject-all is a small, separate, clearly
@@ -129,6 +147,7 @@ export class StatusBubble extends Widget {
     // that a click meaning "show me" could discard the round (docs/14 N3).
     const main = document.createElement('button');
     main.className = 'jv-bubble-main';
+    main.setAttribute('aria-label', 'Go to the first proposed edit');
     main.onclick = onJump;
 
     const hint = document.createElement('div');
@@ -140,6 +159,7 @@ export class StatusBubble extends Widget {
     const sub = document.createElement('button');
     sub.className = 'jv-bubble-sub';
     sub.textContent = 'reject all  ⌥⇧E';
+    sub.setAttribute('aria-label', 'Reject all proposed edits');
     sub.onclick = onRejectAll;
 
     node.append(main, hint, rule, sub);
@@ -157,6 +177,7 @@ export class StatusBubble extends Widget {
   private _onCancel: () => void;
 
   showGenerating(elapsedSeconds: number, context = ''): void {
+    this._sub.setAttribute('aria-label', 'Cancel this round');
     this._label.textContent = `⚡ thinking… ${elapsedSeconds}s`;
     // The context meter lives here rather than in its own widget: it is only
     // interesting while a request is being built, and this is where the user
@@ -171,6 +192,7 @@ export class StatusBubble extends Widget {
   }
 
   showPending(count: number, jumpKey = '⌥E'): void {
+    this._sub.setAttribute('aria-label', 'Reject all proposed edits');
     this._label.textContent = `⚡ ${count} edit${count === 1 ? '' : 's'} proposed`;
     this._hint.textContent = `click or ${jumpKey} to review`;
     this._sub.textContent = 'reject all  ⌥⇧E';
@@ -180,6 +202,7 @@ export class StatusBubble extends Widget {
 
   /** After a reject-all: the round is gone, but not irrecoverably. */
   showUndo(count: number, undoKey = '⌥⇧Z'): void {
+    this._sub.setAttribute('aria-label', 'Undo rejecting all proposed edits');
     this._label.textContent = `rejected ${count} edit${count === 1 ? '' : 's'}`;
     this._hint.textContent = '';
     this._sub.textContent = `undo  ${undoKey}`;

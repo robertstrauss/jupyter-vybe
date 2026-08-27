@@ -204,6 +204,7 @@ export function estimateTokens(
   return Math.ceil(text.length / (kind === 'code' ? 3.6 : 4.2));
 }
 
+const OMITTED = '<markdown omitted to fit the context window>';
 const IMPORT_RE = /^[ \t]*(?:import|from|require|library|using)\b/m;
 const SIGNATURE_RE =
   /^[ \t]*(?:async[ \t]+)?(?:def|class|function|const|let|var|import|from)\b.*$/gm;
@@ -236,8 +237,17 @@ export function truncate(
     return [];
   }
   const dropped: string[] = [];
-  const size = () => estimateTokens(JSON.stringify(cells));
-  if (size() <= budget) {
+
+  // Serialising the whole notebook after every cell touched is O(n^2), which
+  // on a 200-cell notebook is most of the M8 latency budget on its own. The
+  // total is tracked incrementally instead -- one cell changes at a time, so
+  // its own delta is all that moves -- and reconciled exactly at the end of
+  // each stage, so estimate drift cannot accumulate across stages.
+  const cellTokens = (cell: Record<string, any>) =>
+    estimateTokens(JSON.stringify(cell));
+  const exactSize = () => estimateTokens(JSON.stringify(cells));
+  let total = exactSize();
+  if (total <= budget) {
     return dropped;
   }
 
@@ -252,21 +262,33 @@ export function truncate(
     apply: (cell: Record<string, any>, index: number) => boolean
   ): boolean => {
     let touched = 0;
-    for (let i = 0; i < cells.length; i++) {
-      if (protectedCell(cells[i], i)) {
-        continue;
+    let pass = 0;
+    do {
+      pass = 0;
+      for (let i = 0; i < cells.length; i++) {
+        if (protectedCell(cells[i], i)) {
+          continue;
+        }
+        const before = cellTokens(cells[i]);
+        if (apply(cells[i], i)) {
+          pass++;
+          total += cellTokens(cells[i]) - before;
+        }
+        if (total <= budget) {
+          break;
+        }
       }
-      if (apply(cells[i], i)) {
-        touched++;
-      }
-      if (size() <= budget) {
-        break;
-      }
-    }
+      touched += pass;
+      // The running total is an estimate of an estimate; reconcile before
+      // deciding this stage is finished, and go round again if the true size
+      // is still over. `apply` is idempotent, so a second pass only touches
+      // cells the first one did not reach.
+      total = exactSize();
+    } while (pass > 0 && total > budget);
     if (touched) {
       dropped.push(`${label} (${touched} cell${touched === 1 ? '' : 's'})`);
     }
-    return size() <= budget;
+    return total <= budget;
   };
 
   const window = opts.cellWindow ?? 0;
@@ -307,10 +329,12 @@ export function truncate(
   }
   if (
     stage('markdown sources', c => {
-      if (c.cell_type !== 'markdown' || !c.source) {
+      // Idempotent: a stage may run a second pass, and re-omitting an already
+      // omitted cell would report progress forever.
+      if (c.cell_type !== 'markdown' || !c.source || c.source === OMITTED) {
         return false;
       }
-      c.source = '<markdown omitted to fit the context window>';
+      c.source = OMITTED;
       return true;
     })
   ) {

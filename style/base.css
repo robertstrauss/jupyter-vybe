@@ -227,7 +227,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .jv-inserted {
+  .jv-inserted,
+  .jv-history-flash {
     animation: none;
   }
 }
@@ -395,4 +396,30 @@
 
 .jv-settings-status.jv-bad {
   color: var(--jp-error-color1);
+}
+
+/* ---- accessibility ---- */
+
+/* Keyboard focus must be visible on the controls that decide what happens to
+   the user's code -- the whole review flow is keyboard-first by design. */
+.jv-review-button:focus-visible,
+.jv-bubble-main:focus-visible,
+.jv-bubble-sub:focus-visible,
+.jv-history-entry:focus-visible {
+  outline: 2px solid var(--jp-brand-color1);
+  outline-offset: 2px;
+}
+
+/* The +/- markers carry the same information as the colours, for anyone who
+   cannot use the colours. In a high-contrast setting they carry it alone. */
+@media (forced-colors: active) {
+  .jv-diff-add,
+  .jv-diff-del {
+    background: transparent;
+    border-left: 3px solid currentcolor;
+  }
+
+  .jv-review-button {
+    border: 2px solid currentcolor;
+  }
 }
