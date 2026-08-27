@@ -12,10 +12,26 @@ It boils down to having a **human in the loop** (with eyes on the actual code, *
 [HUMAN: example use screenshots]
 
 ## Overview
-Use AI coding tools in your jupyter notebooks in a seamless way: add a prompt cell with [prompt shortcut], and execute it to have an agent generate a few cells with the desired code or propose edits to other cells. Also adds advanced autocompletion proposal ([autocomplete shortcut], behavior adjustable in settings) not just filling in the rest of a method call with more intelligent search, but proposing the relevant variables to enter or other pre/post processing lines, or even proposing restructuring the autocompleted line.
+Use AI coding tools in your jupyter notebooks in a seamless way: start a code cell with `>`, write what you want in plain language, and run the cell (Shift+Enter) to have an agent generate a few cells with the desired code or propose edits to other cells.
+
+*Planned, not in this version:* advanced autocompletion proposal — not just filling in the rest of a method call, but proposing the relevant variables to enter, pre/post processing lines, or a restructuring of the autocompleted line. It is deliberately held back so the prompt-cell path could be got right first; see `docs/12-decisions.md` D5.
+
 Fully backwards-copmatible; this uses normal notebook files and doesn't add any new or strange properties. Collaborators can open the same notebook and see the same thing.
 
-[CLAUDE: table of contents]
+**Contents**
+
+- [Philosophy: Language Models as boilerplate compressors, not engineers](#philosophy-language-models-as-boilerplate-compressors-not-engineers)
+- [Usage](#usage)
+  - [Installation](#installation)
+  - [Inline Prompting](#inline-prompting)
+  - [Edit Proposal Reviewal](#edit-proposal-reviewal)
+  - [Prompt History](#prompt-history)
+  - [Settings](#settings)
+- [Agent Integration](#agent-integration)
+  - [Connect your own agent](#connect-your-own-agent)
+  - [Agent tools](#agent-tools)
+  - [Agent prompt](#agent-prompt)
+  - [Trigger](#trigger)
 
 # Philosophy: Language Models as boilerplate compressors, not engineers
 
@@ -30,7 +46,46 @@ By being completely modular and only generating fine-grained, self-contained cel
 ## Usage
 
 ### Installation
-[CLAUDE: Extension installation and enabling instructions]
+```bash
+pip install jupyter-vybe
+```
+
+That is the whole installation: the wheel carries both halves — the JupyterLab
+frontend and the Jupyter Server extension — and both enable themselves. Restart
+JupyterLab and confirm with:
+
+```bash
+jupyter labextension list   # jupyter-vybe v0.1.0 enabled OK
+jupyter server extension list   # jupyter_vybe enabled
+```
+
+You need **JupyterLab 4.4 or newer** and Python 3.9+.
+
+You also need a model for it to talk to. The default is
+[Ollama](https://ollama.com) running `qwen2.5-coder:7b` on the same machine:
+
+```bash
+ollama pull qwen2.5-coder:7b
+```
+
+Nothing else needs configuring — if Ollama is running, the extension finds it.
+For any other agent, see [Connect your own agent](#connect-your-own-agent).
+
+To disable temporarily without uninstalling, turn off the master switch in
+settings; the extension then hands every cell straight back to Jupyter.
+
+**From source**, for development:
+
+```bash
+pip install -e ".[dev]"
+jupyter labextension develop --overwrite .
+jlpm watch          # rebuilds the frontend on save
+```
+
+Note that a Python change needs the server restarted — an editable install does
+not hot-reload modules. `./scripts/dev.sh` starts a lab that prints the commit
+it is serving and refuses to start beside a stale one, which exists because
+several hours were once lost to testing against a server that predated the fix.
 
 ### Inline Prompting
 Once installed and enabled, the extension is triggered by adding a code cell and entering '>' followed by a natural language prompt for cells to generate below this prompt cell or edits to propose throughout the notebook. The prompt is evaluated through the agent by running this code cell ('>' MUST be the first charachter in the cell input to be used as a prompt cell. Any natural language (or even example code/psuedo code/markdown text can follow within the cell input and wil be fed to the agent). Once evaluated with Shift+Enter or Cmd+Enter, the prompt will be fed to the agent, which will insert cells below the prompt cell only, or propose edits to other cells. If proposals are made, a status indicator in the top-right shows how many and clicking it or pressing the shortcut will take you to the first one, which can be accepted or rejected with the keyboard or buttons, bringing you to the next, and the next, until all are resolved and you are brought back to the prompt cell where you started. You can reverse all edits and cancel at any time with Ctrl+C, or undo individual edit approvals with Cmd+Z and be brought back to the previous one you approved. Once back at the prompt, Cmd+Z will undo all agent-inserted cells and dismiss all proposed edits and place your cursor back in the prompt cell.
@@ -50,7 +105,11 @@ Clicking the icon in the right toolbar (below the settings and debugger icon) [H
 
 ### Settings
 
-The settings pane, [CLAUDE: describe where to access the extension settings pane], contains the following controls:
+The settings pane is at **Settings ▸ Settings Editor ▸ Jupyter Vybe** (the same
+place as every other JupyterLab extension's settings), or through the command
+palette with `Jupyter Vybe: Open Settings`. Every control is also editable as
+raw JSON through the Advanced JSON editor if you prefer. It contains the
+following controls:
 - Extension master switch: a switch enabling/disabling the extension
 - Agent selector: a dropdown menu selecting which agent executable to run (can be connected to local agents as well as remote agents [the remote agent executable should automatically log in])
 - Context persistence: a switch enabling persistent message history (the agent remembers your previous prompts VS every prompt is a single-shot with no memmory, just the notebook and your prompt)
