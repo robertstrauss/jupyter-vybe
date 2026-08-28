@@ -114,3 +114,45 @@ def test_adjacent_rename_follows_the_notebook(tmp_path):
 
     assert moved.path == new.path
     assert [e["text"] for e in moved.read() if e["kind"] == "prompt"] == ["kept"]
+
+
+def test_a_limited_read_does_not_parse_the_whole_file(store, monkeypatch):
+    """The pane asks for the last N entries; a long-lived notebook should not
+    cost a full parse to answer that."""
+    for i in range(500):
+        store.append({"kind": "prompt", "roundId": f"r{i}", "text": f"prompt {i}"})
+
+    parsed = []
+    real_iter = store._iter
+
+    def spy():
+        parsed.append(1)
+        yield from real_iter()
+
+    monkeypatch.setattr(store, "_iter", spy)
+
+    entries = store.read(limit=5)
+
+    assert [e["text"] for e in entries] == [f"prompt {i}" for i in range(495, 500)]
+    assert not parsed, "a limited read went through the whole file"
+
+
+def test_the_tail_read_survives_a_torn_last_line(store):
+    for i in range(20):
+        store.append({"kind": "prompt", "roundId": f"r{i}", "text": str(i)})
+    with store.path.open("a", encoding="utf-8") as fh:
+        fh.write('{"kind": "prompt", "text": "tru')
+
+    assert [e["text"] for e in store.read(limit=3)] == ["17", "18", "19"]
+
+
+def test_the_tail_never_returns_the_header_as_an_entry(store):
+    store.append({"kind": "prompt", "roundId": "r0", "text": "only one"})
+    entries = store.read(limit=50)
+    assert [e["kind"] for e in entries] == ["prompt"]
+
+
+def test_limited_and_unlimited_reads_agree(store):
+    for i in range(30):
+        store.append({"kind": "prompt", "roundId": f"r{i}", "text": str(i)})
+    assert store.read(limit=10) == store.read()[-10:]

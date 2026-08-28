@@ -87,9 +87,49 @@ class HistoryStore:
         return record
 
     def read(self, limit: int | None = None) -> list[dict[str, Any]]:
-        """Entries oldest first, header excluded. Bad lines are skipped."""
-        entries = [e for e in self._iter() if e.get("kind") != "header"]
-        return entries[-limit:] if limit else entries
+        """Entries oldest first, header excluded. Bad lines are skipped.
+
+        With a limit, only the tail of the file is read. The pane asks for the
+        last couple of hundred entries; a notebook worked on for months should
+        not cost a full parse of its whole history to answer that.
+        """
+        if limit:
+            return [
+                e for e in self._tail(limit) if e.get("kind") not in ("header", None)
+            ][-limit:]
+        return [e for e in self._iter() if e.get("kind") != "header"]
+
+    def _tail(self, limit: int) -> list[dict[str, Any]]:
+        """The last `limit` parseable entries, read backwards from the end."""
+        if not self.path.exists():
+            return []
+        # Entries are a few hundred bytes; 4 KB a piece is generous and keeps
+        # the common case to a single seek.
+        block = 4096
+        with self.path.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            data = b""
+            while size > 0 and data.count(b"\n") <= limit:
+                step = min(block, size)
+                size -= step
+                fh.seek(size)
+                data = fh.read(step) + data
+                block *= 2
+        lines = data.split(b"\n")
+        if size > 0:
+            # The first line is probably cut in half by where we started.
+            lines = lines[1:]
+        out: list[dict[str, Any]] = []
+        for raw in lines:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                out.append(json.loads(raw))
+            except json.JSONDecodeError:
+                continue
+        return out
 
     def header(self) -> dict[str, Any] | None:
         for entry in self._iter():

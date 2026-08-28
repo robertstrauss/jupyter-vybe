@@ -32,12 +32,22 @@ badge (`accepted` green / `rejected` red / `stale` grey).
 
 ## Rendering
 
-Each insertion and proposal renders as a real CodeMirror 6 read-only editor with the notebook's
-language mode, not a `<pre>`. Proposals reuse exactly the decoration extension from
-[03](03-diff-ui.md), so a diff looks identical in the pane and in the notebook. Editors are
-**virtualised** — only entries within the viewport (plus a small overscan) mount a CM6 instance;
-others render a cheap measured placeholder. Without this, a long session of 200 entries would
-mount hundreds of editors and stall the tab.
+**Built differently from this spec, deliberately.** Insertions render as a `<pre>` and proposals
+through the same differ the review UI uses, so a diff does look identical in both places. What
+they are *not* is CodeMirror instances.
+
+The spec called for real CM6 editors, and then for virtualisation to survive them — but
+virtualisation is only needed because editors are expensive. A `<pre>` costs nothing, so a
+two-hundred-entry pane is fast with no viewport machinery, no measured placeholders, and no
+scroll-position bugs. What is lost is syntax colour in the pane; what is gained is the whole
+subsystem that existed to make the colour affordable.
+
+If colour turns out to matter, the cheap version is a static highlighter over the text, not a
+mounted editor per entry.
+
+Reading is bounded rather than virtualised: `history.maxEntries` becomes a `limit` on the read,
+and the store seeks backwards from the end of the file to answer it, so a notebook worked on for
+months does not cost a full parse to show its last two hundred entries.
 
 Each entry carries a label naming its origin: `insertion → below cell 12` or
 `proposal → cell 7 (id a3f9…)`, so an entry is traceable back to a position even after the
