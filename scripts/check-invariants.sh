@@ -42,6 +42,50 @@ else
   echo "pass  T-SCHEMA: schema/$schema_name matches plugin id $plugin_id"
 fi
 
+# T-SETTINGS: every settings group the frontend reads must exist in the
+# schema. An accessor reading a group that is not there does not fail -- it
+# returns the hard-coded default forever, which is the same silent-no-op class
+# as the schema file that was named for the wrong plugin (docs/13 R14).
+groups=$(grep -oE "this\.group<[^>]*>\('[a-zA-Z]+'\)" src/plugins/settings.ts \
+  | grep -oE "'[a-zA-Z]+'" | tr -d "'" | sort -u)
+missing=""
+for group in $groups; do
+  if ! grep -q "\"$group\": {" schema/settings.json; then
+    missing="$missing $group"
+  fi
+done
+if [ -n "$missing" ]; then
+  echo "FAIL T-SETTINGS: settings.ts reads groups absent from the schema:$missing"
+  echo "      those accessors silently return their defaults forever"
+  fail=1
+else
+  echo "pass  T-SETTINGS: every settings group read is declared in the schema"
+fi
+
+# T-FRAMES: every frame op the server emits must be handled by the frontend.
+# An unhandled op is a round that produces nothing and says nothing -- twice
+# now (protocolError, resync), so it is a gate rather than a habit.
+emitted=$(grep -ohE '"op": "[a-zA-Z]+"' jupyter_vybe/*.py \
+  | grep -oE '"[a-zA-Z]+"$' | tr -d '"' | sort -u)
+unhandled=""
+for op in $emitted; do
+  case "$op" in
+    # Handled by the transport rather than the round: status drives the
+    # connection state, done ends the stream, tool results round-trip.
+    status|done) continue ;;
+  esac
+  if ! grep -q "'$op'" src/plugins/rounds.ts src/plugins/agentClient.ts; then
+    unhandled="$unhandled $op"
+  fi
+done
+if [ -n "$unhandled" ]; then
+  echo "FAIL T-FRAMES: the server emits ops the frontend ignores:$unhandled"
+  echo "      an ignored op is a round that does nothing and says nothing"
+  fail=1
+else
+  echo "pass  T-FRAMES: every emitted frame op is handled"
+fi
+
 # T-MUTATE: only mutations.ts may write to the notebook model.
 offenders=$(grep -rlE 'sharedModel\.(insertCell|deleteCell|setSource)' src/ 2>/dev/null \
   | grep -v 'src/notebook/mutations.ts' || true)
