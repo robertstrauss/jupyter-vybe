@@ -130,7 +130,16 @@ class AgentSession:
         # A full snapshot every RESYNC_EVERY turns bounds drift from
         # accumulated small errors in the diff path (docs/09).
         periodic = self.turns > 0 and self.turns % RESYNC_EVERY == 0
-        force_full = first_turn or periodic or msg.get("forceFull", False)
+        # The sequence check docs/09 promised and nothing implemented: a diff
+        # is only meaningful against the snapshot it was computed from. If the
+        # client's counter skipped -- server restarted, session evicted,
+        # notebook reopened -- the picture here is stale, and diffing against
+        # it would desynchronise the agent silently, which is R4 exactly.
+        # Sending everything is cheaper than being subtly wrong.
+        out_of_order = not first_turn and seq != self.snapshot_seq + 1
+        force_full = first_turn or periodic or out_of_order or msg.get("forceFull", False)
+        if out_of_order:
+            _record("resync", expected=self.snapshot_seq + 1, got=seq)
         if force_full and msg.get("snapshot") is None:
             yield {"op": "resync"}
             return

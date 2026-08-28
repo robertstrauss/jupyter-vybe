@@ -232,12 +232,12 @@ were sent by the session and **not handled by the frontend at all**. The round p
 no message, and no clue: exactly the "nothing happened" the extension is meant never to do, and
 the same shape as the settings schema that silently did not load.
 
-*Fixed:* protocol errors and agent errors both surface twice over — in the status bubble while it
+_Fixed:_ protocol errors and agent errors both surface twice over — in the status bubble while it
 is happening, and in the settled markdown cell where the prompt ends up, so it survives dismissal.
 Two Galata tests cover it: a model aimed at a cell that does not exist, and an agent that exits
 non-zero.
 
-*The general lesson, which this project keeps relearning:* the dangerous failures here are not
+_The general lesson, which this project keeps relearning:_ the dangerous failures here are not
 crashes. They are paths that quietly do nothing — a stale server, a schema keyed to the wrong
 name, a keybinding whose selector matches nothing, a frame nobody handles.
 

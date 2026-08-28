@@ -249,6 +249,25 @@ export class Rounds implements IVybeRounds {
         console.info(
           `[jupyter-vybe] assembled prompt for round ${round.id}:\n${frame.prompt}`
         );
+      } else if (frame.op === 'salvaged') {
+        // The model answered with a fenced code block instead of tool tags and
+        // the server recovered cells from it. Say so: the cells are real, but
+        // the user should know they came from a reply the protocol did not
+        // fit, because that is when to check them harder (docs/13 R2).
+        this._emitProblem(
+          round,
+          `the agent replied without tool tags; ${frame.count ?? 0} cell(s) ` +
+            'were recovered from a code block',
+          'notice'
+        );
+      } else if (frame.op === 'resync') {
+        // The server has lost its picture of this notebook and wants
+        // everything again. Unhandled, this frame ended the round in silence.
+        round.problems.push('resync');
+        this._emitProblem(
+          round,
+          'the agent lost track of the notebook; run the prompt again to resend it'
+        );
       } else if (frame.op === 'error' || frame.op === 'protocolError') {
         // protocolError was previously unhandled, which meant the commonest
         // recoverable failure -- the model naming a cell that does not exist
@@ -268,7 +287,11 @@ export class Rounds implements IVybeRounds {
     this._settle(round, cell);
   }
 
-  private _emitProblem(round: Round, message: string): void {
+  private _emitProblem(
+    round: Round,
+    message: string,
+    severity: 'problem' | 'notice' = 'problem'
+  ): void {
     this._statusChanged.emit({
       panel: round.panel,
       phase: 'problem',
@@ -276,7 +299,8 @@ export class Rounds implements IVybeRounds {
       contextTokens: 0,
       budgetTokens: 0,
       dropped: [],
-      message
+      message,
+      severity
     });
   }
 

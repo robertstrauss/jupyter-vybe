@@ -208,8 +208,13 @@ export class StatusBubble extends Widget {
    * is a round that produces nothing and says nothing, which reads as the
    * extension being broken.
    */
-  showProblem(message: string, onDismiss: () => void = () => undefined): void {
-    this._label.textContent = '⚠ the agent hit a problem';
+  showProblem(
+    message: string,
+    onDismiss: () => void = () => undefined,
+    severity: 'problem' | 'notice' = 'problem'
+  ): void {
+    this._label.textContent =
+      severity === 'problem' ? '⚠ the agent hit a problem' : '⚡ worth knowing';
     this._hint.textContent = message.slice(0, 140);
     this._sub.textContent = 'dismiss';
     this._sub.onclick = () => {
@@ -217,7 +222,8 @@ export class StatusBubble extends Widget {
       this.hide();
     };
     this.node.classList.remove('jv-generating', 'jv-undo');
-    this.node.classList.add('jv-problem');
+    this.node.classList.toggle('jv-problem', severity === 'problem');
+    this.node.classList.toggle('jv-notice', severity === 'notice');
   }
 
   /** After a reject-all: the round is gone, but not irrecoverably. */

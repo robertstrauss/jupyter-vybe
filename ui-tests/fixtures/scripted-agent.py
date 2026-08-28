@@ -21,6 +21,14 @@ if "aim at a cell that is not there" in prompt:
     print('<vybe:propose_edit cell="99" note="nowhere">')
     print("x = 1")
     print("</vybe:propose_edit>")
+elif "answer without tags" in prompt:
+    # No tool tags at all: the server salvages cells from the fence, and the
+    # user should be told that is what happened (docs/13 R2).
+    print("Here you go:")
+    print("```python")
+    print("def salvaged():")
+    print("    return 1")
+    print("```")
 elif "make the agent fail" in prompt:
     sys.stderr.write("the agent fell over\n")
     raise SystemExit(3)

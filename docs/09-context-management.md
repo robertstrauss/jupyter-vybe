@@ -108,9 +108,14 @@ Line-level `+`/`-` hunks for edits (three lines of context), whole source for ad
 for removals. Execution changes are reported separately from source changes because a cell that
 merely _ran_ is a different signal from a cell that _changed_.
 
-The client sends a monotonically increasing `snapshotSeq`; on mismatch (server restarted, session
-evicted, notebook reopened) the server replies `resync` and the client sends a full snapshot. So
-the diff path can never silently desynchronise the agent's picture of the notebook — the single
+The client sends a monotonically increasing `snapshotSeq`. **Built, and simpler than the round
+trip originally specified**: on a mismatch (server restarted, session evicted, notebook reopened)
+the server sends the _full_ notebook for that turn instead of asking for it and waiting. A
+resend costs one oversized prompt; being subtly wrong about the notebook costs an edit to the
+wrong cell. `resync` remains in the protocol for the case where the client sent no snapshot at
+all, and the frontend now handles it rather than ending the round in silence.
+
+So the diff path cannot silently desynchronise the agent's picture of the notebook — the single
 most dangerous failure mode of incremental context.
 
 A full snapshot is also forced every `VYBE_RESYNC_EVERY` turns (default 10), which bounds drift

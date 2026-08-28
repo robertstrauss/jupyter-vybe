@@ -474,3 +474,12 @@
 .jv-status-bubble.jv-problem .jv-bubble-main {
   color: var(--jp-error-color1);
 }
+
+/* A notice is information the user should have, not a failure to fix. */
+.jv-status-bubble.jv-notice {
+  border-color: var(--jp-warn-color1);
+}
+
+.jv-status-bubble.jv-notice .jv-bubble-main {
+  color: var(--jp-warn-color1);
+}

@@ -275,3 +275,25 @@ test('an agent that falls over says so', async ({ page }) => {
     .poll(async () => (await cells(page))[0].source)
     .toContain('fell over');
 });
+
+test('a reply without tool tags is recovered, and the user is told', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', '> answer without tags');
+
+  await page.notebook.runCell(0);
+
+  // The cells arrive -- salvage is what makes a model that will not use the
+  // protocol usable at all (docs/13 R2)...
+  await expect
+    .poll(async () => (await cells(page)).map(c => c.source).join('\n'), {
+      timeout: 60000
+    })
+    .toContain('def salvaged()');
+  // ...but the user is told, because that is when to check the output harder.
+  const bubble = page.locator('.jv-status-bubble.jv-notice');
+  await expect(bubble).toBeVisible();
+  await expect(bubble).toContainText('without tool tags');
+});

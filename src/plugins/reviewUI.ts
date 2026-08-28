@@ -164,8 +164,10 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       if (status.phase === 'problem') {
         showingProblem.add(status.panel.id);
         bubble.show();
-        bubble.showProblem(status.message ?? 'unknown error', () =>
-          showingProblem.delete(status.panel.id)
+        bubble.showProblem(
+          status.message ?? 'unknown error',
+          () => showingProblem.delete(status.panel.id),
+          status.severity ?? 'problem'
         );
       } else if (status.phase === 'generating') {
         // A new round supersedes the last one's complaint.

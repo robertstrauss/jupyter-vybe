@@ -54,6 +54,8 @@ export interface IRoundStatus {
   dropped: string[];
   /** Set on 'problem': what went wrong, in the words the user should see. */
   message?: string;
+  /** 'notice' is information the user should have, not a failure. */
+  severity?: 'problem' | 'notice';
 }
 
 /** The round state machine; the cell executor hands prompt cells to it. */

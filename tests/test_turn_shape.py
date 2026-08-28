@@ -143,3 +143,34 @@ def test_the_conversation_is_what_makes_the_short_form_safe():
     _turn(session, "now edit it", 1)
     assert "## How you modify the notebook" in session.messages[0].content
     assert session.messages[0].role == "user"
+
+
+def test_an_out_of_order_snapshot_forces_a_full_one():
+    """docs/09's sequence check, which nothing implemented until now.
+
+    A diff is only meaningful against the snapshot it was computed from. If
+    the client's counter skips -- server restarted, session evicted, notebook
+    reopened -- diffing against a stale picture desynchronises the agent
+    silently, which is R4 exactly. Sending everything is cheaper than being
+    subtly wrong.
+    """
+    adapter = Scripted()
+    session = _session(adapter)
+    _turn(session, "first", 0)
+    _turn(session, "second", 1)
+    assert "## How you modify the notebook" not in adapter.prompts[1]
+
+    # A skipped sequence number: the client is somewhere we have not seen.
+    _turn(session, "third", 7)
+
+    assert "## How you modify the notebook" in adapter.prompts[2]
+
+
+def test_the_sequence_continues_normally_after_a_resync():
+    adapter = Scripted()
+    session = _session(adapter)
+    _turn(session, "first", 0)
+    _turn(session, "jumped", 5)
+    # Having resynced at 5, 6 follows it and is a diff turn again.
+    _turn(session, "next", 6)
+    assert "## How you modify the notebook" not in adapter.prompts[2]
