@@ -157,6 +157,17 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
 
     app.commands.addCommand(CommandIDs.undo, {
       label: 'Undo the last review verdict',
+      // Registered for any notebook in command mode, not only a live round:
+      // the last verdict of a round *ends* that round, and undoing it is
+      // precisely when the user reaches for Cmd+Z. Lumino skips a disabled
+      // command and falls through to core undo, so the notebook's own history
+      // is untouched whenever we have nothing to take back.
+      isEnabled: () => {
+        const panel = current();
+        return (
+          !!panel && (proposals.canUndo(panel) || rounds.hasActiveRound(panel))
+        );
+      },
       execute: () => {
         const panel = current();
         if (!panel) {
@@ -219,9 +230,9 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
     bind(CommandIDs.gotoFirst, ['Alt E'], ROUND_SELECTOR);
     bind(CommandIDs.rejectAll, ['Alt Shift E'], ROUND_SELECTOR);
     bind(CommandIDs.cancel, ['Ctrl C'], ROUND_SELECTOR);
-    // More specific than core's notebook-wide Cmd+Z, and registered later, so
-    // Lumino resolves to ours while a round is live and to core's otherwise.
-    bind(CommandIDs.undo, ['Accel Z'], ROUND_SELECTOR);
+    // Same specificity as core's binding but registered later, so ours wins
+    // when it is enabled and yields to core's when it is not.
+    bind(CommandIDs.undo, ['Accel Z'], '.jp-Notebook.jp-mod-commandMode');
     // Not scoped to ROUND_SELECTOR: after a reject-all the round is over, so
     // the class that selector matches is already gone.
     bind(

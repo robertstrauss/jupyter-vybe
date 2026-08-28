@@ -240,3 +240,115 @@ describe('round-scoped undo (docs/02 layer 2)', () => {
     expect(proposals.pendingCount(panel)).toBe(1);
   });
 });
+
+describe('canUndo (which decides whether Cmd+Z is ours or core Jupyter\'s)', () => {
+  const panel = () =>
+    ({
+      id: 'panel-1',
+      context: { path: 'nb.ipynb' },
+      node: { classList: { add: () => undefined, remove: () => undefined } },
+      content: {
+        node: {
+          classList: { add: () => undefined, remove: () => undefined },
+          focus: () => undefined
+        },
+        activeCellIndex: 0,
+        mode: 'command',
+        widgets: [{ model: { type: 'code' }, node: { scrollIntoView: () => undefined } }],
+        model: {
+          cells: {
+            length: 1,
+            get: () => ({
+              id: 'c1',
+              type: 'code',
+              sharedModel: {
+                getSource: () => 'a = 1\n',
+                setSource: () => undefined
+              }
+            })
+          },
+          sharedModel: { transact: (fn: () => void) => fn() }
+        }
+      }
+    }) as any;
+
+  it('is false with nothing staged, so core undo keeps working', () => {
+    expect(new Proposals().canUndo(panel())).toBe(false);
+  });
+
+  it('is false while a proposal is still pending', () => {
+    const proposals = new Proposals();
+    const p = panel();
+    proposals.stage(p, 'r1', { cellId: 'c1', after: 'a = 2\n', prefix: '#%' });
+    proposals.beginReview(p, handle(() => undefined));
+    expect(proposals.canUndo(p)).toBe(false);
+  });
+
+  it('is true once a verdict has been given, including the last one', () => {
+    const proposals = new Proposals();
+    const p = panel();
+    proposals.stage(p, 'r1', { cellId: 'c1', after: 'a = 2\n', prefix: '#%' });
+    proposals.beginReview(p, handle(() => undefined));
+    proposals.reject(p, proposals.list(p)[0].id);
+    // The round is over -- which is exactly when a user reaches for Cmd+Z.
+    expect(proposals.canUndo(p)).toBe(true);
+  });
+
+  it('goes false again once that verdict has been taken back', () => {
+    const proposals = new Proposals();
+    const p = panel();
+    proposals.stage(p, 'r1', { cellId: 'c1', after: 'a = 2\n', prefix: '#%' });
+    proposals.beginReview(p, handle(() => undefined));
+    proposals.reject(p, proposals.list(p)[0].id);
+    proposals.undoLast(p);
+    expect(proposals.canUndo(p)).toBe(false);
+  });
+});
+
+describe('undoing the verdict that ended the round', () => {
+  it('restores the cell, not just the diff', () => {
+    // The last accept of a round ends the round, which used to take the round
+    // handle with it -- so the proposal came back for review while the cell
+    // stayed changed. Worse than not undoing at all.
+    const proposals = new Proposals();
+    const cells = [{ id: 'c1', type: 'code', source: 'a = 1\n' }];
+    const models = cells.map(c => ({
+      id: c.id,
+      type: c.type,
+      sharedModel: {
+        getSource: () => c.source,
+        setSource: (s: string) => {
+          c.source = s;
+        }
+      }
+    }));
+    const panel: any = {
+      id: 'panel-1',
+      context: { path: 'nb.ipynb' },
+      node: { classList: { add: () => undefined, remove: () => undefined } },
+      content: {
+        node: {
+          classList: { add: () => undefined, remove: () => undefined },
+          focus: () => undefined
+        },
+        activeCellIndex: 0,
+        mode: 'command',
+        widgets: [{ model: { type: 'code' }, node: { scrollIntoView: () => undefined } }],
+        model: {
+          cells: { length: models.length, get: (i: number) => models[i] },
+          sharedModel: { transact: (fn: () => void) => fn() }
+        }
+      }
+    };
+
+    proposals.stage(panel, 'r1', { cellId: 'c1', after: 'a = 2\n', prefix: '#%' });
+    proposals.beginReview(panel, handle(() => undefined));
+    proposals.accept(panel, proposals.list(panel)[0].id);
+    expect(cells[0].source).toBe('a = 2\n');
+
+    expect(proposals.undoLast(panel)).toBe(true);
+
+    expect(cells[0].source).toBe('a = 1\n');
+    expect(proposals.pendingCount(panel)).toBe(1);
+  });
+});

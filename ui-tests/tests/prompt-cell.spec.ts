@@ -33,12 +33,20 @@ test.use({
     ...galata.DEFAULT_SETTINGS,
     [PLUGIN]: {
       agent: { id: 'command', command: SCRIPTED_AGENT },
-      // Off: an e2e run should not write to the developer's home directory.
-      history: { persist: false }
+      // The record is written beside the notebook, which for these tests is a
+      // Galata temp directory -- so nothing lands in the developer's home.
+      history: { persist: true, location: 'adjacent' }
     }
   }
 });
 
+
+// Each test gets a clean shell. Left open, a previous test's notebook stays in
+// a tab and `currentWidget` can point at it -- which showed up as one test
+// timing out in a full run while passing on its own.
+test.afterEach(async ({ page }) => {
+  await page.notebook.close(true).catch(() => undefined);
+});
 
 /**
  * Read the notebook *model* rather than the rendered DOM. Cell text scraped
@@ -138,4 +146,92 @@ test('rejecting leaves the notebook exactly as it was', async ({ page }) => {
 
   await expect(page.locator('.jv-diff-overlay')).toBeHidden();
   expect((await cells(page))[0].source).toBe('value = 1');
+});
+
+test('Cmd+Z during review takes back the verdict, not the whole round', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> double the value above');
+
+  await page.notebook.runCell(1);
+  await expect(page.locator('.jv-diff-overlay')).toBeVisible({
+    timeout: 60000
+  });
+  await page.keyboard.press('y');
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toContain('value = 2');
+
+  // Undo layer 2 (docs/02): the accept comes back, cell and diff with it.
+  // ControlOrMeta, because the binding is Accel -- Cmd on macOS, Ctrl elsewhere
+  // -- and a test that hard-codes one passes on one platform only.
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.locator('.jv-diff-overlay')).toBeVisible();
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toBe('value = 1');
+});
+
+test('the status bubble counts what is waiting, and jumps rather than rejects', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> double the value above');
+
+  await page.notebook.runCell(1);
+  const bubble = page.locator('.jv-status-bubble');
+  await expect(bubble).toBeVisible({ timeout: 60000 });
+  await expect(bubble.locator('.jv-bubble-main')).toContainText('1 edit');
+
+  // Clicking the main button must take you there, never discard the round --
+  // the two used to sit close enough to confuse (docs/14 N3).
+  await bubble.locator('.jv-bubble-main').click();
+  await expect(page.locator('.jv-diff-overlay')).toBeVisible();
+  expect((await cells(page))[0].source).toBe('value = 1');
+});
+
+test('the history pane holds the prompt after its cell is deleted', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', '> add a doubling function');
+  await page.notebook.runCell(0);
+  await expect
+    .poll(async () => (await cells(page)).length, { timeout: 60000 })
+    .toBeGreaterThan(1);
+
+  // Delete the settled prompt cell: the rendering goes, the record does not.
+  await page.evaluate(() => {
+    const app = (window as any).jupyterapp;
+    const panel: any = app.shell.currentWidget;
+    panel.content.activeCellIndex = 0;
+    panel.content.model.sharedModel.deleteCell(0);
+  });
+  expect(
+    (await cells(page)).some(c => c.source.includes('add a doubling function'))
+  ).toBe(false);
+
+  const record = await page.evaluate(async () => {
+    const app = (window as any).jupyterapp;
+    const path = app.shell.currentWidget.context.path;
+    const base = document.body.dataset.baseUrl ?? '/';
+    const response = await fetch(
+      // location=adjacent, to match the setting these tests run with: the
+      // server looks where it is told, not where it guesses.
+      `${base}jupyter-vybe/history?location=adjacent&path=${encodeURIComponent(path)}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return await response.json();
+  });
+  expect(
+    record.entries.some(
+      (e: any) => e.kind === 'prompt' && e.text.includes('add a doubling')
+    )
+  ).toBe(true);
 });

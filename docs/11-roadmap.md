@@ -128,11 +128,16 @@ the settings schema in place.
 
 ## Deferred to v1.1
 
-**The `jupyter-vybe-local` sidecar** ([12](12-decisions.md) D2) — `python -m jupyter_vybe.local`,
-a ~150-line transport around the identical adapter package, letting the browser reach a model and
-a `claude -p` login on the user's own machine while Jupyter runs elsewhere. ~3 days. Moves into
-v1.0 if the split laptop/cluster setup turns out to be the primary workflow rather than a
-secondary one.
+**The `jupyter-vybe-local` sidecar** ([12](12-decisions.md) D2) — **built**, ahead of schedule,
+because the v1.0 work that preceded it (host-agnostic adapters, one WebSocket protocol) had
+already done the hard part. `jupyter-vybe-local` is transport and nothing else: a stdlib
+WebSocket server around the same `AgentSession` the server extension uses, plus the
+`Access-Control-Allow-Private-Network` header that is the entire reason a browser can reach it
+where it cannot reach Ollama.
+
+Verified against a live model end to end — handshake, hello, prompt, `add_cell`, done — and by
+eight tests that drive it through a real socket with real RFC 6455 frames, because a sidecar that
+only works when tested through a mock is a sidecar that does not work.
 
 **Advanced inline autocompletion** ([00](00-overview.md), [12](12-decisions.md) D5) as an
 `ICompletionProviderManager` provider using FIM prompting — `README_turbofieldfare.md` documents

@@ -56,6 +56,7 @@ export interface IVybeProposals {
   reject(panel: NotebookPanel, proposalId: string): void;
   rejectAll(panel: NotebookPanel): void;
   undoLast(panel: NotebookPanel): boolean;
+  canUndo(panel: NotebookPanel): boolean;
   undoRejectAll(panel: NotebookPanel): boolean;
   undoableRejection(panel: NotebookPanel): number;
   activeProposal(panel: NotebookPanel): IProposal | null;
@@ -77,6 +78,13 @@ export class Proposals implements IVybeProposals {
   private _undo = new Map<string, { ids: string[]; round: IRoundHandle }>();
   /** Verdicts in the order they were given, for round-scoped undo (docs/02). */
   private _resolved = new Map<string, string[]>();
+  /**
+   * The round that just ended, kept so its log survives long enough to undo
+   * the verdict that ended it. Without this the *last* accept of a round could
+   * be re-staged but not un-applied: the diff came back while the cell stayed
+   * changed, which is worse than not undoing at all.
+   */
+  private _lastRound = new Map<string, IRoundHandle>();
   private _changed = new Signal<this, NotebookPanel>(this);
 
   get changed() {
@@ -237,7 +245,10 @@ export class Proposals implements IVybeProposals {
     if (!p || p.state === 'pending') {
       return false;
     }
-    const round = this._undo.get(panel.id)?.round ?? this._rounds.get(panel.id);
+    const round =
+      this._undo.get(panel.id)?.round ??
+      this._rounds.get(panel.id) ??
+      this._lastRound.get(panel.id);
     if (p.state === 'accepted' && round) {
       // Put the cell back the way it was. Recorded as an edit of its own, so
       // a later revertRound still unwinds cleanly.
@@ -261,6 +272,21 @@ export class Proposals implements IVybeProposals {
       });
     }
     return true;
+  }
+
+  /**
+   * Whether a verdict is still takeable back. Used to decide whether Cmd+Z
+   * belongs to us or to the notebook: the binding is registered for any
+   * notebook in command mode, and when this returns false Lumino skips the
+   * disabled command and core undo runs instead.
+   */
+  canUndo(panel: NotebookPanel): boolean {
+    const order = this._resolved.get(panel.id) ?? [];
+    if (!order.length) {
+      return false;
+    }
+    const last = this.list(panel).find(p => p.id === order[order.length - 1]);
+    return !!last && last.state !== 'pending';
   }
 
   private _pushResolved(panel: NotebookPanel, p: IProposal): void {
@@ -314,6 +340,7 @@ export class Proposals implements IVybeProposals {
     this._byPanel.set(panel.id, keep);
     this._undo.delete(panel.id);
     this._resolved.delete(panel.id);
+    this._lastRound.delete(panel.id);
     const round = this._rounds.get(panel.id);
     if (round && (roundId === undefined || round.id === roundId)) {
       // Cleared, not reviewed: the caller (a cancel) finishes the round
@@ -358,6 +385,10 @@ export class Proposals implements IVybeProposals {
       widget?.node.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     if (!next) {
+      const ending = this._rounds.get(panel.id);
+      if (ending) {
+        this._lastRound.set(panel.id, ending);
+      }
       this._rounds.delete(panel.id);
       // Ownership of the round -- the marker class included -- belongs to
       // Rounds, not here.

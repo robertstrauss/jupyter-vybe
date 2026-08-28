@@ -16,7 +16,10 @@ export class DiffOverlay extends Widget {
     const root = document.createElement('div');
     // Announced as a group, not as 30 unrelated lines of text.
     root.setAttribute('role', 'region');
-    root.setAttribute('aria-label', note ? `Proposed edit: ${note}` : 'Proposed edit');
+    root.setAttribute(
+      'aria-label',
+      note ? `Proposed edit: ${note}` : 'Proposed edit'
+    );
     if (note) {
       const n = document.createElement('div');
       n.className = 'jv-diff-note';

@@ -164,7 +164,10 @@ class HistoryPane extends Widget {
       el.appendChild(DiffOverlay.build(diffLines(before, after)));
       el.tabIndex = 0;
       el.setAttribute('role', 'button');
-      el.setAttribute('aria-label', `Copy the new source of ${String(entry.cellLabel || entry.cellId)}`);
+      el.setAttribute(
+        'aria-label',
+        `Copy the new source of ${String(entry.cellLabel || entry.cellId)}`
+      );
       el.onkeydown = event => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();

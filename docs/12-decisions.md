@@ -72,7 +72,7 @@ The `Adapter` protocol is host-agnostic; only its transport changes.
 |---|---|---|
 | **`server`** *(default)* | Adapter runs in the Jupyter server extension, as originally designed. | Laptop-only setups: Jupyter and model on the same machine. |
 | **`server` + reverse tunnel** *(recommended for your cluster case)* | `ssh -R 11434:127.0.0.1:11434 cluster`. The cluster-side adapter dials `127.0.0.1:11434` and reaches **your laptop's** Ollama. Zero extension code — pure config. | HTTP backends: Ollama, TurboFieldfare server, any OpenAI-compatible endpoint. |
-| **`client` sidecar** *(v1.1)* | `pipx run jupyter-vybe-local` on the MacBook: the **same** `jupyter_vybe.adapters` package behind a tiny local HTTP/WS server. The browser — which is already on your laptop — talks to it directly. | Everything, including `claude -p` with your local login and CLI binaries. |
+| **`client` sidecar** *(built)* | `jupyter-vybe-local` on the MacBook: the **same** `jupyter_vybe.adapters` package behind a tiny local HTTP/WS server. The browser — which is already on your laptop — talks to it directly. | Everything, including `claude -p` with your local login and CLI binaries. |
 | ~~`client` browser-direct~~ | Browser fetches `http://127.0.0.1:11434` itself. | **Not viable** — see below. |
 
 **Why browser-direct is out.** Chrome's Private Network Access / Local Network Access enforcement
@@ -92,6 +92,13 @@ already speaks one WebSocket protocol; it just points at a different URL.
 supported configuration** (it is one `ssh -R` flag and it solves your case today), and build the
 sidecar in v1.1. `agent.host` is in the settings schema from day one so the switch is config, not
 a migration.
+
+**Outcome.** Both exist. The tunnel is documented with the three failure modes that actually
+happen ([06](06-agent-integration.md)), and the sidecar turned out to be far cheaper than the
+~3 days estimated — the estimate assumed writing a transport, but the constraint that kept
+adapters free of Tornado (gate D2) meant there was nothing to port. What it cost instead was a
+stdlib WebSocket implementation, which is ~60 lines of framing and was worth it to keep the
+laptop-side install dependency-free.
 
 **Tell me if** the cluster case is your *primary* workflow rather than a secondary one — if it
 is, the sidecar moves into v1.0 and costs about three days, and the tunnel becomes the fallback

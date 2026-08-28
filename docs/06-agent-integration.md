@@ -50,8 +50,23 @@ Three things go wrong often enough to name:
 - **`claude -p` cannot be tunnelled.** It needs the credentials on the machine it runs on, so a
   split setup wanting the `command` adapter needs the v1.1 sidecar, not a tunnel.
 
-The v1.1 answer is the **sidecar**: `python -m jupyter_vybe.local` on the laptop, a ~150-line
-transport around the identical adapter package, which the browser talks to directly. It covers
+The v1.1 answer is the **sidecar**, and it is **built**: `jupyter-vybe-local` (or
+`python -m jupyter_vybe.local`) on the laptop, a transport around the identical adapter package,
+which the browser talks to directly.
+
+```bash
+pipx run --spec jupyter-vybe jupyter-vybe-local          # on the laptop
+# then in JupyterLab settings: agent.host = client
+```
+
+Standard library only — no Tornado, no jupyter_server, not even a WebSocket library — because
+anything you must install on a second machine before the tool works is friction the tool pays
+for. It serves `/health`, `/agents`, and `/ws`, speaking exactly the protocol `handlers.py`
+speaks, so `agentClient.ts` needs nothing but a different URL.
+
+`--allow-origin https://your-jupyter.example.org` restricts it to one JupyterLab origin. It binds
+loopback by default; `--host` will bind wider, which exposes your model *and any command adapter
+you have configured* to the network, so do that only behind something that authenticates. It covers
 what a tunnel cannot — `claude -p` and CLI binaries need to run where the user's credentials
 live. It also sets the `Access-Control-Allow-Private-Network` header that browsers now require
 for a page to reach localhost, which is why the browser cannot simply call Ollama itself (see
