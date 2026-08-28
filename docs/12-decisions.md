@@ -284,7 +284,30 @@ and variable names, title case for classes." For Python that is contrary to PEP 
 `snake_case`, and `qwen2.5-coder` will fight it.
 
 | Option | Consequence |
-|---|---|
+|
+### Measured: the instruction is enough, and a machine-written summary adds nothing
+
+v1.1 built the obvious upgrade — measure the notebook's conventions directly (identifier casing,
+docstring usage, comment density, import aliasing) and state them in the prompt, rather than
+asking the model to notice. Then A/B'd it against a camelCase, docstring-free notebook,
+`qwen2.5-coder:7b`, four runs an arm:
+
+| | casing matched | "no docstrings" matched |
+|---|---|---|
+| instruction only | 4/4 | 4/4 |
+| instruction + measured notes | 4/4 | 4/4 |
+
+Both arms at ceiling, including with eighteen cells of unrelated code between the style-bearing
+code and the prompt. The measurement was **reverted rather than shipped**: it cost tokens on every
+turn and bought nothing observable, and shipping it would have been exactly the "assumed, not
+measured" reasoning this project keeps having to correct.
+
+Worth noting *why* the pessimistic case did not materialise. The scenario the notes were for is
+"truncation has removed the evidence" — but the ladder's stage 4 replaces distant cell bodies
+with their signatures, and signatures carry identifier casing ([09](09-context-management.md)).
+The problem had already been designed out.
+
+---|---|
 | **A. Ship PROMPT's text verbatim as the default** *(recommended)* | Faithful to the spec; the field exists precisely so the user changes it; it doubles as a demonstration that the setting works. |
 | B. Ship a language-idiomatic default | Better out-of-box output, deviates from the spec. |
 
