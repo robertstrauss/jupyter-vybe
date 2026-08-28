@@ -156,7 +156,6 @@ This is a change from my first answer, which recommended building both.
 **Reverse cost:** low — adding B later is additive, and the internal `ToolCall` type it would
 normalise into already exists.
 
-
 ### Vindicated by measurement, not just by schedule
 
 The deferral was a schedule argument at the time. It is now an evidence argument: on the
