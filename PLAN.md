@@ -58,3 +58,28 @@ These were checked against JupyterLab source, not assumed:
   [docs/12-decisions.md](docs/12-decisions.md) D1.
 - Target platform is JupyterLab 4.6.3 (current release), Node 24, Python 3.14 — all present on
   this machine. `jupyter` itself is not yet installed; M0 provisions the environment.
+
+## What shipped, and where it lives
+
+v1.0.0 is tagged; the sidecar and inline completion followed in 1.1. The map, for anyone
+arriving at the source rather than the plan:
+
+| Path                             | What it is                                                             |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `src/plugins/cellExecutor.ts`    | The interception point. One token covers every way a cell can run.     |
+| `src/plugins/rounds.ts`          | A prompt execution from trigger to settled.                            |
+| `src/plugins/proposals.ts`       | Staging, review, verdicts, and both undo layers.                       |
+| `src/notebook/mutations.ts`      | The only module permitted to write to a notebook.                      |
+| `src/notebook/snapshot.ts`       | Serialisation and the truncation ladder.                               |
+| `src/plugins/inlineCompleter.ts` | Ghost text, and the machinery for not showing stale text.              |
+| `jupyter_vybe/protocol.py`       | The tagged-text parser, and salvage for models that will not use it.   |
+| `jupyter_vybe/assembler.py`      | Prompt assembly; the notebook as a numbered listing.                   |
+| `jupyter_vybe/diffsummary.py`    | What changed since the last turn, for follow-up prompts.               |
+| `jupyter_vybe/history.py`        | The prompt record: a sidecar store, not notebook metadata.             |
+| `jupyter_vybe/adapters/`         | Four backends behind one interface, free of the server framework.      |
+| `jupyter_vybe/local.py`          | `jupyter-vybe-local`: the agent on your machine, Jupyter on another.   |
+| `jupyter_vybe/doctor.py`         | `jupyter-vybe-doctor`: every check exists because that thing happened. |
+| `scripts/check-invariants.sh`    | The six rules the design is load-bearing on. Run in CI.                |
+| `scripts/bench-tools.py`         | Does the model pick the right tool, and aim it at the right cell?      |
+| `scripts/bench-quality.py`       | Does the code it wrote actually work?                                  |
+| `scripts/bench-latency.py`       | Where the time goes, and whether prompt caching can help.              |

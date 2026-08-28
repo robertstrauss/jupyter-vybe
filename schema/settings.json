@@ -30,7 +30,7 @@
         "id": {
           "type": "string",
           "title": "Agent",
-          "description": "Gemma 4 is the stronger model on the tool bench but slower on a first turn; qwen is the default for that reason alone.",
+          "description": "Measured on scripts/bench-quality.py: both models pick the right tool every time, but Gemma writes correct code more often (8/8 against 19/24) while qwen answers about fifteen times faster. qwen is the default because a first prompt at 25 seconds reads as broken; switch to Gemma when the code has to be right.",
           "enum": [
             "ollama-qwen25-coder-7b",
             "ollama-qwen25-coder-14b",

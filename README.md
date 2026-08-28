@@ -143,6 +143,19 @@ The AI engine is completely interchangeable. Hook it up to a local agent or your
 
 [HUMAN: SCREENSHOTS]
 
+### When the model and the notebook are on different machines
+
+If Jupyter runs on a cluster and the model is on your laptop, run the sidecar on the laptop:
+
+```bash
+pipx run --spec jupyter-vybe jupyter-vybe-local
+```
+
+and set `agent.host` to `client` in settings. The browser is already on your machine, so it talks
+to the sidecar directly. This is the only arrangement that works for CLI agents like `claude -p`,
+whose credentials live on the machine they run on. For HTTP backends an SSH reverse tunnel
+(`ssh -N -R 11434:127.0.0.1:11434 user@cluster`) works too and needs nothing installed.
+
 I personally recommend using a local model, if you have a device that can support it. The whole design of this project scopes the agent to fine-grained, simple, modular chunks of generated code, which open source local models are plenty adept at especially in Python.
 
 [HUMAN: SUMMARIZE/LINK TO INSTALLING LOCAL MODEL]

@@ -44,7 +44,13 @@ test.use({
 // a tab and `currentWidget` can point at it -- which showed up as one test
 // timing out in a full run while passing on its own.
 test.afterEach(async ({ page }) => {
-  await page.notebook.close(true).catch(() => undefined);
+  // Bounded: closing waits on a save dialog that does not always appear, and
+  // a teardown that can hang is a teardown that fails whichever test it
+  // happens to follow.
+  await Promise.race([
+    page.notebook.close(true).catch(() => undefined),
+    new Promise(resolve => setTimeout(resolve, 5000))
+  ]);
 });
 
 /**

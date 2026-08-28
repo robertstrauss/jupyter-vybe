@@ -25,6 +25,25 @@ import { validatePrefix } from '../notebook/prefixCheck';
 
 const SETTINGS_PLUGIN = 'jupyter-vybe:settings';
 
+/**
+ * What the benches actually found, per agent (docs/14). A dropdown that only
+ * lists names makes the choice look arbitrary; it is not, and the trade is not
+ * the one people assume -- the two local models are tied on tool use and are
+ * not tied on the code they write.
+ */
+const AGENT_NOTES: Record<string, string> = {
+  'ollama-qwen25-coder-7b':
+    'Fast: about a second a call. Writes correct code 19 times in 24 on the quality bench.',
+  'ollama-qwen25-coder-14b': 'Slower than the 7B, and not benchmarked here.',
+  'ollama-qwen25-coder-3b':
+    'Fastest and weakest; worth trying if the 7B is too slow.',
+  'turbofieldfare-gemma4':
+    'Writes correct code 8 times in 8, but a first prompt costs 17-30s. Later turns are far quicker.',
+  command: 'Runs any binary that writes to stdout, e.g. claude -p.',
+  'openai-compat':
+    'Any OpenAI-compatible endpoint: vLLM, llama.cpp, LM Studio, hosted.'
+};
+
 interface IAgentInfo {
   id: string;
   label: string;
@@ -145,6 +164,9 @@ function AgentField(props: any): JSX.Element {
       >
         {status}
       </div>
+      {AGENT_NOTES[value] ? (
+        <div className="jv-settings-status">{AGENT_NOTES[value]}</div>
+      ) : null}
     </div>
   );
 }
