@@ -12,6 +12,7 @@ import os
 import socket
 import struct
 import threading
+import time
 
 import pytest
 
@@ -108,29 +109,56 @@ class Scripted:
         yield '<vybe:add_cell type="code">\nx = 1\n</vybe:add_cell>'
 
 
-@pytest.fixture()
-def sidecar(monkeypatch):
-    port = free_port()
-    server = Sidecar("127.0.0.1", port)
+def _run_sidecar(server: Sidecar):
+    """Start a sidecar on its own loop and return (loop, shutdown).
+
+    Teardown cancels the serving task and closes the loop rather than just
+    stopping it: a coroutine left suspended is collected later and surfaces as
+    an unraisable-exception warning in whichever test happens to call gc.
+    """
     loop = asyncio.new_event_loop()
     ready = threading.Event()
+    holder: dict = {}
+
+    async def serve():
+        started = await asyncio.start_server(server.handle, server.host, server.port)
+        holder["server"] = started
+        ready.set()
+        try:
+            await started.serve_forever()
+        except asyncio.CancelledError:
+            started.close()
+            await started.wait_closed()
+            raise
 
     def run():
         asyncio.set_event_loop(loop)
-        loop.create_task(_serve(server, ready))
+        holder["task"] = loop.create_task(serve())
         loop.run_forever()
 
-    async def _serve(server, ready):
-        started = await asyncio.start_server(server.handle, server.host, server.port)
-        ready.set()
-        async with started:
-            await started.serve_forever()
-
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
+    threading.Thread(target=run, daemon=True).start()
     assert ready.wait(timeout=5)
+
+    def shutdown():
+        task = holder.get("task")
+        if task is not None:
+            loop.call_soon_threadsafe(task.cancel)
+        loop.call_soon_threadsafe(loop.stop)
+        for _ in range(50):
+            if not loop.is_running():
+                break
+            time.sleep(0.02)
+        loop.close()
+
+    return shutdown
+
+
+@pytest.fixture()
+def sidecar(monkeypatch):
+    port = free_port()
+    shutdown = _run_sidecar(Sidecar("127.0.0.1", port))
     yield port
-    loop.call_soon_threadsafe(loop.stop)
+    shutdown()
 
 
 def http_get(port: int, path: str, origin: str = "https://cluster.example.org"):
@@ -237,29 +265,15 @@ def test_a_malformed_frame_is_reported_not_fatal(sidecar):
     client.close()
 
 
-def test_an_origin_outside_the_allow_list_is_refused(sidecar_factory=None):
+def test_an_origin_outside_the_allow_list_is_refused():
     port = free_port()
-    server = Sidecar("127.0.0.1", port, allow_origin="https://only.example.org")
-    loop = asyncio.new_event_loop()
-    ready = threading.Event()
-
-    async def serve():
-        started = await asyncio.start_server(server.handle, server.host, server.port)
-        ready.set()
-        async with started:
-            await started.serve_forever()
-
-    def run():
-        asyncio.set_event_loop(loop)
-        loop.create_task(serve())
-        loop.run_forever()
-
-    threading.Thread(target=run, daemon=True).start()
-    assert ready.wait(timeout=5)
+    shutdown = _run_sidecar(
+        Sidecar("127.0.0.1", port, allow_origin="https://only.example.org")
+    )
     try:
         head, _ = http_get(port, "/health", origin="https://someone-else.example.org")
         assert "403" in head
         head, _ = http_get(port, "/health", origin="https://only.example.org")
         assert "200 OK" in head
     finally:
-        loop.call_soon_threadsafe(loop.stop)
+        shutdown()
