@@ -2,7 +2,7 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
-## 1.1.0 (unreleased)
+## 1.1.0
 
 - **Inline completion** (decision D5): ghost text from the same local model as
   you type, via fill-in-the-middle. Off by default — it costs a model call at a
@@ -40,6 +40,18 @@
 
 - **Fixed:** Ollama reported an agent as healthy when its model had never been
   pulled. It now says which models are actually installed.
+
+- **`prompts.showAssembled`** now does something: the server echoes the
+  assembled prompt back before generating and the browser console logs it.
+
+- **Orphan adoption**: a notebook renamed outside JupyterLab left its prompt
+  record behind. The pane already noticed; it now offers a button to adopt it.
+
+- **Fixed:** CI ran neither the Python tests nor the invariant gates, and its
+  lint step was failing. All three now run and pass.
+
+- Under the hood: a soak test that runs 120 rounds and asserts nothing is left
+  behind — the cancelled-round path leaked a thread once already.
 
 ## 1.0.0
 

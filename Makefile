@@ -5,7 +5,7 @@ VENV ?= .venv
 PY := $(VENV)/bin/python
 UPSTREAM ?= $(HOME)/Desktop/thoughtcode/code-llm
 
-.PHONY: help test check sync-vendor doctor bench
+.PHONY: help test check sync-vendor doctor bench wheel
 
 help:
 	@echo "make test         pytest, jest, and the invariant gates"
@@ -13,6 +13,7 @@ help:
 	@echo "make sync-vendor  diff the vendored copies against upstream (docs/13 R8)"
 	@echo "make doctor       check this installation and its agents"
 	@echo "make bench        tool-choice bench against the default agent"
+	@echo "make wheel        build a wheel from a development checkout"
 
 test:
 	$(PY) -m pytest tests -q
@@ -56,3 +57,13 @@ doctor:
 
 bench:
 	$(PY) scripts/bench-tools.py --runs 2
+
+# `jupyter labextension develop` writes install.json into the labextension
+# directory, and pyproject also maps the top-level install.json to that same
+# destination -- so building a wheel from a development checkout fails with
+# "a second file is being added to the wheel archive at the same path". The
+# stray copy is a development artefact; removing it is the fix, and doing it
+# here means nobody has to rediscover the error message.
+wheel:
+	rm -f jupyter_vybe/labextension/install.json
+	$(PY) -m build --wheel
