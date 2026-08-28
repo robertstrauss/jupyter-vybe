@@ -34,6 +34,15 @@ dynamic = ["version", "description", "authors", "urls", "keywords"]
 jupyter-vybe-local = "jupyter_vybe.local:main"
 
 [project.optional-dependencies]
+# `test` is the name the generated CI workflow installs; keeping it as an
+# alias of dev means `pip install .[test]` actually installs pytest rather
+# than warning about an unknown extra and quietly running nothing.
+test = [
+    "jupyterlab>=4.4,<5",
+    "pytest>=7",
+    "pytest-asyncio>=0.23",
+    "pytest-jupyter[server]>=0.6",
+]
 dev = [
     "jupyterlab>=4.4,<5",
     "jupyter-builder>=1.2.0",

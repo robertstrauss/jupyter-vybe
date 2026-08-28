@@ -35,6 +35,23 @@ jobs:
         set -eux
         jlpm run test
 
+    - name: Check the invariants
+      # These encode what the design is actually load-bearing on -- no kernel
+      # access outside introspect.ts, no notebook writes outside mutations.ts,
+      # adapters free of the server framework, and the settings schema named
+      # for the plugin that loads it. Each of them has caught a real
+      # regression, one of them a shipped one.
+      run: bash scripts/check-invariants.sh
+
+    - name: Test the server extension
+      # The Python half is most of the protocol, the prompt assembly, the
+      # history store and the sidecar. CI ran neither these nor the gates
+      # until 1.1, which made a green build mean less than it looked.
+      run: |
+        set -eux
+        python -m pip install ".[test]"
+        python -m pytest tests -q
+
     - name: Build the extension
       run: |
         set -eux

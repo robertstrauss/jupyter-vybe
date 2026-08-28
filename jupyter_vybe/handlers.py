@@ -146,6 +146,9 @@ class CompletionHandler(APIHandler):
 
         model = getattr(adapter, "model", "") or agent_id
         prompt, is_raw = build_fim_prompt(prefix, suffix, model)
+        # Kept so the raw path can rebuild an instruction prompt if the
+        # endpoint turns out not to serve /v1/completions.
+        self._prefix, self._suffix = prefix, suffix
         try:
             text = await asyncio.wait_for(
                 self._generate(adapter, prompt, is_raw, max_tokens, timeout),
@@ -166,7 +169,11 @@ class CompletionHandler(APIHandler):
     async def _generate(self, adapter, prompt: str, is_raw: bool, max_tokens: int, timeout: float) -> str:
         raw = getattr(adapter, "complete_raw", None)
         if is_raw and raw is not None:
-            return await raw(prompt, max_tokens, timeout)
+            try:
+                return await raw(prompt, max_tokens, timeout)
+            except NotImplementedError:
+                # The endpoint has no raw route after all; ask in words below.
+                prompt, _ = build_fim_prompt(self._prefix, self._suffix, "")
         # No raw endpoint: fall back to a normal turn and take what comes.
         # Worse completions, but every adapter can do it.
         out = ""

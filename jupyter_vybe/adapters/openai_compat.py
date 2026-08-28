@@ -80,6 +80,47 @@ class OpenAICompatAdapter(Adapter):
         return HealthStatus(True, "ok", self.model or (models[0] if models else ""),
                             self.endpoint, socket.gethostname())
 
+    # -- raw completion ----------------------------------------------------
+
+    async def complete_raw(self, prompt: str, max_tokens: int, timeout: float) -> str:
+        """Fill-in-the-middle through the legacy /v1/completions route (D5).
+
+        The chat route would wrap infilling tokens in a chat template, which
+        asks the model a different question. vLLM, llama.cpp and LM Studio all
+        keep the completions route for exactly this; a server that has dropped
+        it answers 404, and the caller falls back to asking in words.
+        """
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "max_tokens": max_tokens,
+            "temperature": 0.1,
+            "stream": False,
+            "stop": ["<|endoftext|>", "<|fim_pad|>", "<|file_sep|>"],
+        }
+
+        def call() -> str:
+            req = urllib.request.Request(
+                f"{self.endpoint}/v1/completions",
+                data=json.dumps(payload).encode(),
+                headers=self._headers(),
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.load(resp)
+            choices = data.get("choices") or [{}]
+            return choices[0].get("text", "")
+
+        try:
+            return await asyncio.to_thread(call)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (404, 405):
+                # No completions route here. Say so plainly rather than
+                # returning an empty completion that looks like "no suggestion".
+                raise NotImplementedError(
+                    f"{self.endpoint} serves no /v1/completions route"
+                ) from exc
+            raise
+
     # -- streaming ---------------------------------------------------------
 
     async def stream(

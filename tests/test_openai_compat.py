@@ -100,3 +100,63 @@ def test_the_key_is_sent_as_a_bearer_token(server, monkeypatch):
     adapter = OpenAICompatAdapter(SPEC, server, "served-model", api_key_env="VYBE_TEST_KEY")
     _collect(adapter, [Message("user", "hi")])
     assert seen["auth"] == "Bearer sk-test"
+
+
+class CompletionHandler(Handler):
+    """A server that serves /v1/completions, as vLLM and llama.cpp do."""
+
+    def do_POST(self):
+        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        seen["completion"] = payload
+        if not self.path.endswith("/v1/completions"):
+            self.send_error(404)
+            return
+        body = json.dumps({"choices": [{"text": " x.max()"}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+class NoCompletionsHandler(Handler):
+    """A server that has dropped the legacy completions route."""
+
+    def do_POST(self):
+        self.send_error(404)
+
+
+@pytest.fixture()
+def completions_server():
+    httpd = HTTPServer(("127.0.0.1", 0), CompletionHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_port}"
+    httpd.shutdown()
+
+
+@pytest.fixture()
+def chat_only_server():
+    httpd = HTTPServer(("127.0.0.1", 0), NoCompletionsHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_port}"
+    httpd.shutdown()
+
+
+def test_fill_in_the_middle_goes_to_the_completions_route(completions_server):
+    """Not the chat route: a chat template would wrap the infilling tokens."""
+    adapter = OpenAICompatAdapter(SPEC, completions_server, "served-model")
+    out = asyncio.run(adapter.complete_raw("<|fim_prefix|>x = <|fim_middle|>", 32, 5))
+    assert out == " x.max()"
+    assert seen["completion"]["max_tokens"] == 32
+    assert "<|endoftext|>" in seen["completion"]["stop"]
+    assert seen["completion"]["stream"] is False
+
+
+def test_a_server_without_that_route_says_so_rather_than_answering_nothing(
+    chat_only_server,
+):
+    # An empty string here would be indistinguishable from "no suggestion",
+    # and the caller needs to know to ask in words instead.
+    adapter = OpenAICompatAdapter(SPEC, chat_only_server, "served-model")
+    with pytest.raises(NotImplementedError, match="no /v1/completions"):
+        asyncio.run(adapter.complete_raw("prompt", 32, 5))
