@@ -167,6 +167,18 @@ I personally recommend using a local model, if you have a device that can suppor
 - Agent has add cell functionality only directly below prompt cell (up to a few cells), and global _propose_ edit functionality (edits are not committed to other cells without user review).
 - Agent can also use IPython help ('?' + function/class/module to get docstring and syntax) and auto-completion (namespace searching) before returning proposed changes.
 
+### Getting better results from a small local model
+
+Two things that measurably matter with a 7B model:
+
+- **Name exact behaviour, not loose behaviour.** "the indices of the k largest values, largest
+  first" produced ascending indices every time in testing; "ordered so that the largest value
+  comes first (descending by value)" produced correct code every time. The model reads precise
+  words reliably and idiomatic ones unreliably.
+- **Switch models when it has to be right.** On a bench that runs the generated code,
+  `qwen2.5-coder:7b` is correct 19 times in 24 and Gemma 4 8 times in 8 — but qwen answers in
+  about a second against Gemma's twenty-five. Fast for exploration, careful for what matters.
+
 ### Agent prompt
 
 Agent has the full notebook in context, and all prompts start with a passage advising the agent to have its code additions be minimalist, simplistic, readable, and best-practice. Do not include example usage unless asked for explicitly, except in docstrings; Do not include any other context or output unless specificlaly requested by the user.

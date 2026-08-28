@@ -33,6 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, ".")
 
+import jupyter_vybe.assembler as assembler
 from jupyter_vybe.adapters import Message, build_adapter
 from jupyter_vybe.assembler import assemble_initial
 from jupyter_vybe.protocol import parse, salvage_fenced_blocks
@@ -174,7 +175,20 @@ def main() -> int:
         help="execute the generated code. Read the cases first: this runs what a model wrote.",
     )
     ap.add_argument("--timeout", type=float, default=15)
+    ap.add_argument(
+        "--universal",
+        help="alternative universal prompt file, for A/B'ing a prompt change",
+    )
     args = ap.parse_args()
+    if args.universal:
+        replacement = Path(args.universal).read_text(encoding="utf-8")
+        original = assembler._load
+
+        def patched(name: str) -> str:
+            return replacement if name == "universal.md" else original(name)
+
+        assembler._load = patched
+        print(f"universal prompt: {args.universal}")
     return asyncio.run(main_async(args.agent, args.runs, args.run, args.timeout))
 
 

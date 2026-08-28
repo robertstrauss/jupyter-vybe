@@ -178,6 +178,36 @@ Re-running the same prompt afterwards produced genuinely original code — a `np
 implementation the examples never mention. This is the single highest-leverage prompt change
 found so far, and it generalises: **do not put runnable, plausible code in a tooling prompt.**
 
+### Three prompt additions that did not survive measurement
+
+Prompt changes are the cheapest thing in this project to believe in and the hardest to verify,
+so each of these was A/B'd on `scripts/bench-quality.py` (which runs the generated code) rather
+than read and nodded at. All three were reverted.
+
+| Addition                                                               | Intent                                                                                            | Result                                                       |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Measured style notes (D8)                                              | State the notebook's casing and docstring conventions rather than asking the model to notice them | 4/4 both arms — the instruction alone was already at ceiling |
+| "The stated behaviour is the specification; check the code against it" | Stop `top_k_indices` returning ascending indices under a descending docstring                     | 3/3 failures both arms                                       |
+| "Restate loose orderings in exact terms before writing"                | Same target, indirectly                                                                           | 3/3 failures both arms                                       |
+
+The third experiment found the real shape of that failure, and it is not a prompt problem:
+
+| Request wording                                                              | passes |
+| ---------------------------------------------------------------------------- | ------ |
+| "the indices of the k largest values, **largest first**"                     | 0/3    |
+| "...**ordered so that the largest value comes first (descending by value)**" | 3/3    |
+| "largest first. **For [5, 1, 9, 3] with k=2 it must return [2, 0]**"         | 0/3    |
+
+`qwen2.5-coder:7b` reads "descending" reliably and "largest first" not at all, and a worked
+example in the _request_ does not rescue it — which rhymes with the earlier finding that a
+plausible example in the _prompt_ gets copied rather than reasoned about. Gemma 4 gets this case
+right, which is one more reason the model choice is a real trade rather than a formality.
+
+The general lesson for anyone editing these files: a prompt addition that sounds obviously
+helpful usually is not, the model is often already at ceiling on what you are about to explain,
+and the failure you are aiming at may not be a prompt failure at all. Measure before shipping
+tokens that every request will carry.
+
 ### Length buys no compliance, and prompt size costs time
 
 `tooling.md` was 3813 characters, written to convince a 7B. Halving it to 1581 was measured, not
