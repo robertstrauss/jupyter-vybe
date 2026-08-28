@@ -120,8 +120,20 @@ the settings schema in place.
   cover activation, a prompt cell with no kernel, a plain cell left alone, and accept and reject
   from the keyboard.
 - Galata beyond that: the history pane, cancel mid-round, the undo table.
-- The quality of the *code* generated, which no bench here measures — tool selection and edit
-  targeting are automatable, "is this good code" is not.
+- ✅ **The quality of the generated code**, which `scripts/bench-quality.py` now measures by
+  *running* it: eight requests, each with an assertion the generated function has to satisfy.
+  `qwen2.5-coder:7b` scores **7/8**, and the one failure is instructive —
+
+  ```python
+  def top_k_indices(a, k):
+      """Returns the indices of the k largest values, sorted from largest to smallest."""
+      return np.argsort(a)[-k:]        # ... which returns them smallest-first
+  ```
+
+  Code that contradicts its own docstring, which is exactly what a reviewer skims past and
+  exactly what a tool-choice bench cannot see. The bench executes model-written code, so it is
+  opt-in behind `--run`, each case is a subprocess with a timeout, and a dry run prints what
+  would be executed.
 - v1.0.0 tag.
 
 **Total: ~32 working days (~6.5 weeks).**
