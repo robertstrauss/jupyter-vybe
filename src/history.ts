@@ -77,6 +77,38 @@ export async function renameHistory(
 }
 
 /**
+ * Adopt a record orphaned by a rename JupyterLab never saw — `mv` in a
+ * terminal. The pane offers this rather than doing it silently: the match is
+ * by file name, so it is a good guess and not a certainty (docs/05).
+ */
+export async function adoptHistory(
+  orphanFile: string,
+  path: string,
+  location: 'user' | 'adjacent' = 'user'
+): Promise<boolean> {
+  try {
+    const settings = ServerConnection.makeSettings();
+    const response = await ServerConnection.makeRequest(
+      url(),
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          from: path,
+          to: path,
+          location,
+          adoptFile: orphanFile
+        })
+      },
+      settings
+    );
+    return response.ok;
+  } catch (err) {
+    console.warn('[jupyter-vybe] history adoption failed', err);
+    return false;
+  }
+}
+
+/**
  * Append one entry. Never throws into a caller: losing a history line is not
  * worth failing a review keystroke over, and the round itself is unaffected.
  */

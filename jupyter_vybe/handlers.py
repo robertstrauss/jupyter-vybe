@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import uuid
+from pathlib import Path
 
 from jupyter_server.base.handlers import APIHandler
 from jupyter_server.utils import url_path_join
@@ -94,7 +95,7 @@ class HistoryHandler(APIHandler):
 
     @web.authenticated
     async def patch(self) -> None:
-        """A rename: carry the record forward (docs/05).
+        """A rename, or adopting an orphan: carry the record forward (docs/05).
 
         JupyterLab sees renames it performs; one done in a terminal it does
         not, which is what find_orphan is for on the read side.
@@ -104,7 +105,18 @@ class HistoryHandler(APIHandler):
         if not old or not new:
             raise web.HTTPError(400, "from and to are required")
         location = body.get("location", "user")
-        store = HistoryStore(old, location=location).rekey(new)
+        source = HistoryStore(old, location=location)
+        if body.get("adoptFile"):
+            # Adopting an orphan: the record's own path is gone, so the file is
+            # named directly rather than derived from a notebook path.
+            candidate = Path(body["adoptFile"])
+            if candidate.parent != source.path.parent and location != "adjacent":
+                raise web.HTTPError(400, "refusing to adopt a file outside the store")
+            source = HistoryStore(old, location=location)
+            source.path.parent.mkdir(parents=True, exist_ok=True)
+            if candidate != source.path and candidate.exists():
+                source.path.write_text(candidate.read_text(encoding="utf-8"), encoding="utf-8")
+        store = source.rekey(new)
         self.finish(json.dumps({"ok": True, "file": str(store.path)}))
 
     @web.authenticated

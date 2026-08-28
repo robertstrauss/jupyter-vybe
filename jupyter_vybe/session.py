@@ -75,6 +75,10 @@ class AgentSession:
         self.history_enabled = bool(options.get("historyPersist", True))
         # "user" (default) or "adjacent" -- see HistoryStore (D12).
         self.history_location = str(options.get("historyLocation", "user"))
+        # prompts.showAssembled: echo the assembled prompt to the client, which
+        # logs it. "What did the model actually see" is the question that keeps
+        # needing an answer, and reconstructing it by hand is error-prone.
+        self.echo_prompt = bool(options.get("echoPrompt", False))
         self._prose = ""
         self.store = HistoryStore(notebook_path, location=self.history_location)
 
@@ -181,6 +185,8 @@ class AgentSession:
             "agentId": self.agent_id,
             "promptChars": len(prompt),
         })
+        if self.echo_prompt:
+            yield {"op": "assembledPrompt", "prompt": prompt}
         yield {"op": "status", "state": "generating"}
 
         max_tool_turns = int(limits.get("maxToolTurns", 6))

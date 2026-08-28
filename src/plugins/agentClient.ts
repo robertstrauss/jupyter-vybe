@@ -18,6 +18,8 @@ export interface IAgentFrame {
   count?: number;
   promptTokens?: number;
   completionTokens?: number;
+  /** prompts.showAssembled: the prompt the agent was actually given. */
+  prompt?: string;
 }
 
 export interface IPromptRequest {
@@ -134,6 +136,9 @@ class VybeAgent implements IVybeAgent {
           // streams (docs/05, D12); this is the user's switch for it.
           historyPersist: this.settings.historyPersist,
           historyLocation: this.settings.historyLocation,
+          // Ask the server to echo the assembled prompt back, so the user can
+          // see what the agent was actually given (docs/04).
+          echoPrompt: this.settings.showAssembled,
           ...this.settings.agentOptions
         }
       });

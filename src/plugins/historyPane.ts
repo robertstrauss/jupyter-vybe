@@ -9,7 +9,12 @@ import { Clipboard } from '@jupyterlab/apputils';
 
 import { IVybeProposals } from './proposals';
 import { IVybeSettings } from '../tokens';
-import { readHistory, renameHistory, type IHistoryEntry } from '../history';
+import {
+  adoptHistory,
+  readHistory,
+  renameHistory,
+  type IHistoryEntry
+} from '../history';
 import { diffLines } from '../ui/diff';
 import { DiffOverlay } from '../ui/DiffOverlay';
 
@@ -26,6 +31,7 @@ class HistoryPane extends Widget {
   private _list: HTMLElement;
   private _status: HTMLElement;
   private _path = '';
+  private _panel: NotebookPanel | null = null;
 
   constructor(private readonly settings: IVybeSettings) {
     super();
@@ -55,6 +61,7 @@ class HistoryPane extends Widget {
       return;
     }
     this._path = panel.context.path;
+    this._panel = panel;
     try {
       const payload = await readHistory(
         this._path,
@@ -62,20 +69,51 @@ class HistoryPane extends Widget {
         this.settings.historyLocation
       );
       if (!payload.entries.length) {
-        this._render(
-          [],
-          payload.orphan
-            ? `No record for this path. A record naming a notebook of this ` +
-                `name exists at ${payload.orphan} — it was probably renamed ` +
-                `outside JupyterLab.`
-            : `Nothing yet. Run a cell starting with ${this.settings.prefix}.`
-        );
+        if (payload.orphan) {
+          this._offerAdoption(payload.orphan);
+        } else {
+          this._render(
+            [],
+            `Nothing yet. Run a cell starting with ${this.settings.prefix}.`
+          );
+        }
         return;
       }
       this._render(payload.entries, '');
     } catch (err) {
       this._render([], `Could not read the record: ${err}`);
     }
+  }
+
+  /**
+   * A record exists for a notebook of this name but not this path — a rename
+   * done outside JupyterLab. Offered rather than done, because the match is by
+   * file name: a good guess, not a certainty (docs/05).
+   */
+  private _offerAdoption(orphan: string): void {
+    this._render(
+      [],
+      'No record for this notebook, but one exists for a notebook of this ' +
+        'name — it was probably renamed outside JupyterLab.'
+    );
+    const button = document.createElement('button');
+    button.className = 'jv-history-adopt';
+    button.textContent = 'Use that record for this notebook';
+    button.title = orphan;
+    button.onclick = async () => {
+      button.disabled = true;
+      const ok = await adoptHistory(
+        orphan,
+        this._path,
+        this.settings.historyLocation
+      );
+      if (ok) {
+        void this.showFor(this._panel);
+      } else {
+        this._status.textContent = 'Could not adopt that record.';
+      }
+    };
+    this._list.appendChild(button);
   }
 
   private _render(entries: IHistoryEntry[], status: string): void {

@@ -240,6 +240,13 @@ export class Rounds implements IVybeRounds {
           );
           this.agent.toolResult(path, frame.callId, ok, result);
         }
+      } else if (frame.op === 'assembledPrompt') {
+        // prompts.showAssembled. Logged rather than shown: it is thousands of
+        // tokens, and the console is where someone debugging is already
+        // looking (docs/04).
+        console.info(
+          `[jupyter-vybe] assembled prompt for round ${round.id}:\n${frame.prompt}`
+        );
       } else if (frame.op === 'error') {
         round.prose += `\n\n_Agent error: ${frame.message}_`;
       }

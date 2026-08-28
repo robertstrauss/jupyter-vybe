@@ -12,6 +12,7 @@ import asyncio
 import json
 
 from jupyter_vybe.adapters import Message
+from conftest import build_session
 from jupyter_vybe.session import AgentSession
 
 KERNEL = {"name": "python3", "language": "python", "version": "3.13"}
@@ -36,23 +37,7 @@ class Scripted:
 
 
 def _session(adapter, persistent=True) -> AgentSession:
-    s = AgentSession.__new__(AgentSession)
-    s.notebook_path = "/n.ipynb"
-    s.agent_id = "scripted"
-    s.persistent = persistent
-    s.options = {}
-    s.adapter = adapter
-    s.messages = []
-    s.turns = 0
-    s.snapshot_seq = -1
-    s.touched = 0.0
-    s._cancel = asyncio.Event()
-    s._tool_waiters = {}
-    s._cells = []
-    s._prose = ""
-    s.history_enabled = False
-    s.store = None
-    return s
+    return build_session(adapter, persistent=persistent)
 
 
 def _turn(session, prompt, seq):

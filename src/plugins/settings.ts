@@ -117,6 +117,13 @@ class VybeSettings implements IVybeSettings {
   get globalPrompt(): string {
     return (this.group<string>('prompts')['global'] as string) ?? '';
   }
+  get showAssembled(): boolean {
+    // Debug aid: print the prompt the agent was actually given. The one
+    // question that keeps needing an answer is "what did it actually see".
+    return (
+      (this.group<boolean>('prompts')['showAssembled'] as boolean) ?? false
+    );
+  }
   get maxInsertions(): number {
     return (this.group<number>('agentTools')['maxInsertions'] as number) ?? 8;
   }

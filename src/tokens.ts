@@ -14,6 +14,7 @@ export interface IVybeSettings {
   readonly agentOptions: Record<string, string>;
   readonly persistent: boolean;
   readonly globalPrompt: string;
+  readonly showAssembled: boolean;
   readonly maxInsertions: number;
   readonly maxProposals: number;
   readonly maxToolTurns: number;

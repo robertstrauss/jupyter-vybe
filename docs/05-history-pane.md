@@ -125,7 +125,8 @@ inspectable by hand and recoverable if the hash mapping is ever lost.
 **Renames** are tracked: `DocumentRegistry.IContext.pathChanged` fires on rename or move, and the
 extension re-keys the file (copy to the new hash, leave a tombstone pointing forward). A notebook
 renamed outside JupyterLab orphans its history; the pane says so rather than silently starting
-empty, and offers to adopt an orphaned file whose header names the old path.
+empty, and offers a button to adopt the orphaned record. Offered rather than done automatically,
+because the match is by file name — a good guess, not a certainty.
 
 **Location.** `~/.jupyter/vybe/` rather than a `.vybe/` directory beside the notebook, so nothing
 stray appears in the user's repo. The cost is that history does not travel with the notebook —
