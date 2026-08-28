@@ -152,12 +152,24 @@ power to damage a notebook — finally has tests.
 
 What is left is not roadmap work but judgement calls that want a user:
 
-- **Is Gemma worth its first turn?** On the twenty-prompt bench the two models
-  are now *tied* — 20/20 tool and 8/8 target each, no fence fallbacks — where
-  Gemma used to be clearly ahead. The prompt work closed the gap from the other
-  side, which leaves only latency: 1.7 s a call against 25 s. On this evidence
-  the default is right, and the interesting question is whether Gemma's ceiling
-  shows up on harder prompts than a bench contains.
+- **Is Gemma worth its first turn?** The answer changed once the bench started
+  running the code rather than counting tags.
+
+  | | tool choice | edit target | code that *works* | per call |
+  |---|---|---|---|---|
+  | qwen2.5-coder:7b | 20/20 | 8/8 | **19/24** | 1.7 s |
+  | Gemma 4 26B-A4B | 20/20 | 8/8 | **8/8** | 25 s |
+
+  Tied on protocol, not on code. qwen fails `top_k_indices` consistently —
+  `np.argsort(a)[-k:]` under a docstring promising largest-first — and
+  occasionally emits no tag at all (mostly recovered by salvage). Gemma has not
+  missed yet.
+
+  So the trade is now explicit: **qwen is fifteen times faster, Gemma writes
+  better code.** The default stays qwen because a first prompt at 25 s reads as
+  broken, but a user doing something that has to be right should switch, and
+  the settings pane should probably say so. Note what this cost to learn: a
+  bench that only counted tool choice called them equal.
 - **How aggressively should the ladder trim?** `context.windowTokens` minus a
   4096-token reserve is a guess that has never been wrong in testing because
   testing never used a 200-cell notebook.

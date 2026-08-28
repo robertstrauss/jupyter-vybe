@@ -20,6 +20,16 @@
   answer (naming the machine that answered). Every check exists because that
   specific thing went wrong.
 
+- **`scripts/bench-quality.py`** runs the generated code against assertions
+  rather than counting tool tags. It changes the model comparison: qwen and
+  Gemma tie on protocol (20/20 tool choice each) and do not tie on code —
+  19/24 against 8/8. qwen stays the default for latency, but if what you are
+  writing has to be right, Gemma is the better model.
+
+- **`make sync-vendor`**, which three documents promised and none provided:
+  diffs the vendored TurboFieldfare copies against upstream so drift is visible
+  rather than silent.
+
 - **Completion works beyond Ollama**: OpenAI-compatible endpoints fill in the
   middle through `/v1/completions`.
 

@@ -133,7 +133,11 @@ the settings schema in place.
   Code that contradicts its own docstring, which is exactly what a reviewer skims past and
   exactly what a tool-choice bench cannot see. The bench executes model-written code, so it is
   opt-in behind `--run`, each case is a subprocess with a timeout, and a dry run prints what
-  would be executed.
+  would be executed. It also runs the salvage path, because the extension does — a bench that
+  gave up where the tags did would measure the protocol rather than the product.
+
+  Over three runs a case: **qwen 19/24, Gemma 8/8**. The two are tied on tool choice and are not
+  tied on code, which is the comparison that matters and the one nothing measured until now.
 - v1.0.0 tag.
 
 **Total: ~32 working days (~6.5 weeks).**

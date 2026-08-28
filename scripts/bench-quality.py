@@ -35,7 +35,7 @@ sys.path.insert(0, ".")
 
 from jupyter_vybe.adapters import Message, build_adapter
 from jupyter_vybe.assembler import assemble_initial
-from jupyter_vybe.protocol import parse
+from jupyter_vybe.protocol import parse, salvage_fenced_blocks
 from jupyter_vybe.session import _tooling_with_limits
 
 KERNEL = {"name": "python3", "language": "python", "version": "3.13"}
@@ -122,8 +122,15 @@ async def generate(adapter, request: str) -> tuple[str, float]:
     async for chunk in adapter.stream([Message("user", prompt)], asyncio.Event()):
         out += chunk
     elapsed = time.monotonic() - started
-    for event in parse(out):
+    events = list(parse(out))
+    for event in events:
         if event.kind.value == "tool" and event.name == "add_cell":
+            return event.args.get("body", ""), elapsed
+    # No tag. The extension does not give up here either -- a reply with
+    # fenced code is salvaged into cells (docs/13 R2) -- so a bench that
+    # stopped here would measure the protocol rather than the product.
+    for event in salvage_fenced_blocks(out):
+        if event.name == "add_cell":
             return event.args.get("body", ""), elapsed
     return "", elapsed
 
