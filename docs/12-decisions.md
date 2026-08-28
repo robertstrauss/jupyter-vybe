@@ -156,6 +156,19 @@ This is a change from my first answer, which recommended building both.
 **Reverse cost:** low — adding B later is additive, and the internal `ToolCall` type it would
 normalise into already exists.
 
+
+### Vindicated by measurement, not just by schedule
+
+The deferral was a schedule argument at the time. It is now an evidence argument: on the
+twenty-prompt bench, tagged text scores **20/20 tool choice and 8/8 edit targeting on both
+models**, with zero fence fallbacks ([11](11-roadmap.md)). There is no headroom for a native
+tool-calling path to recover, and it would add a second protocol to maintain, a second set of
+failure modes, and a capability matrix per adapter.
+
+The two protocol failures that did occur — a model emitting fences instead of tags, and a model
+inventing a cell number — were fixed by prompt design and by `salvage_fenced_blocks`, neither of
+which native tools would have helped with. `supports_native_tools` stays declared and unused.
+
 ---
 
 ## D4 · Notebook metadata: strictly zero, or a namespaced key?
