@@ -2,7 +2,7 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
-## 0.1.0 (unreleased)
+## 1.0.0
 
 First working version. Prompt cells, an agent behind them, and a review step
 before anything touches your notebook.
@@ -49,6 +49,13 @@ before anything touches your notebook.
   notebook as prose.
 - **Nothing is written to notebook metadata.** A collaborator without the
   extension opens an ordinary notebook.
+
+- **`jupyter-vybe-local`**, the client-side sidecar, ships in this release rather
+  than waiting: run it on the machine that has the model when Jupyter is
+  somewhere else, and set `agent.host` to `client`. Standard library only, so
+  `pipx run --spec jupyter-vybe jupyter-vybe-local` is the whole install. It is
+  what makes `claude -p` usable from a remote Jupyter, since a CLI's
+  credentials live on the machine it runs on.
 
 ### Requires
 
