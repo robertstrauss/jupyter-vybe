@@ -2,6 +2,18 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 1.1.0 (unreleased)
+
+- **Inline completion** (decision D5): ghost text from the same local model as
+  you type, via fill-in-the-middle. Off by default — it costs a model call at a
+  keystroke cadence — and switched on under Settings ▸ Jupyter Vybe ▸ Inline
+  completion. On `qwen2.5-coder:7b` locally it answers in 0.4–1.3 s.
+
+  It is built to stay out of your way: requests are debounced, a later
+  keystroke supersedes an earlier request, an answer that arrives too late is
+  dropped rather than shown, and a failure is silence rather than an error in
+  the editor.
+
 ## 1.0.0
 
 First working version. Prompt cells, an agent behind them, and a review step
