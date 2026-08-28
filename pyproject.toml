@@ -32,6 +32,8 @@ dynamic = ["version", "description", "authors", "urls", "keywords"]
 # the model, for a Jupyter running somewhere else. Standard library only, so
 # `pipx run jupyter-vybe` is enough to get it.
 jupyter-vybe-local = "jupyter_vybe.local:main"
+# `jupyter-vybe-doctor` checks an installation before anyone blames the model.
+jupyter-vybe-doctor = "jupyter_vybe.doctor:main"
 
 [project.optional-dependencies]
 # `test` is the name the generated CI workflow installs; keeping it as an

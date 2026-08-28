@@ -1,6 +1,7 @@
 """The prompt record outlives the cell that rendered it (docs/05, D12)."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -156,3 +157,28 @@ def test_limited_and_unlimited_reads_agree(store):
     for i in range(30):
         store.append({"kind": "prompt", "roundId": f"r{i}", "text": str(i)})
     assert store.read(limit=10) == store.read()[-10:]
+
+
+def test_the_default_root_is_under_the_home_directory(monkeypatch):
+    """`Path("") or fallback` never reaches the fallback: Path("") is ".".
+
+    That spelling put every prompt record in whatever directory Jupyter was
+    started from, which is both surprising and, in a repository, untracked
+    clutter the design explicitly avoids (D12).
+    """
+    from jupyter_vybe.history import _default_root
+
+    monkeypatch.delenv("JUPYTER_VYBE_HISTORY", raising=False)
+    root = _default_root()
+    assert root == Path.home() / ".jupyter" / "vybe" / "history"
+    assert root != Path(".")
+
+
+def test_the_env_override_is_honoured_and_expanded(monkeypatch):
+    from jupyter_vybe.history import _default_root
+
+    monkeypatch.setenv("JUPYTER_VYBE_HISTORY", "~/somewhere/else")
+    assert _default_root() == Path.home() / "somewhere" / "else"
+
+    monkeypatch.setenv("JUPYTER_VYBE_HISTORY", "   ")
+    assert _default_root() == Path.home() / ".jupyter" / "vybe" / "history"

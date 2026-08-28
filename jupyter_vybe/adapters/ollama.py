@@ -32,7 +32,27 @@ class OllamaAdapter(Adapter):
             await asyncio.to_thread(self._probe)
         except Exception as exc:
             return HealthStatus(False, f"unreachable at {self.host}: {exc}", self.model, self.host)
+        # The daemon answering is not the same as this model being pulled, and
+        # reporting "ok" for a model that will fail on first use is the same
+        # false comfort a /health endpoint gave the TurboFieldfare adapter
+        # while its model id was wrong (docs/14 N4).
+        try:
+            installed = await asyncio.to_thread(self._installed_models)
+        except Exception:  # noqa: BLE001 — the daemon answered; that is enough
+            installed = []
+        if installed and self.model not in installed:
+            return HealthStatus(
+                False,
+                f"{self.model!r} is not pulled; ollama has: {', '.join(sorted(installed)[:6])}",
+                self.model,
+                self.host,
+                socket.gethostname(),
+            )
         return HealthStatus(True, "", self.model, self.host, socket.gethostname())
+
+    def _installed_models(self) -> list[str]:
+        with urllib.request.urlopen(f"{self.host}/api/tags", timeout=2) as resp:
+            return [m.get("name", "") for m in json.load(resp).get("models", [])]
 
     def _probe(self) -> None:
         with urllib.request.urlopen(f"{self.host}/api/version", timeout=2):

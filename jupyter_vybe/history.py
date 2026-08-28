@@ -26,9 +26,24 @@ from pathlib import Path
 from typing import Any, Iterator
 
 SCHEMA = 1
-DEFAULT_ROOT = Path(os.environ.get("JUPYTER_VYBE_HISTORY", "")) or (
-    Path.home() / ".jupyter" / "vybe" / "history"
-)
+
+
+def _default_root() -> Path:
+    """Where records live unless the user says otherwise.
+
+    Written carefully because the obvious spelling is wrong: `Path("") or
+    fallback` never reaches the fallback, since Path("") is PosixPath(".") and
+    a Path is always truthy. That silently put every record in the working
+    directory -- wherever Jupyter happened to be started from -- rather than in
+    ~/.jupyter. `jupyter-vybe-doctor` is what noticed.
+    """
+    override = os.environ.get("JUPYTER_VYBE_HISTORY", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".jupyter" / "vybe" / "history"
+
+
+DEFAULT_ROOT = _default_root()
 
 # Entry kinds the pane knows how to render (docs/05). Anything else is kept in
 # the file -- it is append-only and may have been written by a newer version --

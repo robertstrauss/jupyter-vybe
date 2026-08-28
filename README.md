@@ -71,6 +71,17 @@ ollama pull qwen2.5-coder:7b
 Nothing else needs configuring — if Ollama is running, the extension finds it.
 For any other agent, see [Connect your own agent](#connect-your-own-agent).
 
+If anything seems not to work, run:
+
+```bash
+jupyter-vybe-doctor
+```
+
+It checks both halves of the install, whether the settings schema is where
+JupyterLab looks for it, and which agents actually answer — naming the machine
+that answered, which matters if you are tunnelling to a model elsewhere. Every
+check in it exists because that specific thing went wrong at least once.
+
 To disable temporarily without uninstalling, turn off the master switch in
 settings; the extension then hands every cell straight back to Jupyter.
 

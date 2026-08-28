@@ -14,6 +14,23 @@
   dropped rather than shown, and a failure is silence rather than an error in
   the editor.
 
+- **`jupyter-vybe-doctor`**: checks an installation before you blame the model
+  — both halves installed and agreeing on a version, the settings schema where
+  JupyterLab looks for it, the history directory writable, and which agents
+  answer (naming the machine that answered). Every check exists because that
+  specific thing went wrong.
+
+- **Completion works beyond Ollama**: OpenAI-compatible endpoints fill in the
+  middle through `/v1/completions`.
+
+- **Fixed:** prompt records were being written to whatever directory Jupyter
+  was started from rather than `~/.jupyter/vybe/history`, because
+  `Path("") or fallback` never reaches the fallback. Found by the doctor on its
+  first run.
+
+- **Fixed:** Ollama reported an agent as healthy when its model had never been
+  pulled. It now says which models are actually installed.
+
 ## 1.0.0
 
 First working version. Prompt cells, an agent behind them, and a review step
