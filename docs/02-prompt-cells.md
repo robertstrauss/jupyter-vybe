@@ -25,7 +25,10 @@ would not intercept `run()`. The executor token is the only complete, supported 
 
 ```ts
 // src/plugins/cellExecutor.ts  (shape, not final)
-import { INotebookCellExecutor, runCell as coreRunCell } from '@jupyterlab/notebook';
+import {
+  INotebookCellExecutor,
+  runCell as coreRunCell
+} from '@jupyterlab/notebook';
 
 const plugin: JupyterFrontEndPlugin<INotebookCellExecutor> = {
   id: 'jupyter-vybe:cell-executor',
@@ -34,12 +37,12 @@ const plugin: JupyterFrontEndPlugin<INotebookCellExecutor> = {
   activate: (app, settings?: IVybeSettings, rounds?: IVybeRounds) => {
     // NOTHING may throw here — see 01, bootstrap ordering hazard.
     return Object.freeze({
-      runCell: async (options) => {
+      runCell: async options => {
         try {
           if (!isPromptCell(options.cell, settings?.prefix ?? '>')) {
-            return coreRunCell(options);        // untouched core behaviour
+            return coreRunCell(options); // untouched core behaviour
           }
-          return await rounds!.begin(options);  // never reaches a kernel
+          return await rounds!.begin(options); // never reaches a kernel
         } catch (err) {
           console.error('[jupyter-vybe] falling back to core executor', err);
           return coreRunCell(options);
@@ -56,7 +59,7 @@ A cell is a prompt cell iff **all** hold:
 
 - `cell.model.type === 'code'`
 - the source's first non-whitespace-at-start character (leading blank lines allowed, leading
-  spaces *not*) equals the configured prefix
+  spaces _not_) equals the configured prefix
 - the extension master switch is on
 
 The prefix is compared against the raw first character exactly — no trimming — so a line of
@@ -152,10 +155,10 @@ nothing and keeps vanilla undo honest even for users who never learn the vybe sh
 `Cmd+Z` (a keybinding with a `.jp-Notebook.jv-round-active` selector, more specific than the
 core binding, registered later — Lumino resolves to ours). Semantics, per README:
 
-| Where the cursor is | `Cmd+Z` does |
-|---|---|
-| On a just-accepted proposal | un-accepts it, returns to it, re-stages it as pending |
-| On a pending proposal | steps back to the previously resolved proposal and un-resolves it |
+| Where the cursor is                    | `Cmd+Z` does                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| On a just-accepted proposal            | un-accepts it, returns to it, re-stages it as pending                                                   |
+| On a pending proposal                  | steps back to the previously resolved proposal and un-resolves it                                       |
 | Back at the prompt cell, round settled | reverts the entire round: removes inserted cells, discards all proposals, restores the code prompt cell |
 
 Layer 2 is `jupyter-vybe:undo`, bound to `Accel Z` with the `.jv-round-active` selector so it
@@ -193,7 +196,7 @@ these four functions.
 ### Insertion position constraint
 
 `add_cell` may only target the position directly below the prompt cell, or below a cell already
-inserted by the same round. The anchor is recomputed from the *current* index of the prompt
+inserted by the same round. The anchor is recomputed from the _current_ index of the prompt
 cell's id at apply time, so concurrent user edits above cannot misplace insertions. A tool call
 naming any other position is rejected by the parser with a protocol error fed back to the agent
 (see [07](07-tool-protocol.md)). The cap on insertions per round is a setting, default 8.

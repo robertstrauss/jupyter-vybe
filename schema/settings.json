@@ -125,7 +125,11 @@
           "title": "Full-fidelity cell window (0 = whole notebook)",
           "default": 0
         },
-        "includeOutputs": { "type": "boolean", "title": "Include cell outputs", "default": true },
+        "includeOutputs": {
+          "type": "boolean",
+          "title": "Include cell outputs",
+          "default": true
+        },
         "maxOutputChars": {
           "type": "integer",
           "title": "Max characters per output",
@@ -170,9 +174,21 @@
           "enum": ["off", "inspect-only", "inspect+complete"],
           "default": "inspect+complete"
         },
-        "maxInsertions": { "type": "integer", "title": "Max added cells", "default": 8 },
-        "maxProposals": { "type": "integer", "title": "Max proposed edits", "default": 12 },
-        "maxToolTurns": { "type": "integer", "title": "Max lookups per request", "default": 6 }
+        "maxInsertions": {
+          "type": "integer",
+          "title": "Max added cells",
+          "default": 8
+        },
+        "maxProposals": {
+          "type": "integer",
+          "title": "Max proposed edits",
+          "default": 12
+        },
+        "maxToolTurns": {
+          "type": "integer",
+          "title": "Max lookups per request",
+          "default": 6
+        }
       },
       "default": {
         "kernelIntrospection": "inspect+complete",
@@ -185,7 +201,11 @@
       "type": "object",
       "title": "Review",
       "properties": {
-        "autoScroll": { "type": "boolean", "title": "Smooth-scroll between edits", "default": true },
+        "autoScroll": {
+          "type": "boolean",
+          "title": "Smooth-scroll between edits",
+          "default": true
+        },
         "acceptKey": {
           "type": "string",
           "title": "Accept / reject keys",
@@ -199,7 +219,11 @@
           "default": "auto"
         }
       },
-      "default": { "autoScroll": true, "acceptKey": "yn", "mergeCommentStyle": "auto" }
+      "default": {
+        "autoScroll": true,
+        "acceptKey": "yn",
+        "mergeCommentStyle": "auto"
+      }
     },
     "completion": {
       "type": "object",
@@ -246,7 +270,11 @@
       "type": "object",
       "title": "History",
       "properties": {
-        "maxEntries": { "type": "integer", "title": "Entries rendered at once", "default": 200 },
+        "maxEntries": {
+          "type": "integer",
+          "title": "Entries rendered at once",
+          "default": 200
+        },
         "persist": {
           "type": "boolean",
           "title": "Keep prompt history across sessions",

@@ -87,7 +87,7 @@ The load-bearing milestone. Everything else is ordinary UI work.
   validated against `claude -p`); `OpenAICompatAdapter`. No native-tools path
   ([12](12-decisions.md) D3).
 - Document the reverse-tunnel configuration for split laptop/cluster setups, and add the
-  health probe that reports *which machine* answered ([06](06-agent-integration.md)).
+  health probe that reports _which machine_ answered ([06](06-agent-integration.md)).
 - Rewrite `README.md`: fill the `[TODO]` markers (installation, table of contents, settings
   location), add the screenshots the README marks `[HUMAN TODO]`.
 - `pip install jupyter-vybe` from a built wheel on a clean venv.
@@ -99,7 +99,7 @@ the settings schema in place.
 
 ## M8 — Hardening and release · ~3 days · **in progress**
 
-- ✅ **The 20-prompt bench**, now checking *where* an edit lands as well as which tool was used —
+- ✅ **The 20-prompt bench**, now checking _where_ an edit lands as well as which tool was used —
   a proposal aimed at the wrong cell renders as a perfectly good diff, which is why that failure
   went unnoticed for so long. Both models score **20/20 on tool and 8/8 on target**, with no
   fence fallbacks: qwen2.5-coder:7b at 1.7 s a call, Gemma 4 at 25 s. The earlier gap between
@@ -121,7 +121,7 @@ the settings schema in place.
   from the keyboard.
 - Galata beyond that: the history pane, cancel mid-round, the undo table.
 - ✅ **The quality of the generated code**, which `scripts/bench-quality.py` now measures by
-  *running* it: eight requests, each with an assertion the generated function has to satisfy.
+  _running_ it: eight requests, each with an assertion the generated function has to satisfy.
   `qwen2.5-coder:7b` scores **7/8**, and the one failure is instructive —
 
   ```python
@@ -138,6 +138,7 @@ the settings schema in place.
 
   Over three runs a case: **qwen 19/24, Gemma 8/8**. The two are tied on tool choice and are not
   tied on code, which is the comparison that matters and the one nothing measured until now.
+
 - v1.0.0 tag.
 
 **Total: ~32 working days (~6.5 weeks).**

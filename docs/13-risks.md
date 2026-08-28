@@ -7,22 +7,21 @@ you it is happening and the mitigation already designed into the blueprint.
 
 ## R1 · The cell-executor override breaks notebooks entirely · **REALISED IN TESTING**
 
-*This one happened.* Declaring `IVybeRounds` as an optional dependency of the executor created
+_This one happened._ Declaring `IVybeRounds` as an optional dependency of the executor created
 `rounds -> tracker -> cell-executor -> rounds`; Lumino rejected the registration and JupyterLab
 rendered a blank page with no notebooks and nothing shown to the user. Fixed by late binding
 through `src/roundRegistry.ts` ([01](01-architecture.md)). The lesson generalises: an optional
 dependency is still an edge, and a cycle here is fatal to the whole application, not to us.
 
-The mitigations below remain in force for the *other* way this fails — a throw during activate.
-
+The mitigations below remain in force for the _other_ way this fails — a throw during activate.
 
 `jupyter-vybe:cell-executor` is a hard `requires` of
 `@jupyterlab/notebook-extension:tracker`. If our `activate` throws, the tracker never activates
 and **JupyterLab loses notebooks completely** — not a degraded extension, a broken application.
 
-*Signal:* notebooks fail to open at all after an install or upgrade.
+_Signal:_ notebooks fail to open at all after an install or upgrade.
 
-*Mitigation:* `activate` is synchronous, allocation-only, and try/caught with a fallback to
+_Mitigation:_ `activate` is synchronous, allocation-only, and try/caught with a fallback to
 `Object.freeze({ runCell })` — literally the core plugin's body. All settings and agent wiring is
 read lazily inside `runCell`, never at activation. Gate **T-BOOT** forces a throw and asserts
 notebooks still work. Additionally, `runCell` itself wraps its prompt-cell branch in a try/catch
@@ -33,11 +32,11 @@ code" rather than "the cell did nothing".
 
 ## R2 · A 7B model cannot follow the tool protocol reliably · **REALISED — confirmed flaky**
 
-*Measured.* Given a byte-identical prompt, `qwen2.5-coder:7b` emits correct `<vybe:add_cell>`
+_Measured._ Given a byte-identical prompt, `qwen2.5-coder:7b` emits correct `<vybe:add_cell>`
 tags on one run and a plain markdown code fence on the next. Three consecutive session runs
 produced fences; three more produced tags. It is not a prompt-structure bug and it is not
 fixable by prompt volume — an A/B across no recap / one sentence / a 400-char recap scored 3/3
-compliance in *every* arm, including no recap at all.
+compliance in _every_ arm, including no recap at all.
 
 **Salvage alone is not enough, though.** A fenced block carries no target, so
 recovering it can only ever produce an `add_cell` — which turns "edit the cell
@@ -60,19 +59,18 @@ Qwen. It is a candidate default if it proves steadier over a larger sample.
 
 The layered mitigations below still apply.
 
-
 `qwen2.5-coder:7b` is the default and it has no native tool support. Malformed tags, code fenced
 inside a tool body, invented attributes, and prose where a tag belongs are all likely.
 
-*Signal:* the M4 quality bench shows tool-syntax validity below ~90%.
+_Signal:_ the M4 quality bench shows tool-syntax validity below ~90%.
 
-*Mitigation, in layers:* (a) the grammar is deliberately dumb — line-delimited, no escaping, no
+_Mitigation, in layers:_ (a) the grammar is deliberately dumb — line-delimited, no escaping, no
 nesting, complete-source-not-patches, no position arguments to get wrong; (b) protocol errors are
 fed back to the agent as a turn, which recovers most single mistakes; (c) `tooling.md` carries one
-worked example per tool; (d) the bench exists *before* prompt tuning so there is a feedback loop;
+worked example per tool; (d) the bench exists _before_ prompt tuning so there is a feedback loop;
 (e) `qwen2.5-coder:14b` and Gemma 4 are one dropdown away if 7B proves inadequate.
 
-*If it still fails:* fall back to a single-tool protocol (fenced code blocks with a header
+_If it still fails:_ fall back to a single-tool protocol (fenced code blocks with a header
 comment naming the target cell), which any model can produce. This is a real fallback, not a
 theoretical one — plan for one extra day at M4 to hold it in reserve.
 
@@ -83,14 +81,14 @@ theoretical one — plan for one extra day at M4 to hold it in reserve.
 Qwen2.5-Coder's 32K window against a mature research notebook with dozens of cells and rich
 outputs is genuinely tight. This will happen, not might.
 
-*Signal:* the context meter is amber on ordinary notebooks; truncation notices appear routinely.
+_Signal:_ the context meter is amber on ordinary notebooks; truncation notices appear routinely.
 
-*Mitigation:* aggressive output filtering ([09](09-context-management.md)), the five-stage
+_Mitigation:_ aggressive output filtering ([09](09-context-management.md)), the five-stage
 truncation ladder that preserves signatures over bodies, diff-based updates in persistent mode,
 and a visible meter so the user is never surprised. `context.cellWindow` gives an explicit escape
 hatch for very large notebooks.
 
-*Residual:* on a truly enormous notebook the agent will be working from signatures only. That is
+_Residual:_ on a truly enormous notebook the agent will be working from signatures only. That is
 the correct degradation, and the settings pane says so explicitly rather than silently degrading.
 
 ---
@@ -99,11 +97,11 @@ the correct degradation, and the settings pane says so explicitly rather than si
 
 Persistent sessions send diffs, not snapshots. If a diff is lost, misapplied, or computed against
 the wrong base, the agent proposes edits against a notebook that no longer exists — and those
-proposals *look plausible*, which is the dangerous part.
+proposals _look plausible_, which is the dangerous part.
 
-*Signal:* proposals target cell ids that have moved or reference code that was deleted turns ago.
+_Signal:_ proposals target cell ids that have moved or reference code that was deleted turns ago.
 
-*Mitigation:* a monotonic `snapshotSeq` on every frame; a `resync` reply forcing a full snapshot
+_Mitigation:_ a monotonic `snapshotSeq` on every frame; a `resync` reply forcing a full snapshot
 on any mismatch; a forced full snapshot every 10 turns bounding accumulated drift; and staleness
 detection on the proposal itself, which blocks accepting an edit whose `before` no longer matches
 the live cell. The last of these is the true backstop — even a fully desynchronised agent cannot
@@ -116,9 +114,9 @@ clobber a cell the user has touched.
 Two undo layers (ydoc transactions and the round operation log) that must agree, interacting with
 CodeMirror's own per-editor undo, in a notebook that may be under RTC.
 
-*Signal:* `Cmd+Z` produces a state that is neither the pre-round nor the post-round notebook.
+_Signal:_ `Cmd+Z` produces a state that is neither the pre-round nor the post-round notebook.
 
-*Mitigation:* the round log is authoritative only while the round is active and is *sealed* the
+_Mitigation:_ the round log is authoritative only while the round is active and is _sealed_ the
 moment the user makes any non-vybe edit, after which `Cmd+Z` is plain core behaviour. Every round
 is one ydoc transaction, so even with the vybe layer bypassed entirely, native undo is atomic and
 correct. Gate **T-UNDO** deep-equals `toJSON()` against the pre-round capture.
@@ -130,9 +128,9 @@ correct. Gate **T-UNDO** deep-equals `toJSON()` against the pre-round capture.
 We set `executionState = 'running'` without a kernel. Execution-indicator extensions, the busy
 dot, and "restart and run all" progress UI all read that state.
 
-*Signal:* a stuck busy indicator after a cancelled round; a kernel status widget claiming activity.
+_Signal:_ a stuck busy indicator after a cancelled round; a kernel status widget claiming activity.
 
-*Mitigation:* `executionState` is restored to `'idle'` in a `finally` on every terminal path
+_Mitigation:_ `executionState` is restored to `'idle'` in a `finally` on every terminal path
 including cancellation and error. `onCellExecuted` is always emitted with the correct success
 flag. `executionCount` is never assigned, so the notebook's execution history is untouched.
 
@@ -143,9 +141,9 @@ flag. `executionCount` is never assigned, so the notebook's execution history is
 The tool inserts runnable-looking cells with no outputs. A researcher glancing at the notebook may
 believe results were produced.
 
-*Signal:* user reports of "wrong numbers" that turn out to be un-run cells.
+_Signal:_ user reports of "wrong numbers" that turn out to be un-run cells.
 
-*Mitigation:* inserted cells are visibly marked as a selected group with a transient accent bar;
+_Mitigation:_ inserted cells are visibly marked as a selected group with a transient accent bar;
 they carry no `execution_count`, so the `[ ]` prompt is empty — the standard Jupyter signal for
 "not run". The universal prompt forbids the agent from claiming results. This is partly a
 documentation problem: the README should state plainly that nothing is executed.
@@ -156,9 +154,9 @@ documentation problem: the README should state plainly that nothing is executed.
 
 PROMPT §5 asks us to copy pieces of `code-llm/` into this project. Copies rot.
 
-*Signal:* a fix in `code-llm/turbofieldfare_client.py` that never reaches us.
+_Signal:_ a fix in `code-llm/turbofieldfare_client.py` that never reaches us.
 
-*Mitigation:* `make sync-vendor` diffs `jupyter_vybe/adapters/vendored/` against the original path
+_Mitigation:_ `make sync-vendor` diffs `jupyter_vybe/adapters/vendored/` against the original path
 and prints the delta; the vendored files carry a header comment naming their source and the date
 copied. Low stakes — the client is ~200 lines and the resolve-path probe order is the only subtle
 part.
@@ -169,9 +167,9 @@ part.
 
 Another collaborator edits a cell that has a pending proposal, or moves the prompt cell mid-round.
 
-*Signal:* proposals apply to the wrong content under RTC.
+_Signal:_ proposals apply to the wrong content under RTC.
 
-*Mitigation:* insertion anchors are recomputed from the prompt cell's *id* at apply time, never
+_Mitigation:_ insertion anchors are recomputed from the prompt cell's _id_ at apply time, never
 from a cached index. Proposal staleness compares `before` against live source at accept time.
 Both make concurrent edits produce a visible "stale" state rather than a silent wrong write.
 Full RTC correctness is explicitly out of scope ([00](00-overview.md)); graceful degradation is
@@ -183,9 +181,9 @@ what is promised.
 
 Every agent CLI has a different streaming JSON dialect, and they change between releases.
 
-*Signal:* the persistent handshake fails for a CLI the user configured.
+_Signal:_ the persistent handshake fails for a CLI the user configured.
 
-*Mitigation:* persistent mode is health-checked at session start and falls back to one-shot with a
+_Mitigation:_ persistent mode is health-checked at session start and falls back to one-shot with a
 visible warning in the settings pane. One-shot works with literally any executable that reads a
 prompt and writes text, so the adapter is never fully broken — only less efficient.
 
@@ -197,7 +195,7 @@ M5 is the longest milestone and the one most likely to expand: floating controls
 scrolling cell, smooth navigation, theme-correct diff colours, and a keyboard model are all
 fiddly in ways that do not show up in an estimate.
 
-*Mitigation:* M5 comes *after* a working agent (M2–M4), so if it overruns the tool is already
+_Mitigation:_ M5 comes _after_ a working agent (M2–M4), so if it overruns the tool is already
 useful for insertions-only work. The proposal path can ship in a reduced form (accept/reject
 buttons without the sticky bubble, no smooth scroll) and be polished in M8 without blocking
 anything downstream.
@@ -212,16 +210,16 @@ Access enforcement requires the target to answer a preflight with
 `Access-Control-Allow-Private-Network: true`, which Ollama does not send, and as of Chrome 142
 there is no fallback. The reverse tunnel works but is a manual step the user must know to take.
 
-*Signal:* users on cluster deployments report the agent "not finding" their model, or a health
+_Signal:_ users on cluster deployments report the agent "not finding" their model, or a health
 probe that reports success while the wrong machine is answering.
 
-*Mitigation:* the tunnel is documented as a first-class configuration rather than a workaround,
+_Mitigation:_ the tunnel is documented as a first-class configuration rather than a workaround,
 and the health probe reports the responding machine's hostname so a tunnel pointing at the
 cluster's own (empty) Ollama is visibly wrong instead of silently wrong. `agent.host` ships in
 the schema from v1.0 so the v1.1 sidecar — which can send the PNA header correctly and can run
 `claude -p` with the user's own credentials — is a settings change, not a migration.
 
-*Residual:* until the sidecar ships, CLI-based agents (`claude -p`) cannot run on the laptop
+_Residual:_ until the sidecar ships, CLI-based agents (`claude -p`) cannot run on the laptop
 while Jupyter runs remotely. A tunnel cannot carry a subprocess. This is stated plainly in the
 README rather than discovered.
 
@@ -233,7 +231,7 @@ The worst failure this tool can produce, because unlike a bad suggestion it is
 not obviously wrong: the diff UI renders correctly, it just points at the wrong
 cell.
 
-*Cause.* Follow-up turns in a persistent session carried only a kernel banner, a
+_Cause._ Follow-up turns in a persistent session carried only a kernel banner, a
 one-line tool recap, and an empty diff — **no cell listing at all**. Asked to
 "edit the cell above", the agent had no numbers to work from, invented one, and
 `resolve_cell_ref` faithfully mapped that invented number onto a real cell.
@@ -244,11 +242,11 @@ the prompt `scripts/bench-tools.py` measures — the bench scored a prompt that
 users only ever saw on turn 1. And `resolve_cell_ref` accepting any in-range
 integer meant a fabricated index looked exactly like a real one.
 
-*Fix.* Every turn now sends the full prompt, listing included, until diff
+_Fix._ Every turn now sends the full prompt, listing included, until diff
 summaries exist to carry the same guidance. Out-of-range indices are refused
 rather than clamped. Verified 4/4 on the failing case.
 
-*Residual.* An in-range but wrong index is still indistinguishable from a
+_Residual._ An in-range but wrong index is still indistinguishable from a
 correct one. The real protection is that the result is a reviewable diff:
 the header of the review UI names the target cell, so a mis-aimed edit is
 visible before it is accepted, not after.

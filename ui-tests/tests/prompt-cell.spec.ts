@@ -40,7 +40,6 @@ test.use({
   }
 });
 
-
 // Each test gets a clean shell. Left open, a previous test's notebook stays in
 // a tab and `currentWidget` can point at it -- which showed up as one test
 // timing out in a full run while passing on its own.

@@ -141,7 +141,10 @@ describe('performance on a large notebook (M8)', () => {
           ? `## Section ${i}\n\n${'explanatory prose '.repeat(40)}`
           : `def step_${i}(frame):\n` +
             `    """Stage ${i} of the pipeline."""\n` +
-            Array.from({ length: 12 }, (_, l) => `    value_${l} = frame[${l}] * ${i}`).join('\n'),
+            Array.from(
+              { length: 12 },
+              (_, l) => `    value_${l} = frame[${l}] * ${i}`
+            ).join('\n'),
       ...(i % 5 === 0
         ? {}
         : {
@@ -157,10 +160,17 @@ describe('performance on a large notebook (M8)', () => {
 
   it('trims a 200-cell notebook to budget in well under 100ms', () => {
     const cells = bigNotebook(200);
-    cells.push({ id: 'prompt', cell_type: 'code', source: '#% summarise this' });
+    cells.push({
+      id: 'prompt',
+      cell_type: 'code',
+      source: '#% summarise this'
+    });
 
     const started = Date.now();
-    const dropped = truncate(cells, opts({ budgetTokens: 8000, promptCellId: 'prompt' }));
+    const dropped = truncate(
+      cells,
+      opts({ budgetTokens: 8000, promptCellId: 'prompt' })
+    );
     const elapsed = Date.now() - started;
 
     expect(dropped.length).toBeGreaterThan(0);
@@ -175,7 +185,11 @@ describe('performance on a large notebook (M8)', () => {
       cell_type: 'code',
       source: 'import numpy as np\nimport pandas as pd'
     };
-    cells.push({ id: 'prompt', cell_type: 'code', source: '#% summarise this' });
+    cells.push({
+      id: 'prompt',
+      cell_type: 'code',
+      source: '#% summarise this'
+    });
 
     truncate(cells, opts({ budgetTokens: 2000, promptCellId: 'prompt' }));
 

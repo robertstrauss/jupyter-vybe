@@ -15,12 +15,34 @@ shows an empty state naming the trigger prefix when there is no history yet.
 
 ```ts
 type HistoryEntry =
-  | { kind: 'prompt';    roundId; ts; text: string; agentId: string; tokensIn: number }
-  | { kind: 'prose';     roundId; ts; text: string }
-  | { kind: 'insertion'; roundId; ts; cellType: 'code'|'markdown'; source: string; anchorLabel: string }
-  | { kind: 'proposal';  roundId; ts; cellId: string; cellLabel: string;
-                         before: string; after: string; outcome: 'accepted'|'rejected'|'stale' }
-  | { kind: 'error';     roundId; ts; message: string };
+  | {
+      kind: 'prompt';
+      roundId;
+      ts;
+      text: string;
+      agentId: string;
+      tokensIn: number;
+    }
+  | { kind: 'prose'; roundId; ts; text: string }
+  | {
+      kind: 'insertion';
+      roundId;
+      ts;
+      cellType: 'code' | 'markdown';
+      source: string;
+      anchorLabel: string;
+    }
+  | {
+      kind: 'proposal';
+      roundId;
+      ts;
+      cellId: string;
+      cellLabel: string;
+      before: string;
+      after: string;
+      outcome: 'accepted' | 'rejected' | 'stale';
+    }
+  | { kind: 'error'; roundId; ts; message: string };
 ```
 
 Ordering is oldest at top, newest at bottom (README), auto-scrolled to the bottom on new entries
@@ -34,7 +56,7 @@ badge (`accepted` green / `rejected` red / `stale` grey).
 
 **Built differently from this spec, deliberately.** Insertions render as a `<pre>` and proposals
 through the same differ the review UI uses, so a diff does look identical in both places. What
-they are *not* is CodeMirror instances.
+they are _not_ is CodeMirror instances.
 
 The spec called for real CM6 editors, and then for virtualisation to survive them — but
 virtualisation is only needed because editors are expensive. A `<pre>` costs nothing, so a
@@ -71,7 +93,7 @@ notebook to paste`.
 ## Persistence — the store is canonical, the notebook is not
 
 **The prompt record lives here, not in the notebook.** A settled prompt cell is a markdown
-*rendering* of a prompt, not its storage. Deleting that cell removes the rendering and nothing
+_rendering_ of a prompt, not its storage. Deleting that cell removes the rendering and nothing
 else: the prompt, the agent's prose, the insertions, and every proposal with its verdict all
 remain in the store, still visible in the pane, still available to paste back.
 
@@ -111,5 +133,5 @@ send someone your `.ipynb` and they get the cells, not the prompts. `history.loc
 `adjacent` for users who want the record version-controlled alongside the work, which for a
 research audit trail is a reasonable thing to want.
 
-`history.maxEntries` bounds what the *pane renders*, not what is stored; the file keeps
+`history.maxEntries` bounds what the _pane renders_, not what is stored; the file keeps
 everything, and the pane pages older entries in on scroll.

@@ -8,28 +8,28 @@ This file is the index. Each document below is self-contained.
 
 ## Blueprint index
 
-| Doc | Contents |
-|---|---|
-| [docs/00-overview.md](docs/00-overview.md) | Scope, non-goals, success criteria, glossary |
-| [docs/01-architecture.md](docs/01-architecture.md) | Component map, package layout, plugin graph, data flow |
-| [docs/02-prompt-cells.md](docs/02-prompt-cells.md) | Execution interception, prompt-cell lifecycle, undo |
-| [docs/03-diff-ui.md](docs/03-diff-ui.md) | Proposal store, diff rendering, review UX, keyboard map |
-| [docs/04-settings.md](docs/04-settings.md) | Full settings schema, every control, validation |
-| [docs/05-history-pane.md](docs/05-history-pane.md) | Right sidebar, entry model, clipboard behaviour |
-| [docs/06-agent-integration.md](docs/06-agent-integration.md) | Server extension, adapters, sessions, streaming API |
-| [docs/07-tool-protocol.md](docs/07-tool-protocol.md) | Tool grammar, parser, agent loop, apply pipeline |
-| [docs/08-prompt-templates.md](docs/08-prompt-templates.md) | The five prompt files and how they assemble |
-| [docs/09-context-management.md](docs/09-context-management.md) | Notebook filtering rules, diff summaries, token budget |
-| [docs/10-testing.md](docs/10-testing.md) | Unit, integration, Galata e2e, agent fixtures |
-| [docs/11-roadmap.md](docs/11-roadmap.md) | Milestones M0–M8, deliverables, exit criteria |
-| [docs/12-decisions.md](docs/12-decisions.md) | **Executive decisions needing a human**, with recommendations |
-| [docs/13-risks.md](docs/13-risks.md) | Risk register and mitigations |
-| [docs/14-next-steps.md](docs/14-next-steps.md) | **Next steps** — outstanding bugs and polish from live use |
+| Doc                                                            | Contents                                                      |
+| -------------------------------------------------------------- | ------------------------------------------------------------- |
+| [docs/00-overview.md](docs/00-overview.md)                     | Scope, non-goals, success criteria, glossary                  |
+| [docs/01-architecture.md](docs/01-architecture.md)             | Component map, package layout, plugin graph, data flow        |
+| [docs/02-prompt-cells.md](docs/02-prompt-cells.md)             | Execution interception, prompt-cell lifecycle, undo           |
+| [docs/03-diff-ui.md](docs/03-diff-ui.md)                       | Proposal store, diff rendering, review UX, keyboard map       |
+| [docs/04-settings.md](docs/04-settings.md)                     | Full settings schema, every control, validation               |
+| [docs/05-history-pane.md](docs/05-history-pane.md)             | Right sidebar, entry model, clipboard behaviour               |
+| [docs/06-agent-integration.md](docs/06-agent-integration.md)   | Server extension, adapters, sessions, streaming API           |
+| [docs/07-tool-protocol.md](docs/07-tool-protocol.md)           | Tool grammar, parser, agent loop, apply pipeline              |
+| [docs/08-prompt-templates.md](docs/08-prompt-templates.md)     | The five prompt files and how they assemble                   |
+| [docs/09-context-management.md](docs/09-context-management.md) | Notebook filtering rules, diff summaries, token budget        |
+| [docs/10-testing.md](docs/10-testing.md)                       | Unit, integration, Galata e2e, agent fixtures                 |
+| [docs/11-roadmap.md](docs/11-roadmap.md)                       | Milestones M0–M8, deliverables, exit criteria                 |
+| [docs/12-decisions.md](docs/12-decisions.md)                   | **Executive decisions needing a human**, with recommendations |
+| [docs/13-risks.md](docs/13-risks.md)                           | Risk register and mitigations                                 |
+| [docs/14-next-steps.md](docs/14-next-steps.md)                 | **Next steps** — outstanding bugs and polish from live use    |
 
 ## The one-paragraph version
 
 A **frontend plugin** replaces JupyterLab's `INotebookCellExecutor` so that any code cell whose
-source begins with the trigger prefix is intercepted *before* a kernel message is ever
+source begins with the trigger prefix is intercepted _before_ a kernel message is ever
 constructed. The prompt text plus a filtered, in-memory snapshot of the notebook is sent over a
 WebSocket to a **companion Jupyter Server extension**, which owns a persistent agent session
 (Ollama, TurboFieldfare, an arbitrary command like `claude -p`, or an OpenAI-compatible

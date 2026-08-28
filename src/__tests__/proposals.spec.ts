@@ -89,7 +89,10 @@ describe('Proposals review lifecycle', () => {
     const panel = panelWithTwo();
     let ended = 0;
     stageTwo(proposals, panel);
-    proposals.beginReview(panel, handle(() => ended++));
+    proposals.beginReview(
+      panel,
+      handle(() => ended++)
+    );
 
     proposals.accept(panel, proposals.list(panel)[0].id);
     expect(ended).toBe(0); // one still pending
@@ -103,7 +106,10 @@ describe('Proposals review lifecycle', () => {
     const panel = panelWithTwo();
     let ended = 0;
     stageTwo(proposals, panel);
-    proposals.beginReview(panel, handle(() => ended++));
+    proposals.beginReview(
+      panel,
+      handle(() => ended++)
+    );
 
     proposals.rejectAll(panel);
     expect(ended).toBe(1);
@@ -114,7 +120,10 @@ describe('Proposals review lifecycle', () => {
     const panel = panelWithTwo();
     let ended = 0;
     stageTwo(proposals, panel);
-    proposals.beginReview(panel, handle(() => ended++));
+    proposals.beginReview(
+      panel,
+      handle(() => ended++)
+    );
 
     proposals.rejectAll(panel);
     const first = proposals.list(panel)[0].id;
@@ -189,7 +198,10 @@ describe('round-scoped undo (docs/02 layer 2)', () => {
       after: 'b = 2\n',
       prefix: '#%'
     });
-    proposals.beginReview(panel, handle(() => undefined));
+    proposals.beginReview(
+      panel,
+      handle(() => undefined)
+    );
     return { proposals, panel };
   };
 
@@ -241,7 +253,7 @@ describe('round-scoped undo (docs/02 layer 2)', () => {
   });
 });
 
-describe('canUndo (which decides whether Cmd+Z is ours or core Jupyter\'s)', () => {
+describe("canUndo (which decides whether Cmd+Z is ours or core Jupyter's)", () => {
   const panel = () =>
     ({
       id: 'panel-1',
@@ -254,7 +266,9 @@ describe('canUndo (which decides whether Cmd+Z is ours or core Jupyter\'s)', () 
         },
         activeCellIndex: 0,
         mode: 'command',
-        widgets: [{ model: { type: 'code' }, node: { scrollIntoView: () => undefined } }],
+        widgets: [
+          { model: { type: 'code' }, node: { scrollIntoView: () => undefined } }
+        ],
         model: {
           cells: {
             length: 1,
@@ -280,7 +294,10 @@ describe('canUndo (which decides whether Cmd+Z is ours or core Jupyter\'s)', () 
     const proposals = new Proposals();
     const p = panel();
     proposals.stage(p, 'r1', { cellId: 'c1', after: 'a = 2\n', prefix: '#%' });
-    proposals.beginReview(p, handle(() => undefined));
+    proposals.beginReview(
+      p,
+      handle(() => undefined)
+    );
     expect(proposals.canUndo(p)).toBe(false);
   });
 
@@ -288,7 +305,10 @@ describe('canUndo (which decides whether Cmd+Z is ours or core Jupyter\'s)', () 
     const proposals = new Proposals();
     const p = panel();
     proposals.stage(p, 'r1', { cellId: 'c1', after: 'a = 2\n', prefix: '#%' });
-    proposals.beginReview(p, handle(() => undefined));
+    proposals.beginReview(
+      p,
+      handle(() => undefined)
+    );
     proposals.reject(p, proposals.list(p)[0].id);
     // The round is over -- which is exactly when a user reaches for Cmd+Z.
     expect(proposals.canUndo(p)).toBe(true);
@@ -298,7 +318,10 @@ describe('canUndo (which decides whether Cmd+Z is ours or core Jupyter\'s)', () 
     const proposals = new Proposals();
     const p = panel();
     proposals.stage(p, 'r1', { cellId: 'c1', after: 'a = 2\n', prefix: '#%' });
-    proposals.beginReview(p, handle(() => undefined));
+    proposals.beginReview(
+      p,
+      handle(() => undefined)
+    );
     proposals.reject(p, proposals.list(p)[0].id);
     proposals.undoLast(p);
     expect(proposals.canUndo(p)).toBe(false);
@@ -333,7 +356,9 @@ describe('undoing the verdict that ended the round', () => {
         },
         activeCellIndex: 0,
         mode: 'command',
-        widgets: [{ model: { type: 'code' }, node: { scrollIntoView: () => undefined } }],
+        widgets: [
+          { model: { type: 'code' }, node: { scrollIntoView: () => undefined } }
+        ],
         model: {
           cells: { length: models.length, get: (i: number) => models[i] },
           sharedModel: { transact: (fn: () => void) => fn() }
@@ -341,8 +366,15 @@ describe('undoing the verdict that ended the round', () => {
       }
     };
 
-    proposals.stage(panel, 'r1', { cellId: 'c1', after: 'a = 2\n', prefix: '#%' });
-    proposals.beginReview(panel, handle(() => undefined));
+    proposals.stage(panel, 'r1', {
+      cellId: 'c1',
+      after: 'a = 2\n',
+      prefix: '#%'
+    });
+    proposals.beginReview(
+      panel,
+      handle(() => undefined)
+    );
     proposals.accept(panel, proposals.list(panel)[0].id);
     expect(cells[0].source).toBe('a = 2\n');
 

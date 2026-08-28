@@ -1,23 +1,23 @@
 # 10 — Testing
 
-The hard part of testing this project is that the interesting behaviour is *absence*: no kernel
+The hard part of testing this project is that the interesting behaviour is _absence_: no kernel
 message, no metadata key, no leftover mutation. Those get dedicated, named gates rather than
 being folded into feature tests.
 
 ## Invariant gates (CI-blocking)
 
-| Id | Gate | How |
-|---|---|---|
-| **T-KERNEL-1** | `requestExecute` appears nowhere in `src/` | CI grep |
-| **T-KERNEL-2** | `jupyter_vybe` never imports `jupyter_client`, `ipykernel`, `nbclient` | import-graph check in pytest |
-| **T-KERNEL-3** | A full prompt round with `--debug` logging emits zero `execute_request` messages | Galata e2e capturing the kernel WS |
-| **T-KERNEL-4** | A prompt round completes with **no kernel started at all** | Galata: open notebook, no-kernel session, run `>` cell |
-| **T-HIST** | Deleting a settled prompt cell loses nothing: the round is still in the store, still in the pane, still in the agent's context on the next turn | Galata + a store assertion |
-| **T-KERNELINFO** | Kernel info survives the full truncation ladder; an empty R notebook gets R code | jest on the assembler, plus one bench prompt |
-| **T-META** | Round-trip a notebook through a full round; `toJSON()` contains no key outside nbformat 4.5 | jest + a JSON-schema check against nbformat |
-| **T-BOOT** | If `jupyter-vybe:cell-executor` activate throws, notebooks still open and execute normally | jest: force a throw, assert core fallback |
-| **T-UNDO** | `Cmd+Z` at the prompt cell after a settled round restores the pre-round `toJSON()` exactly | Galata, deep-equal |
-| **T-MUTATE** | No module other than `mutations.ts` imports notebook-model write APIs | custom ESLint rule |
+| Id               | Gate                                                                                                                                            | How                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| **T-KERNEL-1**   | `requestExecute` appears nowhere in `src/`                                                                                                      | CI grep                                                |
+| **T-KERNEL-2**   | `jupyter_vybe` never imports `jupyter_client`, `ipykernel`, `nbclient`                                                                          | import-graph check in pytest                           |
+| **T-KERNEL-3**   | A full prompt round with `--debug` logging emits zero `execute_request` messages                                                                | Galata e2e capturing the kernel WS                     |
+| **T-KERNEL-4**   | A prompt round completes with **no kernel started at all**                                                                                      | Galata: open notebook, no-kernel session, run `>` cell |
+| **T-HIST**       | Deleting a settled prompt cell loses nothing: the round is still in the store, still in the pane, still in the agent's context on the next turn | Galata + a store assertion                             |
+| **T-KERNELINFO** | Kernel info survives the full truncation ladder; an empty R notebook gets R code                                                                | jest on the assembler, plus one bench prompt           |
+| **T-META**       | Round-trip a notebook through a full round; `toJSON()` contains no key outside nbformat 4.5                                                     | jest + a JSON-schema check against nbformat            |
+| **T-BOOT**       | If `jupyter-vybe:cell-executor` activate throws, notebooks still open and execute normally                                                      | jest: force a throw, assert core fallback              |
+| **T-UNDO**       | `Cmd+Z` at the prompt cell after a settled round restores the pre-round `toJSON()` exactly                                                      | Galata, deep-equal                                     |
+| **T-MUTATE**     | No module other than `mutations.ts` imports notebook-model write APIs                                                                           | custom ESLint rule                                     |
 
 ## Unit — TypeScript (jest, via `jlpm test`)
 
@@ -75,11 +75,11 @@ The scaffold ships Galata; these are the flows that must pass on 4.6.3:
    the characters are inserted, no proposal resolves, the bubble count is unchanged. `Esc` then
    `Y` resolves it. (Guards the one binding that could make the tool unusable.)
 10. Proposal on a rendered markdown cell → cell unrenders to show the diff, re-renders on accept;
-   on reject it re-renders with the original source.
+    on reject it re-renders with the original source.
 11. Agent proposes an edit to a settled prompt cell → rejected by the pipeline, protocol error
-   returned, notebook unchanged.
+    returned, notebook unchanged.
 12. Two notebooks open, prompt in each → sessions are independent; snapshot of one never appears
-   in the other's assembled prompt.
+    in the other's assembled prompt.
 
 ### Regression: example regurgitation
 

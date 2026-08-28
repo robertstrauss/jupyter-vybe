@@ -5,13 +5,13 @@ filtering rules, the tooling prompt, the universal prompt, and the user-modifiab
 prompt. All five ship in `jupyter_vybe/prompts/` and are readable and editable on disk; the
 global prompt is additionally editable in settings, where the settings value overrides the file.
 
-| File | Editable by | Purpose |
-|---|---|---|
-| `template.md` | advanced users (file) | The skeleton with substitution tags |
-| `filtering.md` | advanced users (file) | Notebook-data filtering rules, documented **and** executable spec |
-| `tooling.md` | advanced users (file) | Tool grammar and constraints |
-| `universal.md` | not user-editable in UI | Role, output discipline, code standards |
-| `global.md` | **user, in settings** | Style conventions; the settings value wins if non-empty |
+| File           | Editable by             | Purpose                                                           |
+| -------------- | ----------------------- | ----------------------------------------------------------------- |
+| `template.md`  | advanced users (file)   | The skeleton with substitution tags                               |
+| `filtering.md` | advanced users (file)   | Notebook-data filtering rules, documented **and** executable spec |
+| `tooling.md`   | advanced users (file)   | Tool grammar and constraints                                      |
+| `universal.md` | not user-editable in UI | Role, output discipline, code standards                           |
+| `global.md`    | **user, in settings**   | Style conventions; the settings value wins if non-empty           |
 
 ## `template.md`
 
@@ -24,7 +24,7 @@ global prompt is additionally editable in settings, where the settings value ove
 
 Kernel: {{KERNEL_NAME}} — language {{KERNEL_LANGUAGE}} {{KERNEL_VERSION}}
 Write code in {{KERNEL_LANGUAGE}} unless the user asks otherwise.
-{{NOTEBOOK_MODE}}   <!-- "Full notebook state:" or "Changes since your last turn:" -->
+{{NOTEBOOK_MODE}} <!-- "Full notebook state:" or "Changes since your last turn:" -->
 
 {{NOTEBOOK_JSON}}
 
@@ -120,11 +120,11 @@ operations need no comment.
 The three sources of style are ordered explicitly, and the tooling prompt states the order so the
 agent does not have to guess when they disagree:
 
-| | Source | Applies when |
-|---|---|---|
-| 1 | **The user's global prompt**, if they have written conventions into it | always wins — it is an explicit instruction |
-| 2 | **Conventions inferred from existing code in the notebook** | whenever the notebook contains code |
-| 3 | **The kernel language's standard idiom** — PEP 8 for Python, tidyverse for R, and so on | only when the notebook has no code to infer from |
+|     | Source                                                                                  | Applies when                                     |
+| --- | --------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 1   | **The user's global prompt**, if they have written conventions into it                  | always wins — it is an explicit instruction      |
+| 2   | **Conventions inferred from existing code in the notebook**                             | whenever the notebook contains code              |
+| 3   | **The kernel language's standard idiom** — PEP 8 for Python, tidyverse for R, and so on | only when the notebook has no code to infer from |
 
 Level 2 beating level 3 is the substance of D8: a user who writes `camelCase` functions in Python
 gets `camelCase` back, and is not lectured by the model about PEP 8. Consistency with the
@@ -183,10 +183,10 @@ found so far, and it generalises: **do not put runnable, plausible code in a too
 `tooling.md` was 3813 characters, written to convince a 7B. Halving it to 1581 was measured, not
 guessed — `scripts/bench-tools.py --tooling FILE` runs both versions through the same five cases:
 
-| | qwen2.5-coder:7b | Gemma 4 | Gemma turn-0 latency |
-|---|---|---|---|
-| full, 3813 chars | 13/15 | 10/10 | 23.0 s |
-| compact, 1581 chars | 14/15 | 10/10 | 17.0 s |
+|                     | qwen2.5-coder:7b | Gemma 4 | Gemma turn-0 latency |
+| ------------------- | ---------------- | ------- | -------------------- |
+| full, 3813 chars    | 13/15            | 10/10   | 23.0 s               |
+| compact, 1581 chars | 14/15            | 10/10   | 17.0 s               |
 
 **Compliance is the solid result here**: unchanged on both models, and the qwen difference is one
 flip either way, which is the run-to-run flakiness R2 already documents. A later run of the
@@ -195,7 +195,7 @@ shipped compact prompt scored 10/10 again.
 **Treat the latency column as directional, not as a measurement.** That same later run averaged
 29.9 s for the same 1298-token prompt that averaged 17.0 s here — the machine's throughput drifts
 by up to 2× across runs under sustained load, which is larger than the effect being measured.
-What *is* solid is the controlled sweep inside a single uninterrupted run
+What _is_ solid is the controlled sweep inside a single uninterrupted run
 (`scripts/bench-latency.py sweep`): 580 tokens in 6.7 s, 1700 in 17.8 s, 3660 in 55.7 s, 7020 in
 129.9 s. Prefill grows faster than linearly in prompt length, so a shorter preamble is worth
 having — the honest claim is "the shape of the curve", not "6 seconds".

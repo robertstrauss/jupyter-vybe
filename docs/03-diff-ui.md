@@ -4,13 +4,13 @@
 
 ```ts
 interface Proposal {
-  id: string;            // uuid
+  id: string; // uuid
   roundId: string;
-  cellId: string;        // nbformat 4.5 cell id — stable across reorders
-  before: string;        // cell source captured when the proposal was staged
-  after: string;         // agent's replacement source
-  hunks: Hunk[];         // computed line diff
-  rationale?: string;    // one line from the agent, shown under the ✓/✗ stack
+  cellId: string; // nbformat 4.5 cell id — stable across reorders
+  before: string; // cell source captured when the proposal was staged
+  after: string; // agent's replacement source
+  hunks: Hunk[]; // computed line diff
+  rationale?: string; // one line from the agent, shown under the ✓/✗ stack
   state: 'pending' | 'accepted' | 'rejected' | 'stale';
 }
 ```
@@ -38,8 +38,12 @@ Rendering: a `StateField<DecorationSet>` producing `Decoration.line({class})` fo
 themes work:
 
 ```css
-.jv-diff-add { background: var(--jp-diff-added-color, rgba(46,160,67,.15)); }
-.jv-diff-del { background: var(--jp-diff-deleted-color, rgba(248,81,73,.15)); }
+.jv-diff-add {
+  background: var(--jp-diff-added-color, rgba(46, 160, 67, 0.15));
+}
+.jv-diff-del {
+  background: var(--jp-diff-deleted-color, rgba(248, 81, 73, 0.15));
+}
 ```
 
 ## Where the diff appears
@@ -74,7 +78,7 @@ Floating over the cell's right edge, vertically stacked, per PROMPT §2:
 - Under each button, small text names its shortcut (`Y` / `N` / `⏎`).
 - The third verdict — merge and hand-edit — has a button of its own, smaller than the other two,
   plus a line of text naming its key. It existed from the start but nothing on screen said so.
-- Only the *active* proposal shows the stack; others show a thin left border marker so the user
+- Only the _active_ proposal shows the stack; others show a thin left border marker so the user
   can see how many remain in view.
 
 ## Status bubble
@@ -96,7 +100,7 @@ above the cell toolbar but below dialogs):
   adjacent and similarly sized, so a click meaning "show me" could discard the round (docs/14 N3).
 - **Reject-all is undoable.** One click discards a whole round's review, so the rejected batch is
   kept and the bubble turns into `rejected 3 edits — undo ⌥⇧Z` instead of vanishing. Undoing
-  restores the proposals *and* re-registers the round, so accepting afterwards still records to
+  restores the proposals _and_ re-registers the round, so accepting afterwards still records to
   the round's operation log. Staging any new proposal discards the undo.
 - The count decrements on each resolution, with a brief number-change animation.
 - Also renders round status during `RUNNING` (`⚡ thinking…` + elapsed time + a cancel affordance),
@@ -114,23 +118,23 @@ selectors matched nothing and `Y` / `N` / `Enter` did nothing at all. Only the b
 which is exactly why it went unnoticed for so long — the first end-to-end run of the review flow
 is what found it.
 
-Review also *begins* on the keyboard: `beginReview` selects the first proposal, puts the notebook
+Review also _begins_ on the keyboard: `beginReview` selects the first proposal, puts the notebook
 in command mode, and takes focus. Settling a round leaves an editor focused otherwise, so the
 first `Y` went into a cell as the letter y.
 
-| Keys | Command | Context |
-|---|---|---|
-| `Shift+Enter` on `>` cell | (core run, intercepted) | always |
-| `Cmd+Shift+Enter` on `>` markdown | `jupyter-vybe:reopen-prompt` | always |
-| `Alt+E` | `jupyter-vybe:goto-first-proposal` | round active |
-| `Alt+Shift+E` | `jupyter-vybe:reject-all` | round active |
-| `Y` | `jupyter-vybe:accept-proposal` | command mode, on a proposal |
-| `N` | `jupyter-vybe:reject-proposal` | command mode, on a proposal |
-| `Enter` | `jupyter-vybe:edit-proposal` — materialise the merge, enter edit mode | command mode, on a proposal |
-| `J` / `K`, `↓` / `↑` | next / previous proposal | command mode, round active |
-| `Cmd+Z` | `jupyter-vybe:undo` (layered, see [02](02-prompt-cells.md)) | round active |
-| `Ctrl+C` | `jupyter-vybe:cancel-round` | round active |
-| `Alt+Shift+Z` | `jupyter-vybe:undo-reject-all` | command mode (the round is already over) |
+| Keys                              | Command                                                               | Context                                  |
+| --------------------------------- | --------------------------------------------------------------------- | ---------------------------------------- |
+| `Shift+Enter` on `>` cell         | (core run, intercepted)                                               | always                                   |
+| `Cmd+Shift+Enter` on `>` markdown | `jupyter-vybe:reopen-prompt`                                          | always                                   |
+| `Alt+E`                           | `jupyter-vybe:goto-first-proposal`                                    | round active                             |
+| `Alt+Shift+E`                     | `jupyter-vybe:reject-all`                                             | round active                             |
+| `Y`                               | `jupyter-vybe:accept-proposal`                                        | command mode, on a proposal              |
+| `N`                               | `jupyter-vybe:reject-proposal`                                        | command mode, on a proposal              |
+| `Enter`                           | `jupyter-vybe:edit-proposal` — materialise the merge, enter edit mode | command mode, on a proposal              |
+| `J` / `K`, `↓` / `↑`              | next / previous proposal                                              | command mode, round active               |
+| `Cmd+Z`                           | `jupyter-vybe:undo` (layered, see [02](02-prompt-cells.md))           | round active                             |
+| `Ctrl+C`                          | `jupyter-vybe:cancel-round`                                           | round active                             |
+| `Alt+Shift+Z`                     | `jupyter-vybe:undo-reject-all`                                        | command mode (the round is already over) |
 
 ### Why `Y` / `N` and not `Enter` / `Backspace`
 
@@ -158,11 +162,11 @@ fire while typing: `Y` in edit mode inserts the character `y`, exactly as it doe
 Ours mirror core's selectors with `.jv-round-active` added, which makes them strictly more
 specific and therefore winners during a round, and non-matching outside one:
 
-| Command | Keys | Selector |
-|---|---|---|
-| `jupyter-vybe:accept-proposal` | `Y` | `.jp-Notebook.jp-mod-commandMode.jv-round-active .jp-Cell.jv-proposal:focus` |
-| `jupyter-vybe:reject-proposal` | `N` | `.jp-Notebook.jp-mod-commandMode.jv-round-active .jp-Cell.jv-proposal:focus` |
-| `jupyter-vybe:edit-proposal` | `Enter` | `.jp-Notebook.jp-mod-commandMode.jv-round-active .jp-Cell.jv-proposal:focus` |
+| Command                        | Keys    | Selector                                                                     |
+| ------------------------------ | ------- | ---------------------------------------------------------------------------- |
+| `jupyter-vybe:accept-proposal` | `Y`     | `.jp-Notebook.jp-mod-commandMode.jv-round-active .jp-Cell.jv-proposal:focus` |
+| `jupyter-vybe:reject-proposal` | `N`     | `.jp-Notebook.jp-mod-commandMode.jv-round-active .jp-Cell.jv-proposal:focus` |
+| `jupyter-vybe:edit-proposal`   | `Enter` | `.jp-Notebook.jp-mod-commandMode.jv-round-active .jp-Cell.jv-proposal:focus` |
 
 Three conditions must all hold for any of them to fire: command mode, an active round, and the
 focused cell actually carrying a pending proposal. Outside that intersection every key keeps its
@@ -221,13 +225,13 @@ The agent may propose edits to markdown cells as well as code cells, and markdow
 rendered state that code cells do not. The handling:
 
 - **While pending**, the target markdown cell is temporarily unrendered (`cell.rendered = false`)
-  so the diff is shown against its *source*, which is what is being edited. Its prior rendered
+  so the diff is shown against its _source_, which is what is being edited. Its prior rendered
   state is recorded on the proposal.
 - **Accept** → source updated, then the prior rendered state restored (so a cell that was rendered
   before the proposal is rendered again after it).
 - **Reject** → rendered state restored, model never touched.
 - **`Enter` merge** → comment syntax is `<!-- -->`, which has a pleasant side effect: the replaced
-  lines are invisible in the rendered output, so a half-merged markdown cell still *reads*
+  lines are invisible in the rendered output, so a half-merged markdown cell still _reads_
   correctly even before the user tidies it.
 - Syntax highlighting in the overlay uses the markdown mode rather than the kernel language.
 

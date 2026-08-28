@@ -15,21 +15,21 @@ model — never from disk (PROMPT §5 is emphatic about this). Consequences:
 Implemented in `src/notebook/snapshot.ts`, documented in `prompts/filtering.md`, and pinned by a
 test that compares the two.
 
-| Field | Rule |
-|---|---|
-| `nbformat`, `nbformat_minor` | kept |
-| `metadata.kernelspec`, `metadata.language_info` | kept — the agent needs the language and version |
-| all other notebook metadata | dropped |
-| cell `id`, `cell_type`, `source` | kept, always, in full |
-| cell `execution_count` | kept — signals what has actually run |
-| cell `metadata` | dropped except `tags` |
-| `attachments` | dropped, replaced by `"<attachment: name>"` |
-| output `stream` | kept, truncated to `context.maxOutputChars` (default 2000), middle-elided as `… <N chars elided> …` |
-| output `execute_result` / `display_data`, `text/plain` | kept, same truncation |
-| output `text/html`, `text/markdown`, `text/latex` | dropped if a `text/plain` alternative exists; else truncated to 500 chars |
-| output `image/*`, `application/pdf`, any base64 bundle | dropped, replaced by `"<image 640x480 png>"` |
-| `application/vnd.*` (plotly, vega, widgets) | dropped, replaced by `"<rich output: mimetype>"` |
-| output `error` | kept — `ename`, `evalue`, and the **last 20 lines** of traceback |
+| Field                                                  | Rule                                                                                                |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `nbformat`, `nbformat_minor`                           | kept                                                                                                |
+| `metadata.kernelspec`, `metadata.language_info`        | kept — the agent needs the language and version                                                     |
+| all other notebook metadata                            | dropped                                                                                             |
+| cell `id`, `cell_type`, `source`                       | kept, always, in full                                                                               |
+| cell `execution_count`                                 | kept — signals what has actually run                                                                |
+| cell `metadata`                                        | dropped except `tags`                                                                               |
+| `attachments`                                          | dropped, replaced by `"<attachment: name>"`                                                         |
+| output `stream`                                        | kept, truncated to `context.maxOutputChars` (default 2000), middle-elided as `… <N chars elided> …` |
+| output `execute_result` / `display_data`, `text/plain` | kept, same truncation                                                                               |
+| output `text/html`, `text/markdown`, `text/latex`      | dropped if a `text/plain` alternative exists; else truncated to 500 chars                           |
+| output `image/*`, `application/pdf`, any base64 bundle | dropped, replaced by `"<image 640x480 png>"`                                                        |
+| `application/vnd.*` (plotly, vega, widgets)            | dropped, replaced by `"<rich output: mimetype>"`                                                    |
+| output `error`                                         | kept — `ename`, `evalue`, and the **last 20 lines** of traceback                                    |
 
 Rationale for the two least obvious rules: error outputs are the highest-signal-per-token content
 in a notebook and are exactly what a "fix this" prompt is about, so they are preserved
@@ -70,10 +70,10 @@ actually falls through to the language default.
 PROMPT §6: "don't repeat the entire notebook, use the proper edit/difference based summary".
 
 **Built** (`jupyter_vybe/diffsummary.py`). After each round the last snapshot is retained
-server-side, and the next turn sends a one-line-per-cell *index* plus a cell-level diff. The index
+server-side, and the next turn sends a one-line-per-cell _index_ plus a cell-level diff. The index
 is not optional: the agent has to name a cell to edit it, and a number it cannot see is a number
 it invents — which is how silent edits to the wrong cell happened. What the index drops is the
-cell *bodies*, which are already in the conversation.
+cell _bodies_, which are already in the conversation.
 
 A cell whose index shifted because something above it was deleted is not reported as moved; only
 a change in order relative to the other surviving cells is a move. Reporting the shift as a move
@@ -84,26 +84,29 @@ The next turn sends a cell-level diff:
 ```markdown
 Changes since your last turn:
 
-ADDED   cell 7f3a1b after cell 2c9e (code)
-+ import scipy.signal as sig
+ADDED cell 7f3a1b after cell 2c9e (code)
 
-EDITED  cell 2c9e (code)
+- import scipy.signal as sig
+
+EDITED cell 2c9e (code)
+
 - window = 128
-+ window = 256
+
+* window = 256
 
 REMOVED cell 91ab (markdown)
 
-RAN     cell 2c9e -> execution_count 12, output changed:
-  <stdout truncated> shape: (4096, 3)
+RAN cell 2c9e -> execution_count 12, output changed:
+<stdout truncated> shape: (4096, 3)
 
-MOVED   cell 55dd from index 9 to index 4
+MOVED cell 55dd from index 9 to index 4
 
 UNCHANGED: 23 other cells
 ```
 
 Line-level `+`/`-` hunks for edits (three lines of context), whole source for additions, id only
 for removals. Execution changes are reported separately from source changes because a cell that
-merely *ran* is a different signal from a cell that *changed*.
+merely _ran_ is a different signal from a cell that _changed_.
 
 The client sends a monotonically increasing `snapshotSeq`; on mismatch (server restarted, session
 evicted, notebook reopened) the server replies `resync` and the client sends a full snapshot. So
@@ -115,7 +118,7 @@ from accumulated small errors.
 
 ## Rendering: a numbered listing, not raw JSON
 
-The snapshot is *collected* as filtered nbformat JSON, but it is *rendered* for the agent as a
+The snapshot is _collected_ as filtered nbformat JSON, but it is _rendered_ for the agent as a
 numbered listing (`assembler.render_notebook`):
 
 ```

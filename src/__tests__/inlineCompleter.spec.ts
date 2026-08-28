@@ -47,17 +47,19 @@ function providerFor(s: any): any {
   return captured;
 }
 
-const reply = (insertText: string, delayMs = 0) => () =>
-  new Promise(resolve =>
-    setTimeout(
-      () =>
-        resolve({
-          ok: true,
-          json: async () => ({ items: [{ insertText }] })
-        }),
-      delayMs
-    )
-  );
+const reply =
+  (insertText: string, delayMs = 0) =>
+  () =>
+    new Promise(resolve =>
+      setTimeout(
+        () =>
+          resolve({
+            ok: true,
+            json: async () => ({ items: [{ insertText }] })
+          }),
+        delayMs
+      )
+    );
 
 const request = (text: string, offset?: number) => ({
   text,
@@ -117,7 +119,10 @@ describe('the inline completion provider', () => {
 
     // Cursor inside `value`: the editor's own completer is better at this and
     // this one costs a model call.
-    const result = await provider.fetch(request('val|ue'.replace('|', ''), 3), invoked);
+    const result = await provider.fetch(
+      request('val|ue'.replace('|', ''), 3),
+      invoked
+    );
 
     expect(result.items).toEqual([]);
     expect((global as any).__request).not.toHaveBeenCalled();

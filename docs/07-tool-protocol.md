@@ -7,7 +7,7 @@ card for `qwen2.5-coder` lists text only, with no tools capability, and TurboFie
 OpenAI-compatible surface makes no tool guarantees. A protocol that only works on frontier
 hosted models would make the default local configuration useless.
 
-There is also a reason to prefer tagged text even where native tools *are* available: our
+There is also a reason to prefer tagged text even where native tools _are_ available: our
 arguments are multi-line source code, and native tool calls carry arguments as JSON strings —
 every newline escaped to `\n`, every quote and backslash escaped, indentation trapped inside a
 one-line literal. Models corrupt code-inside-JSON noticeably more often than code written
@@ -108,8 +108,8 @@ All of it lives in `src/introspect.ts`, the only file in the codebase permitted 
 kernel connection, and it exposes precisely two functions:
 
 ```ts
-export async function inspect(session, target: string): Promise<string>   // requestInspect, detail_level 0
-export async function complete(session, prefix: string): Promise<string[]> // requestComplete
+export async function inspect(session, target: string): Promise<string>; // requestInspect, detail_level 0
+export async function complete(session, prefix: string): Promise<string[]>; // requestComplete
 ```
 
 Guards, all of them enforced here rather than by prompting:
@@ -130,7 +130,7 @@ Every tool event from the server passes through validation before reaching
 
 1. Round is still live and not cancelled.
 2. Target cell id exists (for `propose_edit`); anchor prompt cell still exists.
-2b. Target is **not** a settled prompt cell — a markdown cell whose source begins with the
+   2b. Target is **not** a settled prompt cell — a markdown cell whose source begins with the
    trigger-prefix blockquote. Rewriting the user's prompt history is out of bounds; rejected with
    a protocol error ([03](03-diff-ui.md)).
 3. Caps not exceeded.

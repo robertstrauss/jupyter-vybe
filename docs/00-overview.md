@@ -18,14 +18,14 @@ to them:
 
 ## In scope for v1.0
 
-| # | Feature | Source |
-|---|---|---|
-| 1 | Prompt cells: `>`-prefixed code cells routed to an agent instead of the kernel | PROMPT §1 |
-| 2 | Proposed-edit diff UI with per-cell accept/reject, sticky counter, keyboard navigation | PROMPT §2 |
-| 3 | Settings pane with every control named in README plus those this design requires | PROMPT §3 |
-| 4 | Prompt history side pane with rendered diffs and cell-clipboard copy | PROMPT §4 |
-| 5 | Agent integration: local Ollama/Qwen, TurboFieldfare/Gemma, arbitrary command, HTTP endpoint | PROMPT §5 |
-| 6 | Tooling prompt, universal prompt, user-editable global prompt, context filtering | PROMPT §6 |
+| #   | Feature                                                                                      | Source    |
+| --- | -------------------------------------------------------------------------------------------- | --------- |
+| 1   | Prompt cells: `>`-prefixed code cells routed to an agent instead of the kernel               | PROMPT §1 |
+| 2   | Proposed-edit diff UI with per-cell accept/reject, sticky counter, keyboard navigation       | PROMPT §2 |
+| 3   | Settings pane with every control named in README plus those this design requires             | PROMPT §3 |
+| 4   | Prompt history side pane with rendered diffs and cell-clipboard copy                         | PROMPT §4 |
+| 5   | Agent integration: local Ollama/Qwen, TurboFieldfare/Gemma, arbitrary command, HTTP endpoint | PROMPT §5 |
+| 6   | Tooling prompt, universal prompt, user-editable global prompt, context filtering             | PROMPT §6 |
 
 ## Explicitly out of scope for v1.0
 
@@ -33,7 +33,7 @@ to them:
   It is a different subsystem (`ICompletionProviderManager` + FIM prompting) with its own
   latency budget. Deferred to v1.1 — see [12-decisions.md](12-decisions.md) D5.
 - Multi-file / repository awareness. Context is the open notebook only.
-- Agent-initiated cell *deletion* or *reordering*. The tool surface is add-below and
+- Agent-initiated cell _deletion_ or _reordering_. The tool surface is add-below and
   propose-edit; nothing else.
 - Notebook 7 / nbclassic support (stretch; the plugin system is shared, the CSS is not).
 - Real-time collaboration (RTC) correctness under concurrent editing. Detected and degraded

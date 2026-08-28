@@ -9,12 +9,7 @@ describe('diffLines', () => {
     const after = 'a = 1\nb = 22\nc = 3\n';
     const hunks = diffLines(before, after);
     expect(hunks).toHaveLength(1);
-    expect(kinds(before, after)).toEqual([
-      'context',
-      'del',
-      'add',
-      'context'
-    ]);
+    expect(kinds(before, after)).toEqual(['context', 'del', 'add', 'context']);
     expect(diffStat(hunks)).toEqual({ added: 1, removed: 1 });
   });
 

@@ -147,7 +147,7 @@ TAGS but no cell appears means the frontend is at fault.
 
 ### What this has already established
 
-`qwen2.5-coder:7b` is genuinely unreliable here. The *same* prompt produced a
+`qwen2.5-coder:7b` is genuinely unreliable here. The _same_ prompt produced a
 markdown fence on one run and correct tool tags on the next, captured by the
 proxy both times. That is why salvage exists, and why it is not worth spending
 more prompt tokens trying to instruct the model out of it (docs/13 R2).

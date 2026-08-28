@@ -44,9 +44,17 @@ function fakePanel(): any {
         toJSON: () => ({
           nbformat: 4,
           nbformat_minor: 5,
-          metadata: { kernelspec: kernelSpec, language_info: { name: 'python' } },
+          metadata: {
+            kernelspec: kernelSpec,
+            language_info: { name: 'python' }
+          },
           cells: [
-            { id: 'p1', cell_type: 'code', source: '#% do a thing', outputs: [] }
+            {
+              id: 'p1',
+              cell_type: 'code',
+              source: '#% do a thing',
+              outputs: []
+            }
           ]
         })
       }
@@ -105,11 +113,12 @@ describe('Rounds', () => {
       list: () => []
     };
     const agent: any = {
-      send: () => (async function* () {
-        for (const f of frames) {
-          yield f;
-        }
-      })(),
+      send: () =>
+        (async function* () {
+          for (const f of frames) {
+            yield f;
+          }
+        })(),
       cancel: () => undefined,
       toolResult: () => undefined
     };
@@ -152,9 +161,10 @@ describe('Rounds', () => {
     (rounds as any)._panelFor = () => panel;
     (rounds as any).agent = undefined;
     const agent: any = {
-      send: () => (async function* () {
-        throw new Error('adapter died');
-      })(),
+      send: () =>
+        (async function* () {
+          throw new Error('adapter died');
+        })(),
       cancel: () => undefined
     };
     (rounds as any).agent = agent;

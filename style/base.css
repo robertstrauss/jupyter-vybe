@@ -96,6 +96,13 @@
   background: var(--jp-layout-color2);
 }
 
+/* Keyboard focus must be visible on every control that decides what happens
+   to the user's code -- the review flow is keyboard-first by design. */
+.jv-review-button:focus-visible {
+  outline: 2px solid var(--jp-brand-color1);
+  outline-offset: 2px;
+}
+
 .jv-review-button.jv-accept {
   color: var(--jp-success-color1);
 }
@@ -195,6 +202,12 @@
   color: var(--jp-error-color1);
 }
 
+.jv-bubble-main:focus-visible,
+.jv-bubble-sub:focus-visible {
+  outline: 2px solid var(--jp-brand-color1);
+  outline-offset: 2px;
+}
+
 .jv-status-bubble.jv-generating .jv-bubble-main {
   color: var(--jp-warn-color1);
 }
@@ -216,6 +229,7 @@
   from {
     border-left-color: var(--jp-brand-color1);
   }
+
   to {
     border-left-color: transparent;
   }
@@ -276,6 +290,11 @@
   margin-bottom: 4px;
   border-radius: 4px;
   border-left: 3px solid transparent;
+}
+
+.jv-history-entry:focus-visible {
+  outline: 2px solid var(--jp-brand-color1);
+  outline-offset: 2px;
 }
 
 /* The prompt reads as the user's own words, the way it does in the notebook. */
@@ -342,6 +361,7 @@
   from {
     background: var(--jp-brand-color3);
   }
+
   to {
     background: transparent;
   }
@@ -398,16 +418,18 @@
   color: var(--jp-error-color1);
 }
 
-/* ---- accessibility ---- */
+/* The +/- markers carry the same information as the colours, for anyone who
+   cannot use the colours. In a high-contrast setting they carry it alone. */
+@media (forced-colors: active) {
+  .jv-diff-add,
+  .jv-diff-del {
+    background: transparent;
+    border-left: 3px solid currentcolor;
+  }
 
-/* Keyboard focus must be visible on the controls that decide what happens to
-   the user's code -- the whole review flow is keyboard-first by design. */
-.jv-review-button:focus-visible,
-.jv-bubble-main:focus-visible,
-.jv-bubble-sub:focus-visible,
-.jv-history-entry:focus-visible {
-  outline: 2px solid var(--jp-brand-color1);
-  outline-offset: 2px;
+  .jv-review-button {
+    border: 2px solid currentcolor;
+  }
 }
 
 /* The +/- markers carry the same information as the colours, for anyone who

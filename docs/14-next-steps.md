@@ -18,7 +18,7 @@ entire old source in red, including lines that had not changed.
    every cell's source by four spaces so the listing reads as a block. In
    `/tmp/vybe-transcript.jsonl` the model's `propose_edit` body came back with
    that indent still on it — every line of the "edit" differed from the
-   original by four leading spaces, so every line genuinely *had* changed and
+   original by four leading spaces, so every line genuinely _had_ changed and
    the differ was right. Fixed in two places: `_trim_body` in `protocol.py` now
    removes an indent common to every non-blank line of a tag body, and
    `prompts/tooling.md` states outright that the listing's indent is layout,
@@ -37,13 +37,13 @@ entire old source in red, including lines that had not changed.
    Since `_trim_body` strips the agent's trailing newline while the cell it
    replaces keeps one, every proposal hit this. `normaliseSource` in
    `src/ui/diff.ts` now terminates both sides (and normalises CRLF) before
-   diffing. Note the fix is to *add* the newline, not strip it — stripping it
+   diffing. Note the fix is to _add_ the newline, not strip it — stripping it
    from both sides looks equivalent and reintroduces the bug on any pure
    addition.
 
 `src/__tests__/diff.spec.ts` covers both, plus the reindentation case, so a
 regression shows up as a failing test rather than as a wall of red on screen.
-The second cause was found *by* writing that test, which is the whole argument
+The second cause was found _by_ writing that test, which is the whole argument
 for having written it earlier.
 
 ---
@@ -90,7 +90,7 @@ objects, and neither one alone can see it end.
 ## N4 · Gemma 4 through TurboFieldfareServer · **resolved; qwen still the default**
 
 The server path had never run, and did not work when it did: the adapter sent
-the model *directory* as the API `model` field, where the server matches on its
+the model _directory_ as the API `model` field, where the server matches on its
 own id (`gemma-4-26b-a4b-it`) and 404s otherwise. `/health` answering had been
 taken as proof the path worked.
 
@@ -98,7 +98,7 @@ Three fixes came out of measuring it, each revealed by the one before:
 
 1. **The model id.** Read from `/v1/models` now, with a stub-server test.
 2. **The conversation was folded into one message.** True that Gemma 4 has no
-   *system* role — but user and assistant turns are turns, and the server's
+   _system_ role — but user and assistant turns are turns, and the server's
    prompt cache only hits when a request continues the cached conversation. A
    re-folded blob is a new conversation every time and never hit.
 3. **An abandoned stream parked a thread on the socket.** A thread cannot be
@@ -109,10 +109,10 @@ Three fixes came out of measuring it, each revealed by the one before:
 With those, and follow-up turns re-enabled, three turns of one session:
 
 | turn | prompt | cached | wall clock |
-|---|---|---|---|
-| 0 | 1822 | 0 | 28.0 s |
-| 1 | 2171 | 1862 | 8.5 s |
-| 2 | 2562 | 2251 | 7.0 s |
+| ---- | ------ | ------ | ---------- |
+| 0    | 1822   | 0      | 28.0 s     |
+| 1    | 2171   | 1862   | 8.5 s      |
+| 2    | 2562   | 2251   | 7.0 s      |
 
 **Steady state clears the single-digit bar; a first turn does not.** Gemma is
 the better model — 10/10 correct tool with zero fence fallbacks, repeatedly,
@@ -124,9 +124,9 @@ conclusion, and a user who wants the better model can pick it in settings.
 
 `scripts/bench-latency.py sweep`, one uninterrupted run:
 
-| prompt tokens | 34 | 580 | 1700 | 3660 | 7020 |
-|---|---|---|---|---|---|
-| seconds | 6.1 | 6.7 | 17.8 | 55.7 | 129.9 |
+| prompt tokens | 34  | 580 | 1700 | 3660 | 7020  |
+| ------------- | --- | --- | ---- | ---- | ----- |
+| seconds       | 6.1 | 6.7 | 17.8 | 55.7 | 129.9 |
 
 Prefill grows faster than linearly. That is why `tooling.md` is now half its
 old size (docs/08) and why the truncation ladder is a latency feature as much
@@ -134,7 +134,7 @@ as a budget one (docs/09).
 
 **A caution about these numbers.** Machine throughput drifts by up to 2× across
 runs under sustained load: the same 1298-token prompt averaged 17.0 s in one
-run and 29.9 s in another an hour later. Comparisons *within* a single
+run and 29.9 s in another an hour later. Comparisons _within_ a single
 uninterrupted run are sound; comparisons across runs are not. An earlier A/B of
 mine was worthless for a dumber reason — I ran both arms at once and they
 contended for the GPU. Run arms sequentially, in one session, and say so.
@@ -155,10 +155,10 @@ What is left is not roadmap work but judgement calls that want a user:
 - **Is Gemma worth its first turn?** The answer changed once the bench started
   running the code rather than counting tags.
 
-  | | tool choice | edit target | code that *works* | per call |
-  |---|---|---|---|---|
-  | qwen2.5-coder:7b | 20/20 | 8/8 | **19/24** | 1.7 s |
-  | Gemma 4 26B-A4B | 20/20 | 8/8 | **8/8** | 25 s |
+  |                  | tool choice | edit target | code that _works_ | per call |
+  | ---------------- | ----------- | ----------- | ----------------- | -------- |
+  | qwen2.5-coder:7b | 20/20       | 8/8         | **19/24**         | 1.7 s    |
+  | Gemma 4 26B-A4B  | 20/20       | 8/8         | **8/8**           | 25 s     |
 
   Tied on protocol, not on code. qwen fails `top_k_indices` consistently —
   `np.argsort(a)[-k:]` under a docstring promising largest-first — and
@@ -170,6 +170,7 @@ What is left is not roadmap work but judgement calls that want a user:
   broken, but a user doing something that has to be right should switch, and
   the settings pane should probably say so. Note what this cost to learn: a
   bench that only counted tool choice called them equal.
+
 - **How aggressively should the ladder trim?** `context.windowTokens` minus a
   4096-token reserve is a guess that has never been wrong in testing because
   testing never used a 200-cell notebook.

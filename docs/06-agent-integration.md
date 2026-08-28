@@ -6,10 +6,10 @@ Adapters are **host-agnostic**: `jupyter_vybe/adapters/` imports no Tornado and 
 about the server extension. That is what lets the same code run in two places
 ([12](12-decisions.md) D2):
 
-| `agent.host` | Adapter runs in | Reached by the frontend at |
-|---|---|---|
-| `server` *(default)* | the Jupyter server extension | `<base_url>/jupyter-vybe/ws` |
-| `client` *(v1.1)* | `jupyter-vybe-local` on the user's own machine | `http://127.0.0.1:8137/ws` |
+| `agent.host`         | Adapter runs in                                | Reached by the frontend at   |
+| -------------------- | ---------------------------------------------- | ---------------------------- |
+| `server` _(default)_ | the Jupyter server extension                   | `<base_url>/jupyter-vybe/ws` |
+| `client` _(v1.1)_    | `jupyter-vybe-local` on the user's own machine | `http://127.0.0.1:8137/ws`   |
 
 **Co-located setups** (Jupyter and model on one laptop) use `server` and never think about this.
 
@@ -29,11 +29,11 @@ round-trip) so a misconfigured tunnel is visible rather than silently wrong.
 
 The port depends on which adapter the cluster will use:
 
-| Agent | Laptop port | Tunnel |
-|---|---|---|
-| `ollama-*` | 11434 | `ssh -N -R 11434:127.0.0.1:11434 user@cluster` |
-| `turbofieldfare-gemma4` | 8080 | `ssh -N -R 8080:127.0.0.1:8080 user@cluster` |
-| `openai-compat` | yours | `ssh -N -R <port>:127.0.0.1:<port> user@cluster`, then set `agent.endpoint` to `http://127.0.0.1:<port>` |
+| Agent                   | Laptop port | Tunnel                                                                                                   |
+| ----------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
+| `ollama-*`              | 11434       | `ssh -N -R 11434:127.0.0.1:11434 user@cluster`                                                           |
+| `turbofieldfare-gemma4` | 8080        | `ssh -N -R 8080:127.0.0.1:8080 user@cluster`                                                             |
+| `openai-compat`         | yours       | `ssh -N -R <port>:127.0.0.1:<port> user@cluster`, then set `agent.endpoint` to `http://127.0.0.1:<port>` |
 
 `-N` because no remote command is wanted, and keep the tunnel in its own terminal or under
 `autossh` — an `ssh` that dies takes the agent with it, and the failure looks like "the model
@@ -42,7 +42,7 @@ stopped answering" rather than "the tunnel dropped".
 Three things go wrong often enough to name:
 
 - **The cluster already has something on that port.** `sshd` refuses the forward and says so on
-  stderr, which is easy to miss under `-f`. The health probe then reports whatever *is* on that
+  stderr, which is easy to miss under `-f`. The health probe then reports whatever _is_ on that
   port, which is why it prints the hostname that answered: if that is the cluster's own name
   rather than your laptop's, the tunnel is not what you reached.
 - **`GatewayPorts` is irrelevant here** — the adapter runs on the cluster and dials loopback, so
@@ -65,8 +65,8 @@ for. It serves `/health`, `/agents`, and `/ws`, speaking exactly the protocol `h
 speaks, so `agentClient.ts` needs nothing but a different URL.
 
 `--allow-origin https://your-jupyter.example.org` restricts it to one JupyterLab origin. It binds
-loopback by default; `--host` will bind wider, which exposes your model *and any command adapter
-you have configured* to the network, so do that only behind something that authenticates. It covers
+loopback by default; `--host` will bind wider, which exposes your model _and any command adapter
+you have configured_ to the network, so do that only behind something that authenticates. It covers
 what a tunnel cannot — `claude -p` and CLI binaries need to run where the user's credentials
 live. It also sets the `Access-Control-Allow-Private-Network` header that browsers now require
 for a page to reach localhost, which is why the browser cannot simply call Ollama itself (see
@@ -81,12 +81,12 @@ rather than migration.
 server's base URL, all authenticated by the standard `@tornado.web.authenticated` +
 XSRF machinery (inherited from `ExtensionHandlerMixin` / `APIHandler`):
 
-| Route | Method | Purpose |
-|---|---|---|
-| `/jupyter-vybe/agents` | GET | Discover configured adapters and their reachability. Drives the settings dropdown. |
-| `/jupyter-vybe/health` | GET | Per-adapter probe (Ollama `/`, TurboFieldfare `/health`, `which` for commands). |
-| `/jupyter-vybe/history` | GET/POST | Optional durable history (see [05](05-history-pane.md)). |
-| `/jupyter-vybe/ws` | WebSocket | The agent channel. One connection per open notebook. |
+| Route                   | Method    | Purpose                                                                            |
+| ----------------------- | --------- | ---------------------------------------------------------------------------------- |
+| `/jupyter-vybe/agents`  | GET       | Discover configured adapters and their reachability. Drives the settings dropdown. |
+| `/jupyter-vybe/health`  | GET       | Per-adapter probe (Ollama `/`, TurboFieldfare `/health`, `which` for commands).    |
+| `/jupyter-vybe/history` | GET/POST  | Optional durable history (see [05](05-history-pane.md)).                           |
+| `/jupyter-vybe/ws`      | WebSocket | The agent channel. One connection per open notebook.                               |
 
 The package ships **no kernel-facing code at all**: `jupyter_client`, `nbclient`, and
 `ipykernel` are absent from its dependency list, and a CI check asserts they are never imported
@@ -138,8 +138,8 @@ Server → client:
 {"op":"error",  "roundId":"…", "message":"…", "retriable":true}
 ```
 
-Tool *parsing* happens on the server (one parser, in Python, shared by every adapter); tool
-*execution* happens in the browser (only the browser has the notebook). `add_cell` and
+Tool _parsing_ happens on the server (one parser, in Python, shared by every adapter); tool
+_execution_ happens in the browser (only the browser has the notebook). `add_cell` and
 `propose_edit` are fire-and-forget from the server's perspective. `ipython_help` and
 `complete` block the stream: the server emits `awaiting_tool`, pauses generation, waits for a
 `toolResult`, appends it to the message history, and resumes. `agentTools.maxToolTurns` bounds
@@ -177,11 +177,11 @@ protocol is text-based ([07](07-tool-protocol.md), [12](12-decisions.md) D3).
 Vendored from `/Users/rrs/Desktop/thoughtcode/code-llm/` into
 `jupyter_vybe/adapters/vendored/`, per PROMPT §5's "copy the necessary pieces". Specifically:
 
-| Source | Destination | Change |
-|---|---|---|
+| Source                     | Destination                         | Change                                                                                                                                        |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `turbofieldfare_client.py` | `vendored/turbofieldfare_client.py` | refactored from a stdout-printing `main()` into an async generator; the `resolve_cli_bin` / `resolve_model_path` probe order is kept verbatim |
-| `setup_turbofieldfare.sh` | `vendored/setup_turbofieldfare.sh` | unchanged; surfaced as a "set up TurboFieldfare" button in settings |
-| `README_turbofieldfare.md` | `docs/vendor/` | reference for the Gemma turn-token format |
+| `setup_turbofieldfare.sh`  | `vendored/setup_turbofieldfare.sh`  | unchanged; surfaced as a "set up TurboFieldfare" button in settings                                                                           |
+| `README_turbofieldfare.md` | `docs/vendor/`                      | reference for the Gemma turn-token format                                                                                                     |
 
 Prefers `TurboFieldfareServer`'s OpenAI-compatible `/v1/chat/completions` when `/health` answers
 (streaming SSE), falling back to `TurboFieldfareCLI --messages-file` — the same `auto` mode the
@@ -194,19 +194,19 @@ directory, which is what the CLI takes and what the adapter sent at first. The s
 to an id it does not know, so the whole server path was dead while `/health` said it was fine
 (docs/14 N4).
 
-The conversation is sent as **turns**, not folded into one user message. Gemma 4 has no *system*
+The conversation is sent as **turns**, not folded into one user message. Gemma 4 has no _system_
 role, which is what the folding was for, but user and assistant turns are turns — and that is what
 makes the server's prompt cache usable: `--prompt-cache-mode single-prefix` caches the previous
-prompt *and its completion*, and hits only when the next request continues that conversation. A
+prompt _and its completion_, and hits only when the next request continues that conversation. A
 re-folded blob is a different conversation every time and never hits.
 
 Measured against a resident server (2026-08-26, after both fixes), three turns of one session:
 
 | turn | prompt | cached | wall clock |
-|---|---|---|---|
-| 0 | 1822 | 0 | 28.0 s |
-| 1 | 2171 | 1862 | 8.5 s |
-| 2 | 2562 | 2251 | 7.0 s |
+| ---- | ------ | ------ | ---------- |
+| 0    | 1822   | 0      | 28.0 s     |
+| 1    | 2171   | 1862   | 8.5 s      |
+| 2    | 2562   | 2251   | 7.0 s      |
 
 Steady state is single-digit seconds. The first turn is the fixed preamble prefilled cold, which
 is why `tooling.md` was cut in half ([08](08-prompt-templates.md)) and why the truncation ladder
@@ -228,7 +228,7 @@ upstream fixes are visible rather than silently divergent.
 - **persistent**: keep the child alive, write a JSON line per turn to stdin, read newline
   -delimited JSON from stdout. Enables true persistent chat as PROMPT §5 requests, for tools
   that support a streaming JSON protocol (`claude -p --input-format stream-json
-  --output-format stream-json`). Health-checked at session start; falls back to one-shot with a
+--output-format stream-json`). Health-checked at session start; falls back to one-shot with a
   warning in the settings pane if the handshake fails.
 
 `argv` is parsed with `shlex.split` and executed **without a shell** (`shell=False`), no
