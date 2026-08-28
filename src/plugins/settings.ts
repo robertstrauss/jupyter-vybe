@@ -97,6 +97,23 @@ class VybeSettings implements IVybeSettings {
       'user'
     );
   }
+  get completionEnabled(): boolean {
+    // Off by default: it costs a model call on a keystroke cadence, and a
+    // user who wants that should choose it (D5).
+    return (this.group<boolean>('completion')['enabled'] as boolean) ?? false;
+  }
+  get completionDebounceMs(): number {
+    return (this.group<number>('completion')['debounceMs'] as number) ?? 300;
+  }
+  get completionMaxTokens(): number {
+    return (this.group<number>('completion')['maxTokens'] as number) ?? 64;
+  }
+  get completionTimeoutSeconds(): number {
+    return (this.group<number>('completion')['timeoutSeconds'] as number) ?? 4;
+  }
+  get completionMultiline(): boolean {
+    return (this.group<boolean>('completion')['multiline'] as boolean) ?? true;
+  }
   get globalPrompt(): string {
     return (this.group<string>('prompts')['global'] as string) ?? '';
   }

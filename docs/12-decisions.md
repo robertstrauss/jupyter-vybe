@@ -194,6 +194,17 @@ omits it entirely.
 **Recommendation: A.** Both backends support FIM (`README_turbofieldfare.md` documents Gemma's
 tokens; Qwen2.5-Coder has its own), so nothing is being foreclosed.
 
+**Outcome: built in v1.1**, and deferring was right for a reason the estimate did not name. The
+subsystem is small — a FIM prompt, a raw completion endpoint, an
+`IInlineCompletionProvider` — but almost all of its design is about *not showing stale text*,
+which is the opposite of the prompt-cell flow's concern. Built together, the two would have
+argued: a prompt cell may take thirty seconds and that is fine, while a completion that arrives
+after the next keystroke is worse than none.
+
+Measured against `qwen2.5-coder:7b`: 0.4–1.3 s per completion, returning real code
+(`x / x.max() if x.max() != 0 else x` for `def normalise(x): return `). It is **off by default**
+— it costs a model call at a keystroke cadence, and a user who wants that should say so.
+
 ---
 
 ## D6 · The `Enter` rebinding during review

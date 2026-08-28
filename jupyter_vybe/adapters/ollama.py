@@ -63,6 +63,38 @@ class OllamaAdapter(Adapter):
                 continue
         return False
 
+    async def complete_raw(self, prompt: str, max_tokens: int, timeout: float) -> str:
+        """A raw, non-chat completion, for fill-in-the-middle (docs/12 D5).
+
+        /api/generate with raw=True skips the chat template, which matters:
+        FIM tokens wrapped in a chat turn ask the model a different question
+        and get prose about the code instead of the code.
+        """
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "raw": True,
+            "stream": False,
+            "options": {
+                "temperature": 0.1,
+                "num_predict": max_tokens,
+                # A completion the user has already typed past is worthless, so
+                # the model is stopped early rather than left to finish.
+                "stop": ["<|endoftext|>", "<|fim_pad|>", "<|file_sep|>"],
+            },
+        }
+
+        def call() -> str:
+            req = urllib.request.Request(
+                f"{self.host}/api/generate",
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.load(resp).get("response", "")
+
+        return await asyncio.to_thread(call)
+
     async def stream(self, messages: list[Message], cancel: asyncio.Event) -> AsyncIterator[str]:
         if not await self.ensure_server():
             raise RuntimeError(

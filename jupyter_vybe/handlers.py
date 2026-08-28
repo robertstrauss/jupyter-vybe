@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
@@ -10,7 +11,8 @@ from jupyter_server.base.handlers import APIHandler
 from jupyter_server.utils import url_path_join
 from tornado import web, websocket
 
-from .adapters import ADAPTER_REGISTRY, build_adapter
+from .adapters import ADAPTER_REGISTRY, Message, build_adapter
+from .completion import build_fim_prompt, clean, looks_useless, should_be_multiline
 from .history import HistoryStore, find_orphan
 from .session import SessionManager
 
@@ -116,6 +118,67 @@ class HistoryHandler(APIHandler):
         self.finish(json.dumps({"ok": True, "entry": written}))
 
 
+class CompletionHandler(APIHandler):
+    """Inline completion, fill-in-the-middle (D5, v1.1).
+
+    A separate route from the round WebSocket on purpose: this has a latency
+    budget measured in hundreds of milliseconds, and it must be cancellable by
+    the client simply dropping the request. Nothing here touches a session, so
+    a completion in flight can never disturb a round.
+    """
+
+    @web.authenticated
+    async def post(self) -> None:
+        body = json.loads(self.request.body or b"{}")
+        prefix = body.get("prefix", "")
+        suffix = body.get("suffix", "")
+        agent_id = body.get("agentId", "ollama-qwen25-coder-7b")
+        multiline = bool(body.get("multiline", False))
+        max_tokens = int(body.get("maxTokens", 64))
+        timeout = float(body.get("timeoutSeconds", 4))
+        if not prefix.strip() and not suffix.strip():
+            self.finish(json.dumps({"items": []}))
+            return
+        try:
+            adapter = build_adapter(agent_id, body.get("options", {}))
+        except KeyError:
+            raise web.HTTPError(404, f"unknown agent {agent_id!r}")
+
+        model = getattr(adapter, "model", "") or agent_id
+        prompt, is_raw = build_fim_prompt(prefix, suffix, model)
+        try:
+            text = await asyncio.wait_for(
+                self._generate(adapter, prompt, is_raw, max_tokens, timeout),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            # Silence beats a late suggestion: by now the user has typed on.
+            self.finish(json.dumps({"items": [], "timedOut": True}))
+            return
+        except Exception as exc:  # noqa: BLE001 — reported, never raised at the editor
+            self.finish(json.dumps({"items": [], "error": f"{type(exc).__name__}: {exc}"}))
+            return
+
+        text = clean(text, suffix, should_be_multiline(prefix, multiline))
+        items = [] if looks_useless(text, prefix) else [{"insertText": text}]
+        self.finish(json.dumps({"items": items}))
+
+    async def _generate(self, adapter, prompt: str, is_raw: bool, max_tokens: int, timeout: float) -> str:
+        raw = getattr(adapter, "complete_raw", None)
+        if is_raw and raw is not None:
+            return await raw(prompt, max_tokens, timeout)
+        # No raw endpoint: fall back to a normal turn and take what comes.
+        # Worse completions, but every adapter can do it.
+        out = ""
+        cancel = asyncio.Event()
+        async for chunk in adapter.stream([Message("user", prompt)], cancel):
+            out += chunk
+            if len(out) > max_tokens * 8:
+                cancel.set()
+                break
+        return out
+
+
 class AgentSocket(websocket.WebSocketHandler):
     """One connection per open notebook; carries prompts, prose, and tool events."""
 
@@ -199,6 +262,7 @@ def setup_handlers(web_app) -> None:
             (url_path_join(base, NAMESPACE, "agents"), AgentsHandler),
             (url_path_join(base, NAMESPACE, "health"), HealthHandler),
             (url_path_join(base, NAMESPACE, "history"), HistoryHandler),
+            (url_path_join(base, NAMESPACE, "complete"), CompletionHandler),
             (url_path_join(base, NAMESPACE, "ws"), AgentSocket),
         ],
     )

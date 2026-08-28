@@ -28,6 +28,11 @@ export interface IVybeSettings {
   readonly historyPersist: boolean;
   readonly historyMaxEntries: number;
   readonly historyLocation: 'user' | 'adjacent';
+  readonly completionEnabled: boolean;
+  readonly completionDebounceMs: number;
+  readonly completionMaxTokens: number;
+  readonly completionTimeoutSeconds: number;
+  readonly completionMultiline: boolean;
   readonly changed: ISignal<IVybeSettings, void>;
 }
 export const IVybeSettings = new Token<IVybeSettings>(

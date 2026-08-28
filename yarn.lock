@@ -2357,6 +2357,35 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@jupyterlab/completer@npm:^4.4.0":
+  version: 4.6.3
+  resolution: "@jupyterlab/completer@npm:4.6.3"
+  dependencies:
+    "@codemirror/language": ^6.12.1
+    "@codemirror/state": ^6.5.4
+    "@codemirror/view": ^6.39.14
+    "@jupyter/ydoc": ^4.0.0
+    "@jupyterlab/apputils": ^4.7.3
+    "@jupyterlab/codeeditor": ^4.6.3
+    "@jupyterlab/codemirror": ^4.6.3
+    "@jupyterlab/coreutils": ^6.6.3
+    "@jupyterlab/rendermime": ^4.6.3
+    "@jupyterlab/services": ^7.6.3
+    "@jupyterlab/settingregistry": ^4.6.3
+    "@jupyterlab/statedb": ^4.6.3
+    "@jupyterlab/translation": ^4.6.3
+    "@jupyterlab/ui-components": ^4.6.3
+    "@lumino/algorithm": ^2.0.4
+    "@lumino/coreutils": ^2.2.2
+    "@lumino/disposable": ^2.1.5
+    "@lumino/domutils": ^2.0.4
+    "@lumino/messaging": ^2.0.4
+    "@lumino/signaling": ^2.1.5
+    "@lumino/widgets": ^2.8.0
+  checksum: a6daf18977e72fed99c410dac3fecc72fd5903bce31a0135b9e616b11914c98b0c844e1804f5245adb7e16ac62732cd34e002a05f3578eb1de168459b44d9543
+  languageName: node
+  linkType: hard
+
 "@jupyterlab/core-meta@npm:^4.6.1":
   version: 4.6.3
   resolution: "@jupyterlab/core-meta@npm:4.6.3"
@@ -7620,6 +7649,7 @@ __metadata:
     "@jupyterlab/cells": ^4.4.0
     "@jupyterlab/codeeditor": ^4.4.0
     "@jupyterlab/codemirror": ^4.4.0
+    "@jupyterlab/completer": ^4.4.0
     "@jupyterlab/coreutils": ^6.4.0
     "@jupyterlab/docregistry": ^4.4.0
     "@jupyterlab/nbformat": ^4.4.0

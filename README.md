@@ -14,7 +14,7 @@ It boils down to having a **human in the loop** (with eyes on the actual code, *
 ## Overview
 Use AI coding tools in your jupyter notebooks in a seamless way: start a code cell with `>`, write what you want in plain language, and run the cell (Shift+Enter) to have an agent generate a few cells with the desired code or propose edits to other cells.
 
-*Planned, not in this version:* advanced autocompletion proposal — not just filling in the rest of a method call, but proposing the relevant variables to enter, pre/post processing lines, or a restructuring of the autocompleted line. It is deliberately held back so the prompt-cell path could be got right first; see `docs/12-decisions.md` D5.
+Also adds **inline completion**: ghost text from the same local model, filling in the rest of the line or block as you type. It is off by default (Settings ▸ Jupyter Vybe ▸ Inline completion) because it costs a model call at a keystroke cadence — on `qwen2.5-coder:7b` locally it answers in well under a second.
 
 Fully backwards-copmatible; this uses normal notebook files and doesn't add any new or strange properties. Collaborators can open the same notebook and see the same thing.
 

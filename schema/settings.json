@@ -201,6 +201,47 @@
       },
       "default": { "autoScroll": true, "acceptKey": "yn", "mergeCommentStyle": "auto" }
     },
+    "completion": {
+      "type": "object",
+      "title": "Inline completion",
+      "description": "Ghost-text suggestions from the same agent. Off by default: it costs a model call on a keystroke cadence.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Suggest completions as you type",
+          "default": false
+        },
+        "debounceMs": {
+          "type": "integer",
+          "title": "Wait before asking (milliseconds)",
+          "description": "Typing supersedes a request in flight; this is how long a pause counts as 'stopped typing'.",
+          "default": 300
+        },
+        "maxTokens": {
+          "type": "integer",
+          "title": "Longest suggestion (tokens)",
+          "default": 64
+        },
+        "timeoutSeconds": {
+          "type": "number",
+          "title": "Give up after (seconds)",
+          "description": "A late suggestion is worse than none: by then you have typed on.",
+          "default": 4
+        },
+        "multiline": {
+          "type": "boolean",
+          "title": "Allow multi-line suggestions",
+          "default": true
+        }
+      },
+      "default": {
+        "enabled": false,
+        "debounceMs": 300,
+        "maxTokens": 64,
+        "timeoutSeconds": 4,
+        "multiline": true
+      }
+    },
     "history": {
       "type": "object",
       "title": "History",

@@ -9,6 +9,7 @@ import { commandsPlugin } from './plugins/commands';
 import { reviewUIPlugin } from './plugins/reviewUI';
 import { historyPanePlugin } from './plugins/historyPane';
 import { settingsRenderersPlugin } from './plugins/settingsRenderers';
+import { inlineCompleterPlugin } from './plugins/inlineCompleter';
 
 /**
  * Jupyter Vybe — fine-grained AI code generation in Jupyter notebooks.
@@ -27,7 +28,8 @@ const plugins: JupyterFrontEndPlugin<any>[] = [
   commandsPlugin,
   reviewUIPlugin,
   historyPanePlugin,
-  settingsRenderersPlugin
+  settingsRenderersPlugin,
+  inlineCompleterPlugin
 ];
 
 export default plugins;
