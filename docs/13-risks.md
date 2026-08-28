@@ -225,6 +225,24 @@ README rather than discovered.
 
 ---
 
+## R14 · A round that fails silently · **REALISED — fixed**
+
+`protocolError` frames — the server's answer when the model names a cell that does not exist —
+were sent by the session and **not handled by the frontend at all**. The round produced no cell,
+no message, and no clue: exactly the "nothing happened" the extension is meant never to do, and
+the same shape as the settings schema that silently did not load.
+
+*Fixed:* protocol errors and agent errors both surface twice over — in the status bubble while it
+is happening, and in the settled markdown cell where the prompt ends up, so it survives dismissal.
+Two Galata tests cover it: a model aimed at a cell that does not exist, and an agent that exits
+non-zero.
+
+*The general lesson, which this project keeps relearning:* the dangerous failures here are not
+crashes. They are paths that quietly do nothing — a stale server, a schema keyed to the wrong
+name, a keybinding whose selector matches nothing, a frame nobody handles.
+
+---
+
 ## R13 · A silent edit to the wrong cell · **REALISED — fixed**
 
 The worst failure this tool can produce, because unlike a bad suggestion it is

@@ -41,6 +41,8 @@ export class Round {
   readonly log = new OperationLog();
   readonly insertedIds: string[] = [];
   prose = '';
+  /** Anything that went wrong, for the bubble as well as the settled cell. */
+  readonly problems: string[] = [];
   state: 'running' | 'applying' | 'reviewing' | 'settled' | 'cancelled' =
     'running';
 
@@ -247,8 +249,16 @@ export class Rounds implements IVybeRounds {
         console.info(
           `[jupyter-vybe] assembled prompt for round ${round.id}:\n${frame.prompt}`
         );
-      } else if (frame.op === 'error') {
-        round.prose += `\n\n_Agent error: ${frame.message}_`;
+      } else if (frame.op === 'error' || frame.op === 'protocolError') {
+        // protocolError was previously unhandled, which meant the commonest
+        // recoverable failure -- the model naming a cell that does not exist
+        // -- produced nothing at all: no cell, no message, no clue. A silent
+        // no-op is the failure mode this whole design is trying to avoid.
+        round.problems.push(frame.message ?? 'unknown error');
+        round.prose += `\n\n_${
+          frame.op === 'error' ? 'Agent error' : 'Protocol error'
+        }: ${frame.message}_`;
+        this._emitProblem(round, frame.message ?? 'unknown error');
       }
     }
 
@@ -256,6 +266,18 @@ export class Rounds implements IVybeRounds {
       return;
     }
     this._settle(round, cell);
+  }
+
+  private _emitProblem(round: Round, message: string): void {
+    this._statusChanged.emit({
+      panel: round.panel,
+      phase: 'problem',
+      elapsedSeconds: 0,
+      contextTokens: 0,
+      budgetTokens: 0,
+      dropped: [],
+      message
+    });
   }
 
   private _emit(

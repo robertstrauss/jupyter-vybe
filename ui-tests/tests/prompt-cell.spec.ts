@@ -240,3 +240,38 @@ test('the history pane holds the prompt after its cell is deleted', async ({
     )
   ).toBe(true);
 });
+
+test('a protocol error is shown, not swallowed', async ({ page }) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> aim at a cell that is not there');
+
+  await page.notebook.runCell(1);
+
+  // The round used to produce nothing at all here: no cell, no message, no
+  // clue. Silence is the failure mode this design exists to avoid.
+  const bubble = page.locator('.jv-status-bubble.jv-problem');
+  await expect(bubble).toBeVisible({ timeout: 60000 });
+  await expect(bubble).toContainText('problem');
+  // And it is recorded where the prompt ends up, so it survives the dismissal.
+  await expect
+    .poll(async () => (await cells(page))[1].source)
+    .toContain('Protocol error');
+  // The notebook itself is untouched by a failed round.
+  expect((await cells(page))[0].source).toBe('value = 1');
+});
+
+test('an agent that falls over says so', async ({ page }) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', '> make the agent fail');
+
+  await page.notebook.runCell(0);
+
+  const bubble = page.locator('.jv-status-bubble.jv-problem');
+  await expect(bubble).toBeVisible({ timeout: 60000 });
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toContain('fell over');
+});

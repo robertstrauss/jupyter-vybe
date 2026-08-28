@@ -43,7 +43,8 @@ export const IVybeSettings = new Token<IVybeSettings>(
 /** What the status bubble needs to know while a round is in flight. */
 export interface IRoundStatus {
   panel: NotebookPanel;
-  phase: 'generating' | 'ended';
+  /** 'problem' is not terminal: the round carries on and settles. */
+  phase: 'generating' | 'ended' | 'problem';
   elapsedSeconds: number;
   /** Estimated tokens in the notebook portion of the prompt (docs/09). */
   contextTokens: number;
@@ -51,6 +52,8 @@ export interface IRoundStatus {
   budgetTokens: number;
   /** What the ladder had to drop to fit, in the order it dropped it. */
   dropped: string[];
+  /** Set on 'problem': what went wrong, in the words the user should see. */
+  message?: string;
 }
 
 /** The round state machine; the cell executor hands prompt cells to it. */

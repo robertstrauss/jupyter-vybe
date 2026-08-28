@@ -466,3 +466,11 @@
   cursor: default;
   opacity: 0.6;
 }
+
+.jv-status-bubble.jv-problem {
+  border-color: var(--jp-error-color1);
+}
+
+.jv-status-bubble.jv-problem .jv-bubble-main {
+  color: var(--jp-error-color1);
+}

@@ -15,7 +15,16 @@ import sys
 
 prompt = sys.argv[-1] if len(sys.argv) > 1 else ""
 
-if "double the value" in prompt:
+if "aim at a cell that is not there" in prompt:
+    # Names a cell number the notebook does not have: the commonest
+    # recoverable protocol failure, and the one that used to produce silence.
+    print('<vybe:propose_edit cell="99" note="nowhere">')
+    print("x = 1")
+    print("</vybe:propose_edit>")
+elif "make the agent fail" in prompt:
+    sys.stderr.write("the agent fell over\n")
+    raise SystemExit(3)
+elif "double the value" in prompt:
     print('<vybe:propose_edit cell="1" note="double it">')
     print("value = 2")
     print("</vybe:propose_edit>")

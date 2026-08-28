@@ -200,7 +200,24 @@ export class StatusBubble extends Widget {
     this._hint.textContent = `click or ${jumpKey} to review`;
     this._sub.textContent = 'reject all  ⌥⇧E';
     this._sub.onclick = this._onRejectAll;
+    this.node.classList.remove('jv-generating', 'jv-undo', 'jv-problem');
+  }
+
+  /**
+   * Something went wrong mid-round. Shown rather than logged: the alternative
+   * is a round that produces nothing and says nothing, which reads as the
+   * extension being broken.
+   */
+  showProblem(message: string, onDismiss: () => void = () => undefined): void {
+    this._label.textContent = '⚠ the agent hit a problem';
+    this._hint.textContent = message.slice(0, 140);
+    this._sub.textContent = 'dismiss';
+    this._sub.onclick = () => {
+      onDismiss();
+      this.hide();
+    };
     this.node.classList.remove('jv-generating', 'jv-undo');
+    this.node.classList.add('jv-problem');
   }
 
   /** After a reject-all: the round is gone, but not irrecoverably. */
@@ -210,7 +227,7 @@ export class StatusBubble extends Widget {
     this._hint.textContent = '';
     this._sub.textContent = `undo  ${undoKey}`;
     this._sub.onclick = this._onUndo;
-    this.node.classList.remove('jv-generating');
+    this.node.classList.remove('jv-generating', 'jv-problem');
     this.node.classList.add('jv-undo');
   }
 }

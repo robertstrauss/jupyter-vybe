@@ -25,6 +25,12 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
   ): void => {
     const bubbles = new Map<string, StatusBubble>();
     const overlays = new Map<string, Widget[]>();
+    /**
+     * Panels currently showing a problem. Without this the render that
+     * follows a failed round hides the message before it can be read: there
+     * are no pending proposals, so the ordinary path hides the bubble.
+     */
+    const showingProblem = new Set<string>();
 
     const bubbleFor = (panel: NotebookPanel): StatusBubble => {
       let b = bubbles.get(panel.id);
@@ -61,6 +67,9 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       const pending = proposals.list(panel).filter(p => p.state === 'pending');
       const bubble = bubbleFor(panel);
 
+      if (showingProblem.has(panel.id)) {
+        return; // a problem is on screen; leave it until it is dismissed
+      }
       if (!pending.length) {
         // A reject-all leaves nothing pending but is worth offering back for
         // a moment, in case the click was not meant (docs/14 N3).
@@ -152,10 +161,21 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
 
     rounds.statusChanged.connect((_r, status: IRoundStatus) => {
       const bubble = bubbleFor(status.panel);
-      if (status.phase === 'generating') {
+      if (status.phase === 'problem') {
+        showingProblem.add(status.panel.id);
+        bubble.show();
+        bubble.showProblem(status.message ?? 'unknown error', () =>
+          showingProblem.delete(status.panel.id)
+        );
+      } else if (status.phase === 'generating') {
+        // A new round supersedes the last one's complaint.
+        showingProblem.delete(status.panel.id);
         bubble.show();
         bubble.showGenerating(status.elapsedSeconds, meter(status));
-      } else if (!proposals.pendingCount(status.panel)) {
+      } else if (
+        !proposals.pendingCount(status.panel) &&
+        !showingProblem.has(status.panel.id)
+      ) {
         bubble.hide();
       }
     });
