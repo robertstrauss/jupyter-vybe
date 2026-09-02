@@ -60,6 +60,8 @@ export interface IVybeProposals {
   undoRejectAll(panel: NotebookPanel): boolean;
   undoableRejection(panel: NotebookPanel): number;
   activeProposal(panel: NotebookPanel): IProposal | null;
+  /** The prompt cell of the round under review, for showing its summary. */
+  roundPromptCellId(panel: NotebookPanel): string | null;
   clear(panel: NotebookPanel, roundId?: string): void;
   logFor(panel: NotebookPanel): OperationLog;
   readonly changed: ISignal<IVybeProposals, NotebookPanel>;
@@ -148,6 +150,14 @@ export class Proposals implements IVybeProposals {
     return this.list(panel).find(p => p.state === 'pending') ?? null;
   }
 
+  roundPromptCellId(panel: NotebookPanel): string | null {
+    return (
+      this._rounds.get(panel.id)?.promptCellId ??
+      this._undo.get(panel.id)?.round.promptCellId ??
+      null
+    );
+  }
+
   beginReview(panel: NotebookPanel, round: IRoundHandle): void {
     this._rounds.set(panel.id, round);
     for (const p of this.list(panel)) {
@@ -155,19 +165,9 @@ export class Proposals implements IVybeProposals {
         this._setRendered(panel, p.cellId, false);
       }
     }
-    // Review is a keyboard flow, so it has to *start* on the keyboard: put the
-    // notebook in command mode on the first proposal and take focus. Settling
-    // the round leaves an editor focused otherwise, so the first Y went into a
-    // cell as the letter y.
-    const first = this.activeProposal(panel);
-    if (first) {
-      const idx = this._indexOf(panel, first.cellId);
-      if (idx !== -1) {
-        panel.content.activeCellIndex = idx;
-      }
-    }
-    panel.content.mode = 'command';
-    panel.content.node.focus();
+    // Focus deliberately stays where Rounds put it -- on the prompt cell,
+    // showing how many edits are waiting. Review starts when the user presses
+    // Enter, rather than dropping them into the first diff unasked.
     this._changed.emit(panel);
   }
 
@@ -382,6 +382,8 @@ export class Proposals implements IVybeProposals {
       panel.content.activeCellIndex = idx;
       panel.content.mode = 'command';
       const widget = panel.content.widgets[idx];
+      // Focused so the next verdict's keystroke lands on the next cell.
+      widget?.node.focus();
       widget?.node.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     if (!next) {

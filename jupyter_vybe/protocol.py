@@ -185,24 +185,40 @@ def _partial_suffix(buf: str, token: str) -> int:
     return 0
 
 
-_BODY_FENCE_RE = re.compile(r"\A[ \t]*```[A-Za-z0-9_+-]*[ \t]*\n(.*?)\n?[ \t]*```[ \t]*\Z", re.S)
+# One fenced block inside a tag body, wherever it sits.
+#
+# Deliberately not anchored to the whole body. An anchored pattern with a
+# non-greedy group still matches a body containing *two* fences -- the group
+# just expands across the middle -- and silently returns one block glued to
+# the other's delimiters. Counting the blocks is both simpler and correct.
+_BODY_FENCE_RE = re.compile(r"```[A-Za-z0-9_+-]*[ \t]*\n(.*?)\n?[ \t]*```", re.S)
 
 
 def strip_body_fence(body: str, cell_type: str) -> str:
     """Unwrap a markdown fence a model wrapped around a *code* body.
 
-    The tag already delimits the body, so a fence wrapping the whole of a code
-    cell is the model double-wrapping, and leaving it in produces a cell whose
-    first line is ```python -- a syntax error.
+    The tag already delimits the body, so a fence wrapping a code cell is the
+    model double-wrapping, and leaving it in produces a cell whose first line
+    is ```python -- a syntax error.
 
-    Markdown cells are left alone: a markdown cell whose content is a fenced
-    example is legitimate, and unwrapping it would destroy the example
+    Two shapes are unwrapped: a fence spanning the whole body, and a single
+    fenced block with prose around it ("Here you go:" above, an explanation
+    below). The second is deliberate rather than defensive -- writing code
+    inside a fence is the habit every model already has, and prompts/tooling.md
+    now tells them it is allowed, so the parser has to mean it.
+
+    A body with *two* fences is left alone: that is a cell that genuinely
+    contains fenced examples, and picking one of them would silently discard
+    the rest.
+
+    Markdown cells are left alone entirely: a markdown cell whose content is a
+    fenced example is legitimate, and unwrapping it would destroy the example
     (tests/protocol/body-containing-code-fence.txt).
     """
     if cell_type == "markdown":
         return body
-    m = _BODY_FENCE_RE.match(body)
-    return m.group(1) if m else body
+    blocks = _BODY_FENCE_RE.findall(body)
+    return blocks[0] if len(blocks) == 1 else body
 
 
 def _trim_body(body: str) -> str:

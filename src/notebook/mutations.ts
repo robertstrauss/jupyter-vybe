@@ -67,6 +67,29 @@ function indexOfCell(panel: NotebookPanel, cellId: string): number {
   return -1;
 }
 
+/**
+ * The same lookup against the *shared* model.
+ *
+ * `model.cells` is a view that syncs from the ydoc through observers, and
+ * those do not run until the enclosing `transact` commits. Inside a
+ * transaction it is therefore stale: revertRound deleted a cell by an index
+ * computed before the conversion above it had landed, and quietly deleted
+ * nothing. The shared model is always current.
+ */
+function sharedIndexOfCell(panel: NotebookPanel, cellId: string): number {
+  const shared = panel.content.model?.sharedModel;
+  if (!shared) {
+    return -1;
+  }
+  const cells = shared.cells;
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i].getId() === cellId) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 export function findCellModel(
   panel: NotebookPanel,
   cellId: string
@@ -94,17 +117,30 @@ export function insertCellsBelow(
   if (anchor === -1) {
     return [];
   }
-  const ids: string[] = [];
+  // Insert inside the transaction, but read the ids back *after* it commits.
+  //
+  // Both views of the notebook lag inside a transact: `model.cells` syncs
+  // through observers that have not run yet, and `sharedModel.cells` is no
+  // better. Reading either one mid-transaction returns whichever cell used to
+  // occupy that index -- so the round recorded the id of a cell it had not
+  // created, undo deleted the wrong cell, and the post-round highlight
+  // selected the wrong one. Waiting until the transaction commits is the only
+  // reading that is true.
+  const indices: number[] = [];
   model.sharedModel.transact(() => {
     specs.forEach((spec, offset) => {
-      model.sharedModel.insertCell(anchor + 1 + offset, {
+      const at = anchor + 1 + offset;
+      model.sharedModel.insertCell(at, {
         cell_type: spec.type,
         source: spec.source,
         metadata: {}
       });
-      ids.push(model.cells.get(anchor + 1 + offset).id);
+      indices.push(at);
     });
   });
+  const ids = indices
+    .map(index => model.cells.get(index)?.id)
+    .filter((id): id is string => !!id);
   log.record({ kind: 'insert', cellIds: ids });
   return ids;
 }
@@ -173,7 +209,7 @@ export function revertRound(panel: NotebookPanel, log: OperationLog): void {
     while (op) {
       if (op.kind === 'insert') {
         for (const id of [...op.cellIds].reverse()) {
-          const idx = indexOfCell(panel, id);
+          const idx = sharedIndexOfCell(panel, id);
           if (idx !== -1) {
             model.sharedModel.deleteCell(idx);
           }

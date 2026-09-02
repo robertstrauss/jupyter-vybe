@@ -1,12 +1,29 @@
 // The notebook mutations themselves are covered by their own module and drive
 // real JupyterLab widgets; here only the round's lifetime is under test.
+// The real mutations drive JupyterLab widgets, so they are mocked -- but they
+// still record to the operation log, because that is what undo replays and a
+// fake that skipped it would make undo look broken here and work in the app.
 jest.mock('../notebook/mutations', () => ({
   ...jest.requireActual('../notebook/mutations'),
-  convertPromptToMarkdown: jest.fn(),
-  insertCellsBelow: jest.fn(() => ['inserted-1']),
+  convertPromptToMarkdown: jest.fn(
+    (_panel: any, cellId: string, _source: string, log: any) =>
+      log.record({
+        kind: 'convert',
+        cellId,
+        beforeType: 'code',
+        beforeSource: ''
+      })
+  ),
+  insertCellsBelow: jest.fn(
+    (_panel: any, _anchor: any, _specs: any, log: any) => {
+      log.record({ kind: 'insert', cellIds: ['inserted-1'] });
+      return ['inserted-1'];
+    }
+  ),
   revertRound: jest.fn()
 }));
 
+import { convertPromptToMarkdown, revertRound } from '../notebook/mutations';
 import { Rounds } from '../plugins/rounds';
 import type { IRoundHandle } from '../plugins/proposals';
 
@@ -38,6 +55,7 @@ function fakePanel(): any {
       mode: 'command',
       widgets: [{ node: {} }],
       extendContiguousSelectionTo: () => undefined,
+      deselectAll: () => undefined,
       model: {
         cells: { length: cells.length, get: (i: number) => cells[i] },
         sharedModel: { transact: (fn: () => void) => fn() },
@@ -205,5 +223,113 @@ describe('Rounds', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  // The prompt cell is where the review happens now (docs/03).
+  it('leaves the prompt cell as code while verdicts are outstanding', async () => {
+    const panel = fakePanel();
+    const { rounds } = build(
+      [{ op: 'tool', name: 'propose_edit', args: { cell: '1', body: 'x' } }],
+      1
+    );
+    (rounds as any)._panelFor = () => panel;
+    (convertPromptToMarkdown as jest.Mock).mockClear();
+
+    await rounds.begin(options(fakeCell(panel)));
+
+    // Converting now would destroy the cell showing the count the user is
+    // being asked to act on.
+    expect(convertPromptToMarkdown).not.toHaveBeenCalled();
+  });
+
+  it('converts the prompt cell once the last verdict is in', async () => {
+    const panel = fakePanel();
+    const { rounds, endReview } = build(
+      [{ op: 'tool', name: 'propose_edit', args: { cell: '1', body: 'x' } }],
+      1
+    );
+    (rounds as any)._panelFor = () => panel;
+    (convertPromptToMarkdown as jest.Mock).mockClear();
+
+    await rounds.begin(options(fakeCell(panel)));
+    endReview();
+
+    expect(convertPromptToMarkdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('converts immediately when nothing was proposed', async () => {
+    const panel = fakePanel();
+    const { rounds } = build([{ op: 'prose', delta: 'done' }], 0);
+    (rounds as any)._panelFor = () => panel;
+    (convertPromptToMarkdown as jest.Mock).mockClear();
+
+    await rounds.begin(options(fakeCell(panel)));
+
+    expect(convertPromptToMarkdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the user on the prompt cell in command mode for review', async () => {
+    const panel = fakePanel();
+    const { rounds } = build(
+      [{ op: 'tool', name: 'propose_edit', args: { cell: '1', body: 'x' } }],
+      1
+    );
+    (rounds as any)._panelFor = () => panel;
+    // Shift+Enter has already moved on by the time a round settles.
+    panel.content.activeCellIndex = 5;
+
+    await rounds.begin(options(fakeCell(panel)));
+
+    expect(panel.content.activeCellIndex).toBe(0); // the prompt cell
+    expect(panel.content.mode).toBe('command');
+  });
+
+  describe('undoing a settled round (docs/02)', () => {
+    const settled = async () => {
+      const panel = fakePanel();
+      const { rounds } = build([{ op: 'prose', delta: 'done' }], 0);
+      (rounds as any)._panelFor = () => panel;
+      await rounds.begin(options(fakeCell(panel)));
+      return { panel, rounds };
+    };
+
+    it('has nothing to revert before a round has run', () => {
+      const { rounds } = build([], 0);
+      expect(rounds.canRevertLast(fakePanel())).toBe(false);
+    });
+
+    it('reverts the round and hands the prompt back for editing', async () => {
+      const { panel, rounds } = await settled();
+      (revertRound as jest.Mock).mockClear();
+
+      expect(rounds.canRevertLast(panel)).toBe(true);
+      expect(rounds.revertLast(panel)).toBe(true);
+
+      // Everything the round did, undone in one step...
+      expect(revertRound).toHaveBeenCalledTimes(1);
+      // ...and the cursor put back in the prompt, because undoing a generation
+      // is almost always the prelude to rewording it.
+      expect(panel.content.mode).toBe('edit');
+    });
+
+    it('only reaches back one round', async () => {
+      const { panel, rounds } = await settled();
+      expect(rounds.revertLast(panel)).toBe(true);
+      // A second press is not ours: core undo should get it.
+      expect(rounds.revertLast(panel)).toBe(false);
+      expect(rounds.canRevertLast(panel)).toBe(false);
+    });
+
+    it("a new round supersedes the previous round's undo", async () => {
+      const { panel, rounds } = await settled();
+      expect(rounds.canRevertLast(panel)).toBe(true);
+
+      await rounds.begin(options(fakeCell(panel)));
+
+      // Reaching further back would delete cells the user has since worked on.
+      expect(rounds.canRevertLast(panel)).toBe(true);
+      rounds.revertLast(panel);
+      expect(rounds.canRevertLast(panel)).toBe(false);
+    });
   });
 });

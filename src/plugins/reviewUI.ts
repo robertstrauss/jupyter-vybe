@@ -9,6 +9,7 @@ import { IVybeProposals, type IProposal } from './proposals';
 import { IVybeRounds, IVybeSettings, type IRoundStatus } from '../tokens';
 import { CommandIDs } from './commands';
 import { DiffOverlay, ReviewControls, StatusBubble } from '../ui/DiffOverlay';
+import { PromptOutput, outputHostFor } from '../ui/PromptOutput';
 
 /** Renders the diff overlays, the per-cell controls, and the status bubble. */
 export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
@@ -25,6 +26,8 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
   ): void => {
     const bubbles = new Map<string, StatusBubble>();
     const overlays = new Map<string, Widget[]>();
+    /** One prompt-cell output panel per notebook, moved between cells. */
+    const outputs = new Map<string, { widget: PromptOutput; cellId: string }>();
     /**
      * Panels currently showing a problem. Without this the render that
      * follows a failed round hides the message before it can be read: there
@@ -48,6 +51,80 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       return b;
     };
 
+    /**
+     * Attach (or move) the prompt cell's output panel. It follows the cell
+     * rather than the index, because a round inserts cells above nothing and
+     * below everything and indices shift under it.
+     */
+    const outputFor = (
+      panel: NotebookPanel,
+      promptCellId: string
+    ): PromptOutput | null => {
+      const cells = panel.content.model?.cells;
+      if (!cells) {
+        return null;
+      }
+      let index = -1;
+      for (let i = 0; i < cells.length; i++) {
+        if (cells.get(i).id === promptCellId) {
+          index = i;
+          break;
+        }
+      }
+      const cellWidget = index === -1 ? null : panel.content.widgets[index];
+      if (!cellWidget) {
+        return null;
+      }
+      const existing = outputs.get(panel.id);
+      if (existing && existing.cellId === promptCellId) {
+        return existing.widget;
+      }
+      existing?.widget.dispose();
+      const widget = new PromptOutput();
+      Widget.attach(widget, outputHostFor(cellWidget.node));
+      cellWidget.node.classList.add('jv-prompt-cell');
+      outputs.set(panel.id, { widget, cellId: promptCellId });
+      return widget;
+    };
+
+    /**
+     * `jv-prompt-pending` is what the Enter and N bindings select on, so it
+     * marks exactly the state where those keys mean review -- not while the
+     * agent is still thinking, when Enter must still mean "edit this cell".
+     */
+    const markPending = (
+      panel: NotebookPanel,
+      promptCellId: string,
+      pending: boolean
+    ) => {
+      const cells = panel.content.model?.cells;
+      if (!cells) {
+        return;
+      }
+      for (let i = 0; i < cells.length; i++) {
+        const widget = panel.content.widgets[i];
+        if (!widget) {
+          continue;
+        }
+        widget.node.classList.toggle(
+          'jv-prompt-pending',
+          pending && cells.get(i).id === promptCellId
+        );
+      }
+    };
+
+    const clearOutput = (panel: NotebookPanel) => {
+      const existing = outputs.get(panel.id);
+      if (!existing) {
+        return;
+      }
+      for (const widget of panel.content.widgets) {
+        widget.node.classList.remove('jv-prompt-cell', 'jv-prompt-pending');
+      }
+      existing.widget.dispose();
+      outputs.delete(panel.id);
+    };
+
     const clearOverlays = (panel: NotebookPanel) => {
       for (const w of overlays.get(panel.id) ?? []) {
         w.parent = null;
@@ -67,6 +144,9 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       const pending = proposals.list(panel).filter(p => p.state === 'pending');
       const bubble = bubbleFor(panel);
 
+      if (!pending.length) {
+        clearOutput(panel);
+      }
       if (showingProblem.has(panel.id)) {
         return; // a problem is on screen; leave it until it is dismissed
       }
@@ -82,8 +162,15 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
         }
         return;
       }
-      bubble.show();
-      bubble.showPending(pending.length);
+      // The count lives in the prompt cell's output area, where the user is
+      // already looking, rather than in a corner of the screen. The bubble is
+      // now only for things that went wrong.
+      bubble.hide();
+      const promptCellId = proposals.roundPromptCellId(panel);
+      if (promptCellId) {
+        outputFor(panel, promptCellId)?.showReview(pending.length, []);
+        markPending(panel, promptCellId, true);
+      }
 
       const active = proposals.activeProposal(panel);
       const created: Widget[] = [];
@@ -172,6 +259,11 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       } else if (status.phase === 'generating') {
         // A new round supersedes the last one's complaint.
         showingProblem.delete(status.panel.id);
+        outputFor(status.panel, status.promptCellId)?.showThinking(
+          status.tokensPerSecond,
+          status.notes
+        );
+        markPending(status.panel, status.promptCellId, false);
         bubble.show();
         bubble.showGenerating(status.elapsedSeconds, meter(status));
       } else if (
@@ -179,6 +271,9 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
         !showingProblem.has(status.panel.id)
       ) {
         bubble.hide();
+      }
+      if (status.phase === 'ended' && !proposals.pendingCount(status.panel)) {
+        clearOutput(status.panel);
       }
     });
 

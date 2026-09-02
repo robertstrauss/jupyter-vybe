@@ -23,7 +23,16 @@ module.exports = {
     command: 'jlpm start',
     url: 'http://localhost:8888/lab',
     timeout: 120 * 1000,
-    reuseExistingServer: !process.env.CI,
+    /*
+     * Never reuse a running server.
+     *
+     * Reuse means a server started before your change keeps answering after
+     * it -- including with the old config and a pile of state from previous
+     * runs. This project has now lost hours to that twice: once to a stale
+     * dev server, once to a galata server started before this very file set
+     * JUPYTER_CONFIG_DIR. A ten-second boot per run is the cheaper mistake.
+     */
+    reuseExistingServer: false,
     env: {
       ...process.env,
       JUPYTER_CONFIG_DIR: CONFIG_DIR

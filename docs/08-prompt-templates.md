@@ -208,6 +208,25 @@ helpful usually is not, the model is often already at ceiling on what you are ab
 and the failure you are aiming at may not be a prompt failure at all. Measure before shipping
 tokens that every request will carry.
 
+### Letting the model use code fences makes it worse
+
+A reasonable-sounding idea: models habitually write code inside ``` fences, so tell them it is
+allowed inside a tag body and strip the fence server-side. Measured on `bench-tools.py`,
+`qwen2.5-coder:7b`, 60 calls an arm, run twice:
+
+|                            | correct tool | correct cell |
+| -------------------------- | ------------ | ------------ |
+| fences forbidden (shipped) | 59/60, 59/60 | 23/24, 23/24 |
+| fences allowed             | 56/60, 55/60 | 20/24, 21/24 |
+
+Consistently _worse_ on both axes, in both runs. The best reading is that "no fences" is one
+fewer decision to make per reply, and a 7B spends its reliability on decisions.
+
+**The parser change was kept, the prompt change was not.** `strip_body_fence` now unwraps a
+single fenced block wherever it sits in the body — including with prose around it — because
+models do this whether or not they are told to, and a fence that reaches the notebook is a
+syntax error. Tolerating a mistake is not the same as inviting it.
+
 ### Length buys no compliance, and prompt size costs time
 
 `tooling.md` was 3813 characters, written to convince a 7B. Halving it to 1581 was measured, not

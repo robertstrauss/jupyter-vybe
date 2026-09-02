@@ -25,10 +25,23 @@
   border-bottom: 1px solid var(--jp-border-color2);
 }
 
+.jv-diff-overlay,
+.jv-history-entry .jv-diff-overlay {
+  /* The diff is code, so it is set in the code font -- in the pane it was
+     inheriting the UI font and reading as prose. */
+  font-family: var(--jp-code-font-family);
+  font-size: var(--jp-code-font-size);
+  line-height: var(--jp-code-line-height);
+  /* And it scrolls inside its own box rather than pushing the pane sideways. */
+  overflow-x: auto;
+}
+
 .jv-diff-line {
   display: flex;
   white-space: pre;
   padding: 0 8px;
+  /* Long lines scroll with the container instead of wrapping mid-token. */
+  min-width: max-content;
 }
 
 .jv-diff-marker {
@@ -347,6 +360,7 @@
   margin: 0;
   padding: 4px 6px;
   overflow-x: auto;
+  white-space: pre;
   font-family: var(--jp-code-font-family);
   font-size: var(--jp-code-font-size);
   background: var(--jp-layout-color2);
@@ -506,4 +520,48 @@
 
 .jv-settings-extra {
   margin-top: 4px;
+}
+
+/* ---- the prompt cell's output area (docs/03) ---- */
+
+/* Aligned with where real output would appear, so a round reads as the cell
+   producing something rather than as chrome floating near it. */
+.jv-prompt-output {
+  margin: 4px 0 4px var(--jp-cell-prompt-width, 64px);
+  padding: 6px 10px;
+  font-family: var(--jp-ui-font-family);
+  font-size: var(--jp-ui-font-size1);
+  color: var(--jp-ui-font-color1);
+  border-left: 3px solid var(--jp-border-color2);
+}
+
+.jv-prompt-output.jv-thinking {
+  border-left-color: var(--jp-warn-color1);
+}
+
+.jv-prompt-output.jv-review {
+  border-left-color: var(--jp-brand-color1);
+}
+
+.jv-prompt-headline {
+  font-weight: 600;
+}
+
+.jv-prompt-note {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--jp-ui-font-size0);
+  color: var(--jp-ui-font-color2);
+}
+
+.jv-prompt-hint {
+  margin-top: 4px;
+  font-size: var(--jp-ui-font-size0);
+  color: var(--jp-ui-font-color3);
+}
+
+/* The output wrapper is hidden while a code cell has no outputs; ours is the
+   exception, because a prompt cell never has real ones. */
+.jv-prompt-cell .jp-Cell-outputWrapper {
+  display: block;
 }

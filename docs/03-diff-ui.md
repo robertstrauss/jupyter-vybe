@@ -81,6 +81,42 @@ Floating over the cell's right edge, vertically stacked, per PROMPT §2:
 - Only the _active_ proposal shows the stack; others show a thin left border marker so the user
   can see how many remain in view.
 
+## The prompt cell's output area
+
+**Where a round reports on itself.** Progress and the review summary render into the prompt
+cell's output area — as a widget attached to the cell's DOM, never as real outputs, so the
+notebook gains nothing (D4) and a collaborator without the extension opens an ordinary file.
+
+While generating:
+
+```
+Thinking, 47 tokens/sec
+Used IPython tools to look up numpy.mean
+```
+
+The rate is characters-received over seconds, converted with the estimator from
+[09](09-context-management.md) — an estimate of an estimate, and enough to answer "is it
+working". The lookup lines matter more than they look: an introspection call is a silent pause
+in generation, and from outside a pause is indistinguishable from a hang.
+
+Once the agent has answered and edits are waiting:
+
+```
+2 edits proposed
+Enter to review · N to reject all
+```
+
+**The prompt cell stays a code cell until every verdict is in.** Converting it to markdown at
+settle time — which is what it used to do — destroys the cell the user is being asked to act on
+and moves the count somewhere they are not looking.
+
+**Focus returns to the prompt cell**, in command mode, because Shift+Enter has already moved on
+by the time a round settles. Without that the summary appears on a cell nobody is looking at and
+the keys that resolve it do nothing.
+
+When no edits were proposed, or once the last verdict is in, the prompt becomes its markdown
+record and the cells the round inserted become the selection.
+
 ## Status bubble
 
 Sticky, top-right of the notebook panel (`position: sticky; top: 8px; float: right; z-index`
@@ -111,6 +147,18 @@ above the cell toolbar but below dialogs):
 
 All bindings are registered against the selector `.jp-Notebook.jv-round-active` so they never
 shadow core shortcuts outside a round.
+
+**Two rules about bindings, both learned by watching a key do nothing.**
+
+_Focus the cell, not the notebook._ Lumino resolves a keybinding against the focused element, so
+a binding selecting `.jp-Cell.jv-…` is inert while focus sits on `.jp-Notebook`. Every place that
+moves the user — settling into review, jumping to the first edit, advancing after a verdict —
+focuses the cell it moved them to.
+
+_Beat core on specificity, deliberately._ Core binds `Enter` to
+`.jp-Notebook.jp-mod-commandMode .jp-Cell:focus`. Our prompt-cell binding computed to exactly the
+same specificity, and on a tie core won — so `Enter` opened the editor instead of starting the
+review. Adding `:focus` to ours breaks the tie and states the intended condition besides.
 
 **The class goes on `panel.content.node`, not `panel.node`.** Those selectors need both classes on
 one element, and `.jp-Notebook` is the content node; while the marker sat on the panel node the

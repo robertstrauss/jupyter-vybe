@@ -7,6 +7,8 @@ import { INotebookTracker, type NotebookPanel } from '@jupyterlab/notebook';
 import { Widget } from '@lumino/widgets';
 import { Clipboard } from '@jupyterlab/apputils';
 
+import { IEditorLanguageRegistry } from '@jupyterlab/codemirror';
+
 import { IVybeProposals } from './proposals';
 import { IVybeSettings } from '../tokens';
 import {
@@ -16,6 +18,7 @@ import {
   type IHistoryEntry
 } from '../history';
 import { diffLines } from '../ui/diff';
+import { kernelInfo } from '../notebook/snapshot';
 import { DiffOverlay } from '../ui/DiffOverlay';
 
 const JUPYTER_CELL_MIME = 'application/vnd.jupyter.cells';
@@ -35,7 +38,8 @@ class HistoryPane extends Widget {
 
   constructor(
     private readonly settings: IVybeSettings,
-    private readonly _openSettings: () => void = () => undefined
+    private readonly _openSettings: () => void = () => undefined,
+    private readonly _languages: IEditorLanguageRegistry | null = null
   ) {
     super();
     this.addClass('jv-history-pane');
@@ -212,7 +216,15 @@ class HistoryPane extends Widget {
           outcome
         )
       );
-      el.appendChild(DiffOverlay.build(diffLines(before, after)));
+      const diff = DiffOverlay.build(diffLines(before, after));
+      // Highlighted line by line: a diff line is the unit that carries a
+      // background, so it has to stay its own element.
+      for (const text of Array.from(
+        diff.querySelectorAll('.jv-diff-text')
+      ) as HTMLElement[]) {
+        this._highlight(text.textContent ?? '', text);
+      }
+      el.appendChild(diff);
       el.tabIndex = 0;
       el.setAttribute('role', 'button');
       el.setAttribute(
@@ -246,11 +258,38 @@ class HistoryPane extends Widget {
     return el;
   }
 
+  /**
+   * A code block that looks like the notebook's own code.
+   *
+   * `IEditorLanguageRegistry.highlight` is the same static highlighter
+   * JupyterLab uses for code in rendered markdown, so the colours match the
+   * editors a few pixels away -- without mounting a CodeMirror instance per
+   * entry, which is what made the original spec need virtualisation to
+   * survive (docs/05).
+   */
   private _code(source: string): HTMLElement {
     const el = document.createElement('pre');
     el.className = 'jv-history-code';
     el.textContent = source;
+    this._highlight(source, el);
     return el;
+  }
+
+  private _highlight(source: string, into: HTMLElement): void {
+    const language = this._languages?.findByName(this._language());
+    if (!this._languages || !language) {
+      return; // plain text is a fine fallback; wrong colours are not
+    }
+    into.textContent = '';
+    void this._languages.highlight(source, language, into).catch(() => {
+      into.textContent = source;
+    });
+  }
+
+  private _language(): string {
+    return this._panel
+      ? kernelInfo(this._panel).language || 'python'
+      : 'python';
   }
 
   private _copyCell(cellType: string, source: string, el: HTMLElement): void {
@@ -269,19 +308,24 @@ export const historyPanePlugin: JupyterFrontEndPlugin<void> = {
   description: 'The prompt record, rendered beside the notebook.',
   autoStart: true,
   requires: [INotebookTracker, IVybeSettings, IVybeProposals],
-  optional: [ILayoutRestorer],
+  optional: [ILayoutRestorer, IEditorLanguageRegistry],
   activate: (
     app: JupyterFrontEnd,
     tracker: INotebookTracker,
     settings: IVybeSettings,
     proposals: IVybeProposals,
-    restorer: ILayoutRestorer | null
+    restorer: ILayoutRestorer | null,
+    languages: IEditorLanguageRegistry | null
   ): void => {
-    const pane = new HistoryPane(settings, () => {
-      void app.commands.execute('settingeditor:open', {
-        query: 'Jupyter Vybe'
-      });
-    });
+    const pane = new HistoryPane(
+      settings,
+      () => {
+        void app.commands.execute('settingeditor:open', {
+          query: 'Jupyter Vybe'
+        });
+      },
+      languages
+    );
     pane.id = 'jupyter-vybe-history';
     app.shell.add(pane, 'right', { rank: 900 });
     restorer?.add(pane, 'jupyter-vybe-history');

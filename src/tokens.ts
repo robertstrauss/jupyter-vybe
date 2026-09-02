@@ -43,9 +43,15 @@ export const IVybeSettings = new Token<IVybeSettings>(
 /** What the status bubble needs to know while a round is in flight. */
 export interface IRoundStatus {
   panel: NotebookPanel;
+  /** The cell the round belongs to, so its progress can be shown there. */
+  promptCellId: string;
   /** 'problem' is not terminal: the round carries on and settles. */
   phase: 'generating' | 'ended' | 'problem';
   elapsedSeconds: number;
+  /** Estimated from characters received; see PromptOutput.showThinking. */
+  tokensPerSecond: number;
+  /** Activity worth narrating, e.g. a kernel lookup. Newest last. */
+  notes: string[];
   /** Estimated tokens in the notebook portion of the prompt (docs/09). */
   contextTokens: number;
   /** Budget the ladder was working against; 0 when truncation is off. */
@@ -62,6 +68,14 @@ export interface IRoundStatus {
 export interface IVybeRounds {
   begin(options: INotebookCellExecutor.IRunCellOptions): Promise<boolean>;
   cancel(panel: NotebookPanel): void;
+  /**
+   * Undo a round that has already settled: remove what it inserted, discard
+   * its proposals, and give the prompt cell back as an editable code cell.
+   * Returns false when there is nothing to take back, so the caller can fall
+   * through to core undo.
+   */
+  revertLast(panel: NotebookPanel): boolean;
+  canRevertLast(panel: NotebookPanel): boolean;
   readonly hasActiveRound: (panel: NotebookPanel) => boolean;
   readonly statusChanged: ISignal<IVybeRounds, IRoundStatus>;
 }

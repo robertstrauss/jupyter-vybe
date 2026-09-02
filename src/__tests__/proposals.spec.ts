@@ -40,7 +40,7 @@ function fakePanel(cells: FakeCell[]): any {
       mode: 'command',
       widgets: models.map(() => ({
         model: { type: 'code' },
-        node: { scrollIntoView: () => undefined }
+        node: { scrollIntoView: () => undefined, focus: () => undefined }
       })),
       model: {
         cells: { length: models.length, get: (i: number) => models[i] },
@@ -174,7 +174,7 @@ describe('round-scoped undo (docs/02 layer 2)', () => {
         mode: 'command',
         widgets: models.map(() => ({
           model: { type: 'code' },
-          node: { scrollIntoView: () => undefined }
+          node: { scrollIntoView: () => undefined, focus: () => undefined }
         })),
         model: {
           cells: { length: models.length, get: (i: number) => models[i] },
@@ -267,7 +267,10 @@ describe("canUndo (which decides whether Cmd+Z is ours or core Jupyter's)", () =
         activeCellIndex: 0,
         mode: 'command',
         widgets: [
-          { model: { type: 'code' }, node: { scrollIntoView: () => undefined } }
+          {
+            model: { type: 'code' },
+            node: { scrollIntoView: () => undefined, focus: () => undefined }
+          }
         ],
         model: {
           cells: {
@@ -357,7 +360,10 @@ describe('undoing the verdict that ended the round', () => {
         activeCellIndex: 0,
         mode: 'command',
         widgets: [
-          { model: { type: 'code' }, node: { scrollIntoView: () => undefined } }
+          {
+            model: { type: 'code' },
+            node: { scrollIntoView: () => undefined, focus: () => undefined }
+          }
         ],
         model: {
           cells: { length: models.length, get: (i: number) => models[i] },

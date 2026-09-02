@@ -35,6 +35,12 @@ function fakePanel(initial: Fake[]): any {
 
   const shared = {
     transact: (fn: () => void) => fn(),
+    // The ydoc's own view of the cells, which stays current inside a
+    // transaction where `model.cells` does not -- that difference is a real
+    // bug this suite now covers, so the fake has to model it.
+    get cells() {
+      return cells.map(c => ({ getId: () => c.id }));
+    },
     insertCell: (index: number, spec: any) => {
       const created: Fake = {
         id: `new-${nextId++}`,
@@ -220,5 +226,78 @@ describe('revertRound', () => {
     expect(() => revertRound(panel, log)).not.toThrow();
     expect(findCellModel(panel, ids[0])).toBeNull();
     expect(panel.sources()).toEqual(['import numpy as np', 'x = 1']);
+  });
+});
+
+describe('inserted ids are read after the transaction commits', () => {
+  /**
+   * Both views of the notebook lag inside a `transact`: `model.cells` syncs
+   * through observers that have not run yet, and `sharedModel.cells` is no
+   * better. Reading either mid-transaction returns whichever cell used to
+   * occupy that index -- so the round recorded an id it had not created, undo
+   * deleted the wrong cell, and the post-round highlight selected the wrong
+   * one. This fake lags exactly that way, and catches a regression to it.
+   */
+  it('records the id of the cell it actually created', () => {
+    const cells = [
+      { id: 'prompt', cell_type: 'code', source: '#% go' },
+      { id: 'appended-by-shift-enter', cell_type: 'code', source: '' }
+    ];
+    // The observed view, which only catches up when a transaction commits.
+    let visible = cells.map(c => ({ ...c }));
+    const shared: any = {
+      transact: (fn: () => void) => {
+        fn();
+        visible = cells.map(c => ({ ...c }));
+      },
+      insertCell: (index: number, spec: any) => {
+        cells.splice(index, 0, {
+          id: 'brand-new',
+          cell_type: spec.cell_type,
+          source: spec.source
+        });
+      },
+      deleteCell: (index: number) => cells.splice(index, 1),
+      get cells() {
+        return visible.map(c => ({ getId: () => c.id }));
+      }
+    };
+    const panel: any = {
+      content: {
+        activeCellIndex: 0,
+        deselectAll: () => undefined,
+        widgets: [],
+        model: {
+          cells: {
+            get length() {
+              return visible.length;
+            },
+            get: (i: number) =>
+              visible[i]
+                ? {
+                    id: visible[i].id,
+                    type: visible[i].cell_type,
+                    sharedModel: { getSource: () => visible[i].source }
+                  }
+                : undefined
+          },
+          sharedModel: shared
+        }
+      }
+    };
+
+    const log = new OperationLog();
+    const ids = insertCellsBelow(
+      panel,
+      'prompt',
+      [{ type: 'code', source: 'generated' }],
+      log
+    );
+
+    // Not 'appended-by-shift-enter', which is what the stale view returned.
+    expect(ids).toEqual(['brand-new']);
+    expect(log.operations).toEqual([
+      { kind: 'insert', cellIds: ['brand-new'] }
+    ]);
   });
 });

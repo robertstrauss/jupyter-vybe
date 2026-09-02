@@ -2,6 +2,53 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 1.2.0 (unreleased)
+
+### The round reports on itself, in the cell that caused it
+
+- **Progress and the review summary now render in the prompt cell's output
+  area** rather than in a bubble in the corner. While generating you get
+  `Thinking, 47 tokens/sec` and a line for each kernel lookup; when the agent
+  is done, `2 edits proposed — Enter to review · N to reject all`.
+- **The prompt cell stays a code cell until every verdict is in.** It used to
+  convert to markdown the moment the agent stopped talking, which destroyed the
+  cell you were being asked to act on.
+- **Focus returns to the prompt cell** after a round, because Shift+Enter has
+  already moved on by then.
+- **Two unchorded keys**, `Enter` to start reviewing and `N` to reject the lot,
+  replacing `⌥E` / `⌥⇧E`. Once no verdicts are outstanding, the cells the round
+  inserted become the selection.
+
+### Fixed
+
+- **The settings pane was blank.** A custom field renderer rendered a settings
+  *group* as a React child, which throws during render and takes every setting
+  with it. Two other renderers were registered against a plugin id that does
+  not exist and had never once fired.
+- **`Cmd+Z` after an insertion did nothing.** It now removes what the round
+  inserted and hands the prompt back as an editable code cell with your
+  original words in it.
+- **Undo deleted the wrong cell, and the post-round highlight selected the
+  wrong one**, because the id of a newly inserted cell was read inside the
+  transaction that created it — where every view of the notebook is still one
+  mutation behind.
+- **`Enter` opened the editor instead of starting a review**: our binding tied
+  with core's on specificity, and core won.
+- **The history pane's diffs** were set in the UI font, overflowed the pane,
+  and had no syntax highlighting. They are now monospaced, scroll inside their
+  own box, and are coloured by the same highlighter JupyterLab uses for code in
+  markdown.
+- **A settings gear** in the history pane header, since the pane is the one
+  piece of vybe chrome always on screen.
+
+### Measured, and not shipped
+
+Letting the model wrap tag bodies in ``` fences — on the theory that it is the
+habit every model already has — makes `qwen2.5-coder:7b` *worse*: 59/60 → 56/60
+on tool choice and 23/24 → 20/24 on edit targeting, repeated. The parser now
+tolerates a fence anyway, because models do it whether or not they are invited
+to and a fence that reaches a cell is a syntax error.
+
 ## 1.1.0
 
 - **Inline completion** (decision D5): ghost text from the same local model as

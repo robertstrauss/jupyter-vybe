@@ -43,6 +43,14 @@ test.use({
 // Each test gets a clean shell. Left open, a previous test's notebook stays in
 // a tab and `currentWidget` can point at it -- which showed up as one test
 // timing out in a full run while passing on its own.
+/**
+ * Prompt cells are run with `{ wait: false }` throughout.
+ *
+ * galata's default wait blocks until the cell has an execution count, and a
+ * prompt cell never gets one: it does not reach a kernel, and contributing
+ * nothing to the execution history is the whole point (D4). Each test waits
+ * on what it actually cares about instead.
+ */
 test.afterEach(async ({ page }) => {
   // Bounded: closing waits on a save dialog that does not always appear, and
   // a teardown that can hang is a teardown that fails whichever test it
@@ -58,7 +66,9 @@ test.afterEach(async ({ page }) => {
  * from a windowed notebook comes back empty for anything off-screen, which
  * makes a passing assertion a matter of scroll position.
  */
-async function cells(page: any): Promise<{ type: string; source: string }[]> {
+async function cells(
+  page: any
+): Promise<{ type: string; source: string; executionCount: number | null }[]> {
   return await page.evaluate(() => {
     const app = (window as any).jupyterapp;
     const panel: any = app.shell.currentWidget;
@@ -66,10 +76,18 @@ async function cells(page: any): Promise<{ type: string; source: string }[]> {
     if (!model) {
       return [];
     }
-    const out: { type: string; source: string }[] = [];
+    const out: {
+      type: string;
+      source: string;
+      executionCount: number | null;
+    }[] = [];
     for (let i = 0; i < model.cells.length; i++) {
-      const cell = model.cells.get(i);
-      out.push({ type: cell.type, source: cell.sharedModel.getSource() });
+      const cell: any = model.cells.get(i);
+      out.push({
+        type: cell.type,
+        source: cell.sharedModel.getSource(),
+        executionCount: cell.executionCount ?? null
+      });
     }
     return out;
   });
@@ -83,13 +101,17 @@ test('a prompt cell runs with no kernel and inserts what the agent returned', as
   // Deliberately no kernel: the whole point is that this path never needs one.
   await page.notebook.setCell(0, 'code', '> add a doubling function');
 
-  await page.notebook.runCell(0);
+  await page.notebook.runCell(0, { wait: false });
 
-  // The generated cell lands directly below the prompt...
+  // Poll on the content, not the count: running the last cell appends an
+  // empty one, so a count check passes before the agent has answered.
   await expect
-    .poll(async () => (await cells(page)).length, { timeout: 60000 })
-    .toBeGreaterThan(1);
+    .poll(async () => (await cells(page)).map(c => c.source).join('\n'), {
+      timeout: 60000
+    })
+    .toContain('def double(x):');
   const after = await cells(page);
+  // Directly below the prompt, which is where added cells always go.
   expect(after[1].source).toContain('def double(x):');
   expect(after[1].source).toContain('return x * 2');
   // ...and the prompt cell settles into markdown holding the prompt.
@@ -102,8 +124,14 @@ test('a plain code cell is untouched by the executor', async ({ page }) => {
   await page.notebook.createNew();
   await page.notebook.setCell(0, 'code', 'x = 1  # not a prompt');
 
-  await page.notebook.runCell(0);
+  await page.notebook.runCell(0, { wait: false });
 
+  // An execution count is the proof that core ran it: our executor delegated
+  // rather than intercepting. Asserted on the model rather than by waiting for
+  // the status bar, which is a flaky proxy for a question we can ask directly.
+  await expect
+    .poll(async () => (await cells(page))[0].executionCount, { timeout: 60000 })
+    .not.toBeNull();
   // Running the last cell appends an empty one -- that is core Jupyter, not
   // us. What matters is that nothing was generated and nothing was rewritten.
   const after = await cells(page);
@@ -120,16 +148,19 @@ test('a proposed edit is reviewed, not applied, until accepted', async ({
   await page.notebook.setCell(0, 'code', 'value = 1');
   await page.notebook.addCell('code', '> double the value above');
 
-  await page.notebook.runCell(1);
+  await page.notebook.runCell(1, { wait: false });
 
   // The overlay stands in for the editor while the verdict is pending, and
   // the cell itself is untouched until then.
+  // The summary appears on the prompt cell; Enter opens the first diff.
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+    timeout: 60000
+  });
+  await page.keyboard.press('Enter');
   const overlay = page.locator('.jv-diff-overlay');
-  await expect(overlay).toBeVisible({ timeout: 60000 });
+  await expect(overlay).toBeVisible();
   expect((await cells(page))[0].source).toBe('value = 1');
 
-  // No click first: review is a keyboard flow, so beginning a review has to
-  // leave the keyboard able to answer it.
   await page.keyboard.press('y');
   await expect(overlay).toBeHidden();
   await expect
@@ -143,10 +174,12 @@ test('rejecting leaves the notebook exactly as it was', async ({ page }) => {
   await page.notebook.setCell(0, 'code', 'value = 1');
   await page.notebook.addCell('code', '> double the value above');
 
-  await page.notebook.runCell(1);
-  await expect(page.locator('.jv-diff-overlay')).toBeVisible({
+  await page.notebook.runCell(1, { wait: false });
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
     timeout: 60000
   });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.jv-diff-overlay')).toBeVisible();
   await page.keyboard.press('n');
 
   await expect(page.locator('.jv-diff-overlay')).toBeHidden();
@@ -161,10 +194,11 @@ test('Cmd+Z during review takes back the verdict, not the whole round', async ({
   await page.notebook.setCell(0, 'code', 'value = 1');
   await page.notebook.addCell('code', '> double the value above');
 
-  await page.notebook.runCell(1);
-  await expect(page.locator('.jv-diff-overlay')).toBeVisible({
+  await page.notebook.runCell(1, { wait: false });
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
     timeout: 60000
   });
+  await page.keyboard.press('Enter');
   await page.keyboard.press('y');
   await expect
     .poll(async () => (await cells(page))[0].source)
@@ -180,7 +214,7 @@ test('Cmd+Z during review takes back the verdict, not the whole round', async ({
     .toBe('value = 1');
 });
 
-test('the status bubble counts what is waiting, and jumps rather than rejects', async ({
+test('the review summary appears in the prompt cell, not in a corner', async ({
   page
 }) => {
   await page.goto();
@@ -188,15 +222,57 @@ test('the status bubble counts what is waiting, and jumps rather than rejects', 
   await page.notebook.setCell(0, 'code', 'value = 1');
   await page.notebook.addCell('code', '> double the value above');
 
-  await page.notebook.runCell(1);
-  const bubble = page.locator('.jv-status-bubble');
-  await expect(bubble).toBeVisible({ timeout: 60000 });
-  await expect(bubble.locator('.jv-bubble-main')).toContainText('1 edit');
+  await page.notebook.runCell(1, { wait: false });
 
-  // Clicking the main button must take you there, never discard the round --
-  // the two used to sit close enough to confuse (docs/14 N3).
-  await bubble.locator('.jv-bubble-main').click();
+  // The count is on the cell that caused it, where the user is looking.
+  const output = page.locator('.jv-prompt-output.jv-review');
+  await expect(output).toBeVisible({ timeout: 60000 });
+  await expect(output).toContainText('1 edit proposed');
+  await expect(output).toContainText('Enter to review');
+  // And the prompt cell is still a code cell: converting it now would destroy
+  // the thing the user is being asked to act on.
+  expect((await cells(page))[1].type).toBe('code');
+});
+
+test('Enter starts the review and N rejects everything', async ({ page }) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> double the value above');
+
+  await page.notebook.runCell(1, { wait: false });
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+    timeout: 60000
+  });
+
+  // Focus is on the prompt cell even though Shift+Enter moved on, so the
+  // unchorded keys reach the right place.
+  await page.keyboard.press('Enter');
   await expect(page.locator('.jv-diff-overlay')).toBeVisible();
+  expect((await cells(page))[0].source).toBe('value = 1');
+
+  await page.keyboard.press('y');
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toContain('value = 2');
+  // Every verdict in: the prompt becomes its markdown record at last.
+  await expect.poll(async () => (await cells(page))[1].type).toBe('markdown');
+});
+
+test('N on the prompt cell rejects the whole round', async ({ page }) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> double the value above');
+
+  await page.notebook.runCell(1, { wait: false });
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+    timeout: 60000
+  });
+
+  await page.keyboard.press('n');
+
+  await expect(page.locator('.jv-diff-overlay')).toBeHidden();
   expect((await cells(page))[0].source).toBe('value = 1');
 });
 
@@ -206,10 +282,12 @@ test('the history pane holds the prompt after its cell is deleted', async ({
   await page.goto();
   await page.notebook.createNew();
   await page.notebook.setCell(0, 'code', '> add a doubling function');
-  await page.notebook.runCell(0);
+  await page.notebook.runCell(0, { wait: false });
   await expect
-    .poll(async () => (await cells(page)).length, { timeout: 60000 })
-    .toBeGreaterThan(1);
+    .poll(async () => (await cells(page)).map(c => c.source).join('\n'), {
+      timeout: 60000
+    })
+    .toContain('def double');
 
   // Delete the settled prompt cell: the rendering goes, the record does not.
   await page.evaluate(() => {
@@ -247,7 +325,7 @@ test('a protocol error is shown, not swallowed', async ({ page }) => {
   await page.notebook.setCell(0, 'code', 'value = 1');
   await page.notebook.addCell('code', '> aim at a cell that is not there');
 
-  await page.notebook.runCell(1);
+  await page.notebook.runCell(1, { wait: false });
 
   // The round used to produce nothing at all here: no cell, no message, no
   // clue. Silence is the failure mode this design exists to avoid.
@@ -267,7 +345,7 @@ test('an agent that falls over says so', async ({ page }) => {
   await page.notebook.createNew();
   await page.notebook.setCell(0, 'code', '> make the agent fail');
 
-  await page.notebook.runCell(0);
+  await page.notebook.runCell(0, { wait: false });
 
   const bubble = page.locator('.jv-status-bubble.jv-problem');
   await expect(bubble).toBeVisible({ timeout: 60000 });
@@ -283,7 +361,7 @@ test('a reply without tool tags is recovered, and the user is told', async ({
   await page.notebook.createNew();
   await page.notebook.setCell(0, 'code', '> answer without tags');
 
-  await page.notebook.runCell(0);
+  await page.notebook.runCell(0, { wait: false });
 
   // The cells arrive -- salvage is what makes a model that will not use the
   // protocol usable at all (docs/13 R2)...
@@ -296,4 +374,29 @@ test('a reply without tool tags is recovered, and the user is told', async ({
   const bubble = page.locator('.jv-status-bubble.jv-notice');
   await expect(bubble).toBeVisible();
   await expect(bubble).toContainText('without tool tags');
+});
+
+test('Cmd+Z after an insertion takes the whole round back', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', '> add a doubling function');
+
+  await page.notebook.runCell(0, { wait: false });
+  await expect
+    .poll(async () => (await cells(page)).map(c => c.source).join('\n'), {
+      timeout: 60000
+    })
+    .toContain('def double');
+  await expect.poll(async () => (await cells(page))[0].type).toBe('markdown');
+
+  await page.keyboard.press('ControlOrMeta+z');
+
+  // The inserted cell is gone and the prompt is a code cell again, holding
+  // the user's own words, ready to be reworded and re-run.
+  await expect.poll(async () => (await cells(page))[0].type).toBe('code');
+  const after = await cells(page);
+  expect(after[0].source).toContain('add a doubling function');
+  expect(after.some(c => c.source.includes('def double'))).toBe(false);
 });

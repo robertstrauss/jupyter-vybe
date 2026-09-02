@@ -35,3 +35,52 @@ def test_crlf_body_is_normalised():
     reply = '<vybe:add_cell type="code">\r\nx = 1\r\ny = 2\r\n</vybe:add_cell>'
     args = [e.args for e in parse(reply) if e.kind is EventKind.TOOL][0]
     assert args["body"] == "x = 1\ny = 2"
+
+
+def test_a_fence_around_the_whole_body_is_unwrapped():
+    reply = (
+        '<vybe:add_cell type="code">\n'
+        "```python\n"
+        "x = 1\n"
+        "```\n"
+        "</vybe:add_cell>"
+    )
+    args = [e.args for e in parse(reply) if e.kind is EventKind.TOOL][0]
+    assert args["body"] == "x = 1"
+
+
+def test_a_fence_with_prose_around_it_is_unwrapped():
+    """Models narrate. The tag delimits the body, so the fence is noise."""
+    reply = (
+        '<vybe:add_cell type="code">\n'
+        "Here you go:\n"
+        "```python\n"
+        "def f():\n"
+        "    return 1\n"
+        "```\n"
+        "That should do it.\n"
+        "</vybe:add_cell>"
+    )
+    args = [e.args for e in parse(reply) if e.kind is EventKind.TOOL][0]
+    assert args["body"] == "def f():\n    return 1"
+
+
+def test_a_body_with_two_fences_is_left_alone():
+    """A cell that genuinely contains examples: picking one would lose the other."""
+    body = "```python\na = 1\n```\nand\n```python\nb = 2\n```"
+    reply = f'<vybe:add_cell type="code">\n{body}\n</vybe:add_cell>'
+    args = [e.args for e in parse(reply) if e.kind is EventKind.TOOL][0]
+    assert args["body"] == body
+
+
+def test_a_markdown_cell_keeps_its_fences():
+    reply = (
+        '<vybe:add_cell type="markdown">\n'
+        "## Example\n"
+        "```python\n"
+        "x = 1\n"
+        "```\n"
+        "</vybe:add_cell>"
+    )
+    args = [e.args for e in parse(reply) if e.kind is EventKind.TOOL][0]
+    assert "```python" in args["body"]

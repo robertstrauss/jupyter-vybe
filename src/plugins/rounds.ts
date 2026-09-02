@@ -25,7 +25,7 @@ import {
   promptText,
   toMarkdownSource
 } from '../notebook/promptCell';
-import { buildSnapshot } from '../notebook/snapshot';
+import { buildSnapshot, estimateTokens } from '../notebook/snapshot';
 import { runIntrospection } from '../introspect';
 
 /**
@@ -35,6 +35,19 @@ import { runIntrospection } from '../introspect';
  */
 const RESERVE_TOKENS = 4096;
 
+/**
+ * Focus the active cell's own node.
+ *
+ * Keybindings scoped to a cell only fire when that cell is the focused
+ * element; focusing the notebook makes them silently inert.
+ */
+export function focusActiveCell(panel: NotebookPanel): void {
+  const cell = panel.content.activeCell;
+  if (cell) {
+    cell.node.focus();
+  }
+}
+
 /** One prompt execution and everything it produces (docs/02). */
 export class Round {
   readonly id = UUID.uuid4();
@@ -43,6 +56,11 @@ export class Round {
   prose = '';
   /** Anything that went wrong, for the bubble as well as the settled cell. */
   readonly problems: string[] = [];
+  /** Activity worth narrating in the cell's output area (docs/03). */
+  readonly notes: string[] = [];
+  /** Characters received, for the token-rate estimate. */
+  receivedChars = 0;
+  startedAt = Date.now();
   state: 'running' | 'applying' | 'reviewing' | 'settled' | 'cancelled' =
     'running';
 
@@ -63,6 +81,11 @@ export class Rounds implements IVybeRounds {
     string,
     { tokens: number; budget: number; dropped: string[] }
   >();
+  /**
+   * The last round to settle on each panel, kept so Cmd+Z can take the whole
+   * thing back. Exactly one: undo reaches back one round, never a history.
+   */
+  private _lastSettled = new Map<string, Round>();
 
   get statusChanged() {
     return this._statusChanged;
@@ -105,6 +128,9 @@ export class Rounds implements IVybeRounds {
     }
 
     const source = cell.model.sharedModel.getSource();
+    // A new round replaces the last one's undo: Cmd+Z reaches back one round,
+    // and reaching further would delete cells the user has since worked on.
+    this._lastSettled.delete(panel.id);
     const round = new Round(panel, cell.model.id, source);
     this._active.set(panel.id, round);
     // On the *content* node, which is the element carrying .jp-Notebook: the
@@ -194,6 +220,7 @@ export class Rounds implements IVybeRounds {
       }
       if (frame.op === 'prose' && frame.delta) {
         round.prose += frame.delta;
+        round.receivedChars += frame.delta.length;
       } else if (frame.op === 'proseReset') {
         // The server salvaged fenced code blocks from a reply that used no
         // tool tags; the prose it already streamed was that code, and must
@@ -202,6 +229,7 @@ export class Rounds implements IVybeRounds {
       } else if (frame.op === 'tool') {
         const name = frame.name!;
         const args = frame.args ?? {};
+        round.receivedChars += (args.body ?? '').length;
         if (name === 'add_cell') {
           if (insertions >= this.settings.maxInsertions) {
             continue;
@@ -234,6 +262,12 @@ export class Rounds implements IVybeRounds {
             proposals++;
           }
         } else if (frame.callId) {
+          // Narrated because it is otherwise a silent pause: the agent has
+          // stopped generating to ask the kernel something, and from outside
+          // that is indistinguishable from having hung.
+          const target = args.target ?? args.prefix ?? '';
+          round.notes.push(`Used IPython tools to look up ${target || name}`);
+          this._emit(round, 'generating', round.startedAt);
           const { ok, result } = await runIntrospection(
             panel,
             this.settings.kernelIntrospection,
@@ -294,8 +328,11 @@ export class Rounds implements IVybeRounds {
   ): void {
     this._statusChanged.emit({
       panel: round.panel,
+      promptCellId: round.promptCellId,
       phase: 'problem',
       elapsedSeconds: 0,
+      tokensPerSecond: 0,
+      notes: [...round.notes],
       contextTokens: 0,
       budgetTokens: 0,
       dropped: [],
@@ -310,10 +347,17 @@ export class Rounds implements IVybeRounds {
     startedAt: number
   ): void {
     const measured = this._context.get(round.panel.id);
+    const seconds = Math.max(0.001, (Date.now() - startedAt) / 1000);
     this._statusChanged.emit({
       panel: round.panel,
+      promptCellId: round.promptCellId,
       phase,
-      elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),
+      elapsedSeconds: Math.round(seconds),
+      // Characters over seconds, converted with the same estimator the meter
+      // uses. An estimate of an estimate, and honest about it.
+      tokensPerSecond:
+        estimateTokens('x'.repeat(round.receivedChars)) / seconds,
+      notes: [...round.notes],
       contextTokens: measured?.tokens ?? 0,
       budgetTokens: measured?.budget ?? 0,
       dropped: measured?.dropped ?? []
@@ -331,6 +375,32 @@ export class Rounds implements IVybeRounds {
     const panel = round.panel;
     round.state = 'applying';
 
+    if (this.proposals.pendingCount(panel, round.id) > 0) {
+      round.state = 'reviewing';
+      // The prompt cell stays a *code* cell holding the review summary until
+      // every verdict is in. Converting it now would destroy the thing the
+      // user is being asked to act on, and put the count somewhere they are
+      // not looking (docs/03).
+      this._focusPrompt(round);
+      this.proposals.beginReview(panel, {
+        id: round.id,
+        log: round.log,
+        promptCellId: round.promptCellId,
+        endReview: () => this._completeRound(round)
+      });
+    } else {
+      this._completeRound(round);
+    }
+    void cell;
+  }
+
+  /**
+   * Everything that happens once no verdict is outstanding: the prompt
+   * becomes its markdown record, and what the round inserted becomes the
+   * selection so the user's next keystroke acts on the new code.
+   */
+  private _completeRound(round: Round): void {
+    const panel = round.panel;
     convertPromptToMarkdown(
       panel,
       round.promptCellId,
@@ -352,21 +422,76 @@ export class Rounds implements IVybeRounds {
       if (first !== -1 && last !== -1) {
         panel.content.activeCellIndex = first;
         panel.content.extendContiguousSelectionTo(last);
+        panel.content.mode = 'command';
+        // Focused, so the next keystroke -- very often Cmd+Z -- reaches our
+        // cell-scoped bindings rather than falling through to core.
+        focusActiveCell(panel);
+      }
+    } else {
+      // Nothing was inserted: leave the user on the prompt cell itself.
+      const idx = this._indexOf(panel, round.promptCellId);
+      if (idx !== -1) {
+        panel.content.activeCellIndex = idx;
+        panel.content.mode = 'command';
+        focusActiveCell(panel);
       }
     }
+    this._finish(round, false);
+  }
 
-    if (this.proposals.pendingCount(panel, round.id) > 0) {
-      round.state = 'reviewing';
-      this.proposals.beginReview(panel, {
-        id: round.id,
-        log: round.log,
-        promptCellId: round.promptCellId,
-        endReview: () => this._finish(round, false)
-      });
-    } else {
-      this._finish(round, false);
+  /**
+   * Put the user on the prompt cell, in command mode.
+   *
+   * Shift+Enter has already moved focus to the next cell by the time a round
+   * settles, so without this the review summary appears on a cell nobody is
+   * looking at and the keys that resolve it do nothing.
+   */
+  private _focusPrompt(round: Round): void {
+    const panel = round.panel;
+    const idx = this._indexOf(panel, round.promptCellId);
+    if (idx === -1) {
+      return;
     }
-    void cell;
+    panel.content.activeCellIndex = idx;
+    panel.content.deselectAll();
+    panel.content.mode = 'command';
+    // The *cell* node, not the notebook node. Lumino resolves a keybinding
+    // against the focused element, so a binding selecting `.jp-Cell.jv-...`
+    // never fires while focus sits on `.jp-Notebook` -- Enter fell through to
+    // core's enter-edit-mode instead of starting the review.
+    focusActiveCell(panel);
+  }
+
+  /**
+   * Undo a settled round (docs/02, the last row of the undo table).
+   *
+   * revertRound replays the operation log backwards, which removes inserted
+   * cells and converts the prompt cell back to code with the user's original
+   * text -- so the prompt is theirs again to edit and re-run, which is the
+   * whole point of undoing a generation you did not want.
+   */
+  revertLast(panel: NotebookPanel): boolean {
+    const round = this._lastSettled.get(panel.id);
+    if (!round || round.log.operations.length === 0) {
+      return false;
+    }
+    this._lastSettled.delete(panel.id);
+    this.proposals.clear(panel, round.id);
+    revertRound(panel, round.log);
+    const idx = this._indexOf(panel, round.promptCellId);
+    if (idx !== -1) {
+      panel.content.activeCellIndex = idx;
+      panel.content.deselectAll();
+      // Edit mode with the cursor in the prompt: undoing a round is almost
+      // always the prelude to rewording it.
+      panel.content.mode = 'edit';
+    }
+    return true;
+  }
+
+  canRevertLast(panel: NotebookPanel): boolean {
+    const round = this._lastSettled.get(panel.id);
+    return !!round && round.log.operations.length > 0;
   }
 
   private _finish(round: Round, restorePromptCell: boolean): void {
@@ -383,6 +508,9 @@ export class Rounds implements IVybeRounds {
       }
     }
     round.state = round.state === 'cancelled' ? 'cancelled' : 'settled';
+    if (round.state === 'settled' && round.log.operations.length) {
+      this._lastSettled.set(round.panel.id, round);
+    }
   }
 
   private _indexOf(panel: NotebookPanel, cellId: string): number {

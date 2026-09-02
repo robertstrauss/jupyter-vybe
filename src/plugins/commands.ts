@@ -13,6 +13,7 @@ import {
   isSettledPromptCell
 } from '../notebook/promptCell';
 import { kernelInfo } from '../notebook/snapshot';
+import { focusActiveCell } from './rounds';
 
 export namespace CommandIDs {
   export const accept = 'jupyter-vybe:accept-proposal';
@@ -35,6 +36,20 @@ export namespace CommandIDs {
 const REVIEW_SELECTOR =
   '.jp-Notebook.jp-mod-commandMode.jv-round-active .jp-Cell.jv-proposal-active';
 const ROUND_SELECTOR = '.jp-Notebook.jp-mod-commandMode.jv-round-active';
+/**
+ * The prompt cell while it is showing a review summary. Unchorded keys are
+ * safe here because the class only exists in that one state: `Enter` still
+ * means "edit this cell" everywhere else, and `N` has no core binding at all.
+ *
+ * `:focus` is load-bearing, not decoration. Core binds Enter to
+ * `.jp-Notebook.jp-mod-commandMode .jp-Cell:focus`, which computes to the same
+ * specificity as this selector without it -- and on a tie core won, so Enter
+ * opened the editor instead of starting the review. One extra pseudo-class
+ * settles it, and says the true thing besides: these keys are for the cell the
+ * user is actually on.
+ */
+const PROMPT_PENDING_SELECTOR =
+  '.jp-Notebook.jp-mod-commandMode .jp-Cell.jv-prompt-pending:focus';
 
 export const commandsPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-vybe:commands',
@@ -123,6 +138,9 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
           if (cells.get(i).id === p.cellId) {
             panel.content.activeCellIndex = i;
             panel.content.mode = 'command';
+            // Focus the cell so the Y / N / Enter bindings, which select on
+            // the cell, actually match.
+            focusActiveCell(panel);
             panel.content.widgets[i]?.node.scrollIntoView({
               behavior: settings.autoScroll ? 'smooth' : 'auto',
               block: 'center'
@@ -157,15 +175,13 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
 
     app.commands.addCommand(CommandIDs.undo, {
       label: 'Undo the last review verdict',
-      // Registered for any notebook in command mode, not only a live round:
-      // the last verdict of a round *ends* that round, and undoing it is
-      // precisely when the user reaches for Cmd+Z. Lumino skips a disabled
-      // command and falls through to core undo, so the notebook's own history
-      // is untouched whenever we have nothing to take back.
       isEnabled: () => {
         const panel = current();
         return (
-          !!panel && (proposals.canUndo(panel) || rounds.hasActiveRound(panel))
+          !!panel &&
+          (proposals.canUndo(panel) ||
+            rounds.hasActiveRound(panel) ||
+            rounds.canRevertLast(panel))
         );
       },
       execute: () => {
@@ -173,13 +189,19 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
         if (!panel) {
           return;
         }
-        // Layer 2 of the undo table (docs/02): take back one verdict at a
-        // time, and when there are none left take back the round itself.
-        // Layer 1 -- plain Cmd+Z outside a round -- is untouched, because the
-        // binding is scoped to .jv-round-active.
-        if (!proposals.undoLast(panel)) {
-          rounds.cancel(panel);
+        // Three layers, most local first: take back one verdict, cancel a
+        // round still in flight, then undo a round that has already settled
+        // -- which removes what it inserted and gives the prompt back as an
+        // editable code cell (docs/02). When none of them apply the command is
+        // disabled, Lumino skips it, and core's own undo gets the key.
+        if (proposals.undoLast(panel)) {
+          return;
         }
+        if (rounds.hasActiveRound(panel)) {
+          rounds.cancel(panel);
+          return;
+        }
+        rounds.revertLast(panel);
       }
     });
 
@@ -227,12 +249,23 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
     if (yn) {
       bind(CommandIDs.editProposal, ['Enter'], REVIEW_SELECTOR);
     }
-    bind(CommandIDs.gotoFirst, ['Alt E'], ROUND_SELECTOR);
-    bind(CommandIDs.rejectAll, ['Alt Shift E'], ROUND_SELECTOR);
+    // Two keys, no chords: from the prompt cell, Enter starts the review and
+    // N rejects the lot. A chord for the primary action of the tool was the
+    // wrong default.
+    bind(CommandIDs.gotoFirst, ['Enter'], PROMPT_PENDING_SELECTOR);
+    bind(CommandIDs.rejectAll, ['N'], PROMPT_PENDING_SELECTOR);
     bind(CommandIDs.cancel, ['Ctrl C'], ROUND_SELECTOR);
-    // Same specificity as core's binding but registered later, so ours wins
-    // when it is enabled and yields to core's when it is not.
-    bind(CommandIDs.undo, ['Accel Z'], '.jp-Notebook.jp-mod-commandMode');
+    // Bound at the *cell* level, where core's notebook-level undo selector
+    // does not reach: Lumino walks up from the focused element and stops at
+    // the first node with a match, so ours fires on the focused cell and core's
+    // still fires everywhere else. When this command is disabled -- nothing of
+    // ours left to undo -- Lumino skips it and core's undo gets the key, which
+    // is exactly the handover we want.
+    bind(
+      CommandIDs.undo,
+      ['Accel Z'],
+      '.jp-Notebook.jp-mod-commandMode .jp-Cell:focus'
+    );
     // Not scoped to ROUND_SELECTOR: after a reject-all the round is over, so
     // the class that selector matches is already gone.
     bind(
