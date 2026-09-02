@@ -63,3 +63,6 @@ ui-tests/.playwright/
 junit.xml
 .eslintcache
 coverage/
+
+# Scratch notebooks a developer opens while testing are theirs, not ours.
+Untitled*.ipynb
