@@ -56,6 +56,22 @@ export function isSettledPromptCell(
   return isPromptSource(model.sharedModel.getSource(), prefix);
 }
 
+/**
+ * Prose that is only fence delimiters, or empty once they are removed.
+ *
+ * A model that opens a ``` outside a tag leaves the marker stranded in the
+ * settled cell, where it reads as broken output rather than as the mistake it
+ * was. The code inside a fence is recovered by salvage; the delimiters are
+ * never worth keeping.
+ */
+function withoutStrayFences(prose: string): string {
+  return prose
+    .split('\n')
+    .filter(line => !/^\s*```[A-Za-z0-9_+-]*\s*$/.test(line))
+    .join('\n')
+    .trim();
+}
+
 /** Render a prompt + agent prose as the markdown a settled prompt cell holds. */
 export function toMarkdownSource(
   prompt: string,
@@ -66,7 +82,7 @@ export function toMarkdownSource(
     .split('\n')
     .map(line => (line.length ? `${prefix} ${line}` : prefix))
     .join('\n');
-  const tail = prose.trim();
+  const tail = withoutStrayFences(prose);
   return tail ? `${quoted}\n\n${tail}\n` : `${quoted}\n`;
 }
 

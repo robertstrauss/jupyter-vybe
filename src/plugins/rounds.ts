@@ -382,15 +382,32 @@ export class Rounds implements IVybeRounds {
           round,
           'the agent lost track of the notebook; run the prompt again to resend it'
         );
-      } else if (frame.op === 'error' || frame.op === 'protocolError') {
-        // protocolError was previously unhandled, which meant the commonest
-        // recoverable failure -- the model naming a cell that does not exist
-        // -- produced nothing at all: no cell, no message, no clue. A silent
-        // no-op is the failure mode this whole design is trying to avoid.
+      } else if (frame.op === 'retrying') {
+        // The reply misused the protocol and the server is asking the model
+        // to send it again. Everything the failed attempt produced goes: it
+        // is about to be replaced, and leaving it would duplicate whatever
+        // part of it was well-formed.
+        revertRound(panel, round.log);
+        round.insertedIds.length = 0;
+        round.prose = '';
+        this.proposals.clear(panel, round.id);
+        insertions = 0;
+        proposals = 0;
+        streaming = null;
+        round.notes.push('The agent misused a tool tag; asking it again.');
+        this._emit(round, 'generating', round.startedAt);
+      } else if (frame.op === 'protocolError') {
+        // Shown and recorded, never written into the notebook. A complaint
+        // about tag syntax in place of the code the user asked for is worse
+        // than the malformed code would have been.
         round.problems.push(frame.message ?? 'unknown error');
-        round.prose += `\n\n_${
-          frame.op === 'error' ? 'Agent error' : 'Protocol error'
-        }: ${frame.message}_`;
+        this._emitProblem(round, frame.message ?? 'unknown error');
+      } else if (frame.op === 'error') {
+        // A real failure -- the adapter died, the model errored -- is worth
+        // keeping in the notebook, because the round produced nothing and the
+        // cell has to say why.
+        round.problems.push(frame.message ?? 'unknown error');
+        round.prose += `\n\n_Agent error: ${frame.message}_`;
         this._emitProblem(round, frame.message ?? 'unknown error');
       }
     }

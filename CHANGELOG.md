@@ -40,6 +40,20 @@
 
 ### Fixed
 
+- **A protocol complaint could end up in your notebook in place of the code.**
+  A `propose_edit` naming no cell used to write "_Protocol error: …_" into the
+  settled prompt cell, losing whatever the model meant to write. The model now
+  gets exactly one correction — told what was wrong and asked to send the reply
+  again, with the failed attempt reverted first — and protocol errors are never
+  written into the notebook. A stray ``` left outside a tag is stripped too.
+- **`Thinking, 0 tokens/sec`** before the first token. There is no rate yet; it
+  now says how long it has been reading the notebook instead. Measured: on a
+  60-cell notebook, prompt assembly is 0.1 ms, so the wait is the model, not
+  us — 3.5 s for a cold model load, ~0.6 s once warm and cached.
+- **Ollama unloaded the model after five minutes idle**, so a prompt written
+  after a pause paid the whole cold load again. Requests now carry
+  `keep_alive` (30 minutes; `VYBE_OLLAMA_KEEP_ALIVE` to change).
+
 - **`Thinking, 0 tokens/sec`.** The rate was counted from what the frontend
   could see, but the tag parser buffers a body until its closing tag — so a
   reply made entirely of tool tags, which is the normal case, streamed nothing

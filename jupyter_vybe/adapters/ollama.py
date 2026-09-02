@@ -18,6 +18,7 @@ from typing import AsyncIterator
 
 from .base import Adapter, AdapterSpec, HealthStatus, Message
 
+KEEP_ALIVE = os.environ.get("VYBE_OLLAMA_KEEP_ALIVE", "30m")
 DEFAULT_HOST = os.environ.get("CODELLM_HOST", "http://127.0.0.1:11434")
 
 
@@ -26,6 +27,7 @@ class OllamaAdapter(Adapter):
         self.spec = spec
         self.model = model
         self.host = host.rstrip("/")
+        self._server_up = False
 
     async def health(self) -> HealthStatus:
         try:
@@ -59,9 +61,18 @@ class OllamaAdapter(Adapter):
             pass
 
     async def ensure_server(self) -> bool:
-        """Start `ollama serve` if it is not already up. Returns True if reachable."""
+        """Start `ollama serve` if it is not already up. Returns True if reachable.
+
+        Remembered once it has answered: this runs before every single turn,
+        and a daemon that was up a second ago is up now. On a miss we probe
+        again and start it, so a daemon that dies mid-session is still
+        recovered -- the memo only skips work in the case where there is none.
+        """
+        if self._server_up:
+            return True
         try:
             await asyncio.to_thread(self._probe)
+            self._server_up = True
             return True
         except Exception:
             pass
@@ -78,6 +89,7 @@ class OllamaAdapter(Adapter):
             await asyncio.sleep(0.5)
             try:
                 await asyncio.to_thread(self._probe)
+                self._server_up = True
                 return True
             except Exception:
                 continue
@@ -95,6 +107,7 @@ class OllamaAdapter(Adapter):
             "prompt": prompt,
             "raw": True,
             "stream": False,
+            "keep_alive": KEEP_ALIVE,
             "options": {
                 "temperature": 0.1,
                 "num_predict": max_tokens,
@@ -125,6 +138,12 @@ class OllamaAdapter(Adapter):
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": True,
             "options": {"temperature": 0.2},
+            # Ollama unloads an idle model after five minutes by default, so a
+            # prompt written after a pause pays the whole cold load again --
+            # several seconds before the first token, with nothing to show for
+            # it. Holding the model resident trades memory for that wait, which
+            # is the right trade for a tool you reach for intermittently.
+            "keep_alive": KEEP_ALIVE,
         }
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()

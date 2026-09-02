@@ -329,13 +329,19 @@ test('a protocol error is shown, not swallowed', async ({ page }) => {
 
   // The round used to produce nothing at all here: no cell, no message, no
   // clue. Silence is the failure mode this design exists to avoid.
-  // The round used to produce nothing at all here: no cell, no message, no
-  // clue. The record lands in the settled prompt cell, which is where it
-  // survives -- the live output area belongs to the round, and the round is
-  // over (docs/13 R14).
+  // The model gets one correction; this agent makes the same mistake again,
+  // so the round ends without an edit. What matters is what the user is left
+  // with: their prompt, settled, and *not* a complaint about our wire format
+  // in place of the code they asked for (docs/13 R15).
   await expect
-    .poll(async () => (await cells(page))[1].source, { timeout: 60000 })
-    .toContain('Protocol error');
+    .poll(async () => (await cells(page))[1].type, { timeout: 60000 })
+    .toBe('markdown');
+  const settled = (await cells(page))[1].source;
+  expect(settled).not.toContain('Protocol error');
+  expect(settled).not.toContain('propose_edit');
+  expect(settled).toContain('aim at a cell that is not there');
+  // And the notebook is untouched by the failed attempts.
+  expect((await cells(page))[0].source).toBe('value = 1');
   // The notebook itself is untouched by a failed round.
   expect((await cells(page))[0].source).toBe('value = 1');
 });
@@ -466,6 +472,22 @@ test('the thinking line reports a rate, not zero', async ({ page }) => {
     .toMatch(/Thinking, [1-9][0-9]* tokens\/sec/);
 });
 
+test('before the first token it says what it is waiting on', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', '> think slowly please');
+
+  await page.notebook.runCell(0, { wait: false });
+
+  // "0 tokens/sec" reads as broken; the gap before the first token is the
+  // model reading the prompt, and saying so is the honest version.
+  const thinking = page.locator('.jv-prompt-output.jv-thinking');
+  await expect(thinking).toBeVisible({ timeout: 30000 });
+  await expect(thinking).not.toContainText('0 tokens/sec');
+});
+
 test('a cell fills in as it arrives, before the tag closes', async ({
   page
 }) => {
@@ -545,4 +567,34 @@ test('undo walks a whole round back, ending at an editable prompt', async ({
   expect(after[1].type).toBe('code'); // the prompt is code again
   expect(after[1].source).toContain('add and edit together');
   expect(after.some(c => c.source.includes('added by the round'))).toBe(false);
+});
+
+test('a misused tag is corrected without the user seeing it', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> misuse the tag once');
+
+  await page.notebook.runCell(1, { wait: false });
+
+  // The first reply named no cell at all. The model is told and asked again,
+  // and the corrected edit is what the user is offered.
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+    timeout: 60000
+  });
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('y');
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toBe('value = 2');
+
+  // And none of the machinery reached the notebook: no protocol complaint in
+  // place of the code, and no stray fence from the reply that failed.
+  const after = await cells(page);
+  const settled = after[1].source;
+  expect(settled).not.toContain('Protocol error');
+  expect(settled).not.toContain('```');
+  expect(settled).toContain('misuse the tag once');
 });

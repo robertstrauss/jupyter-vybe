@@ -120,6 +120,34 @@ against qwen's 13/15 — but a first prompt costs ~17-30 s against qwen's ~2 s,
 so **qwen stays the default**. That is now a real trade rather than a foregone
 conclusion, and a user who wants the better model can pick it in settings.
 
+### Where the wait actually goes (2026-09-02)
+
+Measured per turn through a real `AgentSession` against `qwen2.5-coder:7b`,
+splitting time-to-first-token from generation:
+
+| turn          | to first token | generating | rate once started |
+| ------------- | -------------- | ---------- | ----------------- |
+| 0, cold model | 3.47 s         | 0.87 s     | ~51 tok/s         |
+| 0, warm model | 0.14 s         | 0.78 s     | ~40 tok/s         |
+| 1             | 0.59 s         | 0.95 s     | ~34 tok/s         |
+| 2             | 0.62 s         | 0.76 s     | ~36 tok/s         |
+
+**Almost none of it is ours.** Prompt assembly is 0.1 ms on a 60-cell
+notebook, measured. The wait is the model reading the prompt, and the two
+things that make it long are both addressable:
+
+- **Cold model load** — 3.5 s, and it recurs, because Ollama unloads an idle
+  model after five minutes. Requests now carry `keep_alive` (30 minutes,
+  `VYBE_OLLAMA_KEEP_ALIVE` to change), which is the difference between "slow
+  every time I come back to it" and "slow once".
+- **First-turn prompt size** — 24k characters for 60 cells, against 2.9k on
+  follow-ups, which is why turn 2 reaches its first token in a fifth of the
+  time. The diff summaries already do this work; there is little left to cut
+  without losing the listing the model needs to address a cell.
+
+The display no longer reports `0 tokens/sec` during that gap. There is no rate
+yet, and showing zero reads as broken rather than busy.
+
 ### What the prompt-size curve says
 
 `scripts/bench-latency.py sweep`, one uninterrupted run:

@@ -40,6 +40,10 @@ def _session(adapter, persistent=True) -> AgentSession:
     return build_session(adapter, persistent=persistent)
 
 
+async def _collect(agen):
+    return [event async for event in agen]
+
+
 def _turn(session, prompt, seq):
     async def go():
         return [e async for e in session.run({
@@ -174,3 +178,93 @@ def test_the_sequence_continues_normally_after_a_resync():
     # Having resynced at 5, 6 follows it and is a diff turn again.
     _turn(session, "next", 6)
     assert "## How you modify the notebook" not in adapter.prompts[2]
+
+
+def test_cell_numbers_track_a_notebook_that_grew_since_turn_one():
+    """The listing is renumbered every turn, and resolution uses that turn's
+    listing -- so a cell added after the first prompt is addressable, and the
+    numbers the model is shown are the numbers it is answered on."""
+    adapter = Scripted()
+    session = _session(adapter)
+    _turn(session, "first", 0)
+
+    grown = json.loads(SNAPSHOT)
+    grown["cells"].insert(
+        1, {"id": "added-later", "cell_type": "code", "source": "y = 2"}
+    )
+    asyncio.run(
+        _collect(
+            session.run(
+                {
+                    "prompt": "now edit it",
+                    "snapshot": json.dumps(grown),
+                    "snapshotSeq": 1,
+                    "promptCellId": "p1",
+                    "kernelInfo": KERNEL,
+                    "roundId": "r1",
+                    "limits": {},
+                }
+            )
+        )
+    )
+
+    # The index the model sees puts the new cell at 2...
+    assert "[2] code id=added-later" in adapter.prompts[1]
+    # ...and that is what "2" resolves to when it answers.
+    from jupyter_vybe.assembler import resolve_cell_ref
+
+    assert resolve_cell_ref("2", session._cells) == "added-later"
+
+
+def test_a_cell_is_never_addressed_by_execution_count():
+    """Execution counts are reset by a kernel restart and renumbered by a
+    re-run, so addressing by one would edit the wrong cell or find none."""
+    from jupyter_vybe.assembler import resolve_cell_ref
+
+    cells = [
+        {"id": "first", "cell_type": "code", "source": "a", "execution_count": 7},
+        {"id": "second", "cell_type": "code", "source": "b", "execution_count": 3},
+    ]
+    # "7" is a plausible execution count and an implausible position: it must
+    # resolve to nothing rather than to the cell that happens to carry it.
+    assert resolve_cell_ref("7", cells) == ""
+    assert resolve_cell_ref("1", cells) == "first"
+    assert resolve_cell_ref("second", cells) == "second"
+
+
+def test_ollama_requests_keep_the_model_resident():
+    """An idle Ollama unloads after five minutes, and the next prompt then
+    pays a cold load -- seconds of nothing before the first token."""
+    import asyncio
+    import json as _json
+    from unittest import mock
+
+    from jupyter_vybe.adapters import build_adapter
+
+    adapter = build_adapter("ollama-qwen25-coder-7b")
+    sent = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def __iter__(self):
+            return iter([b'{"message": {"content": "hi"}, "done": true}'])
+
+    def fake_urlopen(req, *a, **kw):
+        sent["payload"] = _json.loads(req.data.decode())
+        return FakeResponse()
+
+    async def go():
+        with mock.patch.object(adapter, "ensure_server", return_value=True):
+            with mock.patch("urllib.request.urlopen", fake_urlopen):
+                async for _ in adapter.stream(
+                    [Message("user", "hello")], asyncio.Event()
+                ):
+                    pass
+
+    asyncio.run(go())
+    assert sent["payload"]["keep_alive"] == "30m"

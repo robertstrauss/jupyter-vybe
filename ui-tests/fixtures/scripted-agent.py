@@ -15,7 +15,27 @@ import sys
 
 prompt = sys.argv[-1] if len(sys.argv) > 1 else ""
 
-if "add and edit together" in prompt:
+if "misuse the tag once" in prompt:
+    # First attempt: a propose_edit with no cell attribute, and a stray fence
+    # outside the tags -- exactly the reply that put a protocol complaint in a
+    # user's notebook. Second attempt (the correction carries the words below)
+    # gets it right.
+    import os
+    import tempfile
+
+    marker = os.path.join(tempfile.gettempdir(), "vybe-retry-marker")
+    if os.path.exists(marker):
+        os.remove(marker)
+        print('<vybe:propose_edit cell="1" note="corrected">')
+        print("value = 2")
+        print("</vybe:propose_edit>")
+    else:
+        open(marker, "w").close()
+        print("```python")
+        print("<vybe:propose_edit>")
+        print("value = 2")
+        print("</vybe:propose_edit>")
+elif "add and edit together" in prompt:
     # One round that both inserts a cell and proposes an edit, so undo has
     # more than one kind of thing to take back.
     print('<vybe:propose_edit cell="1" note="double it">')

@@ -225,6 +225,42 @@ README rather than discovered.
 
 ---
 
+## R15 · A protocol complaint shown in place of the user's code · **REALISED — fixed**
+
+Reported from live use. `qwen2.5-coder:7b` emitted a `<vybe:propose_edit>` with no `cell`
+attribute at all, wrapped in a stray ``` fence, and the settled prompt cell ended up reading:
+
+````
+```python
+
+_Protocol error: propose_edit named cell '', which is not a cell in this notebook._
+````
+
+Three failures at once. The model's actual content was lost; a message about _our_ wire format
+was written into the user's notebook, where it is both meaningless and permanent; and the stray
+fence delimiter was left stranded beside it.
+
+_Fixed, in that order of severity:_
+
+- **The model gets one correction.** A `propose_edit` that names no resolvable cell no longer
+  ends the round: the model is told exactly what was wrong and asked to send the reply again.
+  Once, and only once — a model that insists is a model the user is waiting on for nothing.
+  Anything the failed attempt produced is reverted first, so a retry cannot duplicate the
+  well-formed half of a bad reply.
+- **Protocol errors never reach the notebook.** They are shown while the round is live and kept
+  in the prompt record; they are not written into the settled cell. Agent errors still are — a
+  round that died because the adapter fell over has to say so in place.
+- **Stray fence delimiters are stripped** from settled prose, so a misplaced ``` does not survive
+  as the whole visible content of a cell.
+
+_Not the cause, though it looked like one:_ cell numbering. The listing is renumbered from the
+snapshot every turn and resolved against that same snapshot, so a cell added mid-session is
+addressable and the numbers the model sees are the numbers it is answered on. Execution counts
+are never used to address anything — they appear only as descriptive text — precisely because a
+kernel restart renumbers them. Both are now covered by tests.
+
+---
+
 ## R14 · A round that fails silently · **REALISED — fixed**
 
 `protocolError` frames — the server's answer when the model names a cell that does not exist —

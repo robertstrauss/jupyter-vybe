@@ -270,7 +270,8 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
         const measured = meter(status);
         outputFor(status.panel, status.promptCellId)?.showThinking(
           status.tokensPerSecond,
-          measured ? [...status.notes, measured] : status.notes
+          measured ? [...status.notes, measured] : status.notes,
+          status.elapsedSeconds
         );
         markPending(status.panel, status.promptCellId, false);
       } else if (

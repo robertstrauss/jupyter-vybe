@@ -106,3 +106,87 @@ def test_prose_around_a_tag_is_unaffected_by_streaming():
     events = run(['before ', '<vybe:add_cell type="code">\n', "x = 1\n", "</vybe:add_cell>", " after"])
     prose = "".join(e.text for e in events if e.kind is EventKind.PROSE)
     assert prose == "before  after"
+
+
+class Misuser:
+    """Names no cell, always. Stands in for a model that will not be told."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def stream(self, messages, cancel):
+        self.calls += 1
+        yield '<vybe:propose_edit>\nvalue = 2\n</vybe:propose_edit>'
+
+
+class MisusesOnce:
+    """Gets it wrong once, then takes the correction."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def stream(self, messages, cancel):
+        self.calls += 1
+        if self.calls == 1:
+            yield '<vybe:propose_edit>\nvalue = 2\n</vybe:propose_edit>'
+        else:
+            yield '<vybe:propose_edit cell="1">\nvalue = 2\n</vybe:propose_edit>'
+
+
+def _round(adapter, tmp_path):
+    import asyncio
+    import json
+
+    from conftest import build_session
+
+    session = build_session(adapter, str(tmp_path / "n.ipynb"))
+    snapshot = json.dumps(
+        {"cells": [{"id": "c1", "cell_type": "code", "source": "value = 1"}]}
+    )
+
+    async def go():
+        return [
+            event
+            async for event in session.run(
+                {
+                    "prompt": "double it",
+                    "snapshot": snapshot,
+                    "snapshotSeq": 0,
+                    "promptCellId": "p1",
+                    "kernelInfo": {"name": "python3", "language": "python"},
+                    "roundId": "r1",
+                    "limits": {},
+                }
+            )
+        ]
+
+    return session, asyncio.run(go())
+
+
+def test_a_misused_tag_is_corrected_once_and_then_works(tmp_path):
+    adapter = MisusesOnce()
+    _, frames = _round(adapter, tmp_path)
+
+    assert adapter.calls == 2, "the model should have been asked again"
+    # The user never hears about the first attempt.
+    assert not [f for f in frames if f["op"] == "protocolError"]
+    tools = [f for f in frames if f["op"] == "tool"]
+    assert tools and tools[0]["args"]["cell"] == "c1"
+
+
+def test_the_client_is_told_to_discard_the_failed_attempt(tmp_path):
+    """A retry replaces the whole reply, so whatever the first one produced
+    has to go -- otherwise its well-formed half would be duplicated."""
+    _, frames = _round(MisusesOnce(), tmp_path)
+    assert [f["op"] for f in frames].count("retrying") == 1
+
+
+def test_a_model_that_insists_is_not_retried_forever(tmp_path):
+    adapter = Misuser()
+    _, frames = _round(adapter, tmp_path)
+
+    # Once, and only once: the user is waiting.
+    assert adapter.calls == 2
+    errors = [f for f in frames if f["op"] == "protocolError"]
+    assert len(errors) == 1
+    assert "not a cell in this notebook" in errors[0]["message"]

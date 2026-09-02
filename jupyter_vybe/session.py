@@ -202,9 +202,14 @@ class AgentSession:
         yield {"op": "status", "state": "generating"}
 
         max_tool_turns = int(limits.get("maxToolTurns", 6))
+        # One correction, and only one. A model that has misused the protocol
+        # once will usually fix it when told; a model that insists is a model
+        # the user is now waiting on for nothing (docs/13 R2).
+        corrections_left = 1
         for _ in range(max_tool_turns + 1):
             reply, pending = "", None
             emitted_tool = False
+            protocol_errors: list[str] = []
             # Bodies stream: the user sees the cell being written instead of
             # a blank pause, which on a local model is most of the wait.
             parser = StreamParser(stream_bodies=True)
@@ -226,6 +231,11 @@ class AgentSession:
                     if event.kind is EventKind.TOOL:
                         emitted_tool = True
                     out, pending = self._translate(event)
+                    if out is not None and out.get("op") == "protocolError":
+                        # Held, not sent: if the correction below works, the
+                        # user never needs to hear about this at all.
+                        protocol_errors.append(out)
+                        out = None
                     if out is not None:
                         self._record_frame(round_id, out)
                         yield out
@@ -245,15 +255,44 @@ class AgentSession:
                     if event.kind is EventKind.TOOL:
                         emitted_tool = True
                     out, _ = self._translate(event)
+                    if out is not None and out.get("op") == "protocolError":
+                        protocol_errors.append(out)
+                        out = None
                     if out is not None:
                         self._record_frame(round_id, out)
                         yield out
+
+                _record("reply", emitted_tool=emitted_tool, reply=reply)
+
+                # A misused tag is worth one correction. The model is told
+                # exactly what was wrong and asked to send the reply again;
+                # nothing from the failed attempt reaches the notebook, and if
+                # the retry works the user never learns any of this happened.
+                if protocol_errors and corrections_left > 0:
+                    corrections_left -= 1
+                    correction = "\n".join(
+                        err.get("correction") or err["message"]
+                        for err in protocol_errors
+                    )
+                    _record("correction", sent=correction)
+                    self.messages.append(Message("assistant", reply))
+                    self.messages.append(Message("user", correction))
+                    # Anything the failed attempt streamed is not the answer.
+                    yield {"op": "retrying", "reason": "protocol"}
+                    continue
+
+                # Correction spent, or none available: now the user hears about
+                # it. Shown, never written into the notebook -- a protocol
+                # complaint in place of the code they asked for is worse than
+                # the malformed code would have been.
+                for err in protocol_errors:
+                    self._record_frame(round_id, err)
+                    yield err
 
                 # R2 fallback: a reply with no tool calls but with fenced code
                 # blocks is recovered rather than dumped into the notebook as
                 # prose. Any model can produce a fence; not every model will
                 # produce tags reliably.
-                _record("reply", emitted_tool=emitted_tool, reply=reply)
                 if not emitted_tool:
                     salvaged = salvage_fenced_blocks(reply)
                     # A fenced block carries no target, so salvage alone turns
@@ -408,6 +447,13 @@ class AgentSession:
                     "message": (
                         f"propose_edit named cell {ref!r}, which is not a cell in this "
                         "notebook. Use the number in brackets from the listing."
+                    ),
+                    # What to say to the model if we get to correct it.
+                    "correction": (
+                        f"Your <vybe:propose_edit> named cell {ref!r}, which is not a "
+                        "cell in this notebook. Every propose_edit needs a cell "
+                        'attribute holding the bracket number from the listing, like '
+                        'cell="3". Send the whole reply again, correctly.'
                     ),
                 }, None
             args["cell"] = resolved

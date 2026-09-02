@@ -51,11 +51,24 @@ export class PromptOutput extends Widget {
    * that something is happening and roughly how fast, and a real tokenizer
    * costs 2MB of WASM to be right about a number nobody acts on.
    */
-  showThinking(tokensPerSecond: number, notes: string[]): void {
+  showThinking(
+    tokensPerSecond: number,
+    notes: string[],
+    elapsedSeconds = 0
+  ): void {
     this._kind = 'thinking';
-    this._headline.textContent = `Thinking, ${Math.round(
-      tokensPerSecond
-    )} tokens/sec`;
+    // Before the first token there is no rate, and "0 tokens/sec" reads as
+    // broken rather than as busy. That gap is the model reading the prompt --
+    // seconds of it on a first turn, where nothing has been cached yet -- so
+    // the honest thing to show is how long it has been.
+    const rate = Math.round(tokensPerSecond);
+    this._headline.textContent =
+      rate > 0
+        ? `Thinking, ${rate} tokens/sec`
+        : `Thinking, reading the notebook (${Math.max(
+            1,
+            Math.round(elapsedSeconds)
+          )}s)`;
     this._renderNotes(notes);
     this._hint.textContent = '';
     this.node.classList.add('jv-thinking');

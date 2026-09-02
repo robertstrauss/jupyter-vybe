@@ -1,4 +1,5 @@
 import { diffLines, diffStat, mergedSource, normaliseSource } from '../ui/diff';
+import { toMarkdownSource } from '../notebook/promptCell';
 
 const kinds = (before: string, after: string) =>
   diffLines(before, after).flatMap(h => h.lines.map(l => l.kind));
@@ -70,5 +71,28 @@ describe('mergedSource', () => {
   it('returns the new source unchanged when nothing was removed', () => {
     const hunks = diffLines('a = 1\n', 'a = 1\nb = 2\n');
     expect(mergedSource(hunks, 'a = 1\nb = 2\n', '#')).toBe('a = 1\nb = 2\n');
+  });
+});
+
+describe('the settled prompt cell', () => {
+  const toMarkdown = (prose: string) =>
+    toMarkdownSource('do a thing', prose, '>');
+
+  it('keeps prose that says something', () => {
+    expect(toMarkdown('Reused the existing import.')).toContain(
+      'Reused the existing import.'
+    );
+  });
+
+  it('drops a stray fence the model left outside its tags', () => {
+    // What the user actually saw: a settled cell whose whole content was
+    // "```python" and a protocol complaint.
+    expect(toMarkdown('```python\n\n')).toBe('> do a thing\n');
+  });
+
+  it('keeps the code inside a fence but not the delimiters', () => {
+    const out = toMarkdown('```python\nx = 1\n```');
+    expect(out).toContain('x = 1');
+    expect(out).not.toContain('```');
   });
 });
