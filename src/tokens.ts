@@ -76,6 +76,8 @@ export interface IVybeRounds {
    */
   revertLast(panel: NotebookPanel): boolean;
   canRevertLast(panel: NotebookPanel): boolean;
+  /** Undo re-opened a review: give the prompt cell back as code. */
+  reopenForReview(panel: NotebookPanel): void;
   readonly hasActiveRound: (panel: NotebookPanel) => boolean;
   readonly statusChanged: ISignal<IVybeRounds, IRoundStatus>;
 }

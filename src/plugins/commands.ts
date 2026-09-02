@@ -194,7 +194,17 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
         // -- which removes what it inserted and gives the prompt back as an
         // editable code cell (docs/02). When none of them apply the command is
         // disabled, Lumino skips it, and core's own undo gets the key.
-        if (proposals.undoLast(panel)) {
+        if (proposals.canUndo(panel)) {
+          // The prompt cell goes back to code *first*: undoLast re-renders
+          // the review, and converting afterwards would replace the cell node
+          // that render had just attached the summary to.
+          rounds.reopenForReview(panel);
+          proposals.undoLast(panel);
+          // Converting a cell replaces its widget, but the notebook rebuilds
+          // it on the next frame -- after the render that undoLast triggers,
+          // which therefore attaches the diff and the summary to a node about
+          // to be thrown away. Render once more when the new node exists.
+          requestAnimationFrame(() => proposals.refresh(panel));
           return;
         }
         if (rounds.hasActiveRound(panel)) {

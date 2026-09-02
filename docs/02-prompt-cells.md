@@ -161,8 +161,24 @@ core binding, registered later — Lumino resolves to ours). Semantics, per READ
 | On a pending proposal                  | steps back to the previously resolved proposal and un-resolves it                                       |
 | Back at the prompt cell, round settled | reverts the entire round: removes inserted cells, discards all proposals, restores the code prompt cell |
 
-Layer 2 is `jupyter-vybe:undo`, bound to `Accel Z` with the `.jv-round-active` selector so it
-wins over core's binding only while a round is live. It takes one verdict back per press, most
+Layer 2 is `jupyter-vybe:undo`, bound to `Accel Z` at the _cell_ level
+(`.jp-Notebook.jp-mod-commandMode .jp-Cell:focus`), where core's notebook-level undo selector
+does not reach. Lumino walks up from the focused element and stops at the first node with a
+match, so ours fires on the focused cell and core's still fires everywhere else — and when this
+command is disabled, because there is nothing of ours left to undo, Lumino skips it and core's
+undo gets the key.
+
+**Undoing a verdict puts the prompt cell back to code.** A review lives on a code cell — that is
+what carries the summary and what `Enter` and `N` select on — so taking back a verdict has to
+restore it, not leave the user in a review they cannot drive. The conversion happens _before_
+the re-render, and one more render is scheduled for the next frame: converting a cell replaces
+its widget, and the notebook rebuilds it a frame later, which would otherwise throw away the
+diff and summary that render had just attached.
+
+**And the last undo leaves an editable prompt.** When no verdicts remain, the press reverts the
+whole round: the inserted cells go, the edits are restored, and the prompt cell comes back as a
+code cell holding the user's original words with the cursor in it — which is almost always the
+prelude to rewording it. It takes one verdict back per press, most
 recent first: an accepted proposal is restored to its previous source (recorded as an edit of its
 own, so a later revert still unwinds cleanly) and re-staged as pending, with the cell showing its
 diff again. A stale proposal is skipped -- the user's own edit is what settled it. When there is

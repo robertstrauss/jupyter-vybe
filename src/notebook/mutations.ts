@@ -301,3 +301,38 @@ export function reopenPromptCell(panel: NotebookPanel, restored: string): void {
   }
   panel.content.mode = 'edit';
 }
+
+/**
+ * Turn a settled prompt cell back into the code cell it was, by id and in
+ * command mode -- for undo putting a round back under review, where the cell
+ * has to be a code cell again to carry the review summary and answer `Enter`.
+ *
+ * Distinct from reopenPromptCell, which acts on the active cell and leaves the
+ * user typing: that one ends a round, this one resumes it.
+ */
+export function restorePromptForReview(
+  panel: NotebookPanel,
+  cellId: string,
+  source: string
+): boolean {
+  const model = panel.content.model;
+  const index = indexOfCell(panel, cellId);
+  if (!model || index === -1) {
+    return false;
+  }
+  if (model.cells.get(index).type === 'code') {
+    return true; // already a code cell; nothing to undo here
+  }
+  const priorActive = panel.content.activeCellIndex;
+  panel.content.activeCellIndex = index;
+  panel.content.deselectAll();
+  NotebookActions.changeCellType(panel.content, 'code');
+  const restored = panel.content.activeCell;
+  if (restored) {
+    model.sharedModel.transact(() => {
+      restored.model.sharedModel.setSource(source);
+    });
+  }
+  panel.content.activeCellIndex = priorActive;
+  return true;
+}

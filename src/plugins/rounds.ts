@@ -17,6 +17,7 @@ import {
   OperationLog,
   convertPromptToMarkdown,
   insertCellsBelow,
+  restorePromptForReview,
   revertRound,
   streamIntoCell,
   type ICellSpec
@@ -566,6 +567,29 @@ export class Rounds implements IVybeRounds {
       panel.content.mode = 'edit';
     }
     return true;
+  }
+
+  /**
+   * Put a settled round back under review (docs/02).
+   *
+   * Undoing a verdict re-opens the review, and a review lives on a *code*
+   * prompt cell: that is what carries the summary and what `Enter` and `N`
+   * select on. Leaving it as the settled markdown would put the user back in
+   * a review they cannot drive.
+   */
+  reopenForReview(panel: NotebookPanel): void {
+    const round = this._lastSettled.get(panel.id);
+    if (!round) {
+      return;
+    }
+    if (restorePromptForReview(panel, round.promptCellId, round.promptSource)) {
+      const idx = this._indexOf(panel, round.promptCellId);
+      if (idx !== -1) {
+        panel.content.activeCellIndex = idx;
+        panel.content.mode = 'command';
+        focusActiveCell(panel);
+      }
+    }
   }
 
   canRevertLast(panel: NotebookPanel): boolean {

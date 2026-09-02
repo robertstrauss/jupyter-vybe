@@ -75,6 +75,8 @@ export interface IVybeProposals {
   activeProposal(panel: NotebookPanel): IProposal | null;
   /** The prompt cell of the round under review, for showing its summary. */
   roundPromptCellId(panel: NotebookPanel): string | null;
+  /** Ask the UI to render again, without changing anything. */
+  refresh(panel: NotebookPanel): void;
   clear(panel: NotebookPanel, roundId?: string): void;
   logFor(panel: NotebookPanel): OperationLog;
   readonly changed: ISignal<IVybeProposals, NotebookPanel>;
@@ -196,6 +198,10 @@ export class Proposals implements IVybeProposals {
 
   activeProposal(panel: NotebookPanel): IProposal | null {
     return this.list(panel).find(p => p.state === 'pending') ?? null;
+  }
+
+  refresh(panel: NotebookPanel): void {
+    this._changed.emit(panel);
   }
 
   roundPromptCellId(panel: NotebookPanel): string | null {

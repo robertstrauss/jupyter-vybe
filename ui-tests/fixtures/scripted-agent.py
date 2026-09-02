@@ -15,7 +15,16 @@ import sys
 
 prompt = sys.argv[-1] if len(sys.argv) > 1 else ""
 
-if "stream a cell slowly" in prompt:
+if "add and edit together" in prompt:
+    # One round that both inserts a cell and proposes an edit, so undo has
+    # more than one kind of thing to take back.
+    print('<vybe:propose_edit cell="1" note="double it">')
+    print("value = 2")
+    print("</vybe:propose_edit>")
+    print('<vybe:add_cell type="code">')
+    print("helper = 'added by the round'")
+    print("</vybe:add_cell>")
+elif "stream a cell slowly" in prompt:
     # Writes a fenced body one line at a time, slowly enough that a test can
     # see the cell filling up before the closing tag arrives.
     import time

@@ -499,3 +499,50 @@ test('a cell fills in as it arrives, before the tag closes', async ({
   );
   expect(after[1].source).not.toContain('```');
 });
+
+test('undo walks a whole round back, ending at an editable prompt', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> add and edit together');
+
+  await page.notebook.runCell(1, { wait: false });
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+    timeout: 60000
+  });
+
+  // Accept the edit; the round then settles and the prompt becomes markdown.
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('y');
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toBe('value = 2');
+  await expect.poll(async () => (await cells(page))[1].type).toBe('markdown');
+
+  // One press: the verdict comes back, and with it the review -- which means
+  // the prompt has to be a code cell again, because that is what carries the
+  // summary and answers Enter and N.
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(async () => (await cells(page))[1].type).toBe('code');
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible();
+  expect((await cells(page))[0].source).toBe('value = 1');
+
+  // Now walk the rest back. However many presses it takes, the end state is
+  // the one that matters: nothing of the round left, and a prompt you can edit.
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('ControlOrMeta+z');
+    await page.waitForTimeout(400);
+    const now = await cells(page);
+    if (now[1]?.type === 'code' && now[0].source === 'value = 1') {
+      break;
+    }
+  }
+
+  const after = await cells(page);
+  expect(after[0].source).toBe('value = 1'); // the edit is undone
+  expect(after[1].type).toBe('code'); // the prompt is code again
+  expect(after[1].source).toContain('add and edit together');
+  expect(after.some(c => c.source.includes('added by the round'))).toBe(false);
+});
