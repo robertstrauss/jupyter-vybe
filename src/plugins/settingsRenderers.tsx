@@ -10,17 +10,23 @@ import * as React from 'react';
 import { validatePrefix } from '../notebook/prefixCheck';
 
 /**
- * Custom settings widgets (docs/04), registered through IFormRendererRegistry
- * -- the supported JupyterLab 4 path, no forked settings editor.
+ * Custom settings widgets (docs/04), registered through IFormRendererRegistry.
  *
- * Three fields earn one, and only these three:
+ * TWO RULES, both learned by breaking them:
  *
- * * `agent.id`, because the list of agents lives on the server and whether one
- *   is *reachable* cannot be known from a schema at all;
- * * `trigger.prefix`, because a prefix that parses as code silently swallows
- *   real code cells, and finding that out at runtime is a bad way to find out;
- * * `agent.command` / `agent.endpoint`, which apply to one adapter each and
- *   are noise for everyone else.
+ * 1. **A field renderer must render the default field, not replace it.**
+ *    `addRenderer` keys on `<pluginId>.<property>`, and our properties are
+ *    object groups, so `formData` is the whole group. The first version built
+ *    its own control from it and rendered the object as a React child, which
+ *    throws (React #31) and blanks the entire settings panel — every setting
+ *    for every group, gone. Wrapping `registry.fields.ObjectField` keeps
+ *    JupyterLab's own rendering of every sub-field and adds ours beneath.
+ *
+ * 2. **Only top-level properties can have renderers.** `addRenderer` splits
+ *    the id at its *last* dot, so `jupyter-vybe:settings.agent.command`
+ *    registers against a plugin called `jupyter-vybe:settings.agent`, which
+ *    does not exist. Two renderers were silently dead that way. T-RENDERERS
+ *    in scripts/check-invariants.sh now fails on it.
  */
 
 const SETTINGS_PLUGIN = 'jupyter-vybe:settings';
@@ -44,33 +50,13 @@ const AGENT_NOTES: Record<string, string> = {
     'Any OpenAI-compatible endpoint: vLLM, llama.cpp, LM Studio, hosted.'
 };
 
-interface IAgentInfo {
-  id: string;
-  label: string;
-  contextWindow: number;
-  local: boolean;
-  requiresConfig: string[];
-}
-
-async function fetchAgents(): Promise<IAgentInfo[]> {
-  const settings = ServerConnection.makeSettings();
-  const response = await ServerConnection.makeRequest(
-    URLExt.join(settings.baseUrl, 'jupyter-vybe', 'agents'),
-    { method: 'GET' },
-    settings
-  );
-  if (!response.ok) {
-    throw new ServerConnection.ResponseError(response);
-  }
-  return ((await response.json()).agents ?? []) as IAgentInfo[];
-}
-
-async function fetchHealth(agentId: string): Promise<{
+interface IHealth {
   ok: boolean;
   detail: string;
-  host: string;
   hostname: string;
-}> {
+}
+
+async function fetchHealth(agentId: string): Promise<IHealth> {
   const settings = ServerConnection.makeSettings();
   const url =
     URLExt.join(settings.baseUrl, 'jupyter-vybe', 'health') +
@@ -83,80 +69,63 @@ async function fetchHealth(agentId: string): Promise<{
   if (!response.ok) {
     throw new ServerConnection.ResponseError(response);
   }
-  return await response.json();
+  return (await response.json()) as IHealth;
 }
 
-/** The agent picker, with a live reachability probe beneath it. */
-function AgentField(props: any): JSX.Element {
-  const [agents, setAgents] = React.useState<IAgentInfo[]>([]);
-  const [status, setStatus] = React.useState<string>('checking…');
-  const [ok, setOk] = React.useState<boolean | null>(null);
-  const value: string = props.formData ?? '';
+/** Renders the group as JupyterLab would, then adds a line of our own. */
+function withDefaultField(props: any, extra: React.ReactNode): JSX.Element {
+  const ObjectField = props?.registry?.fields?.ObjectField;
+  return (
+    <div className="jv-settings-group">
+      {ObjectField ? <ObjectField {...props} /> : null}
+      {extra}
+    </div>
+  );
+}
 
-  React.useEffect(() => {
-    let live = true;
-    fetchAgents()
-      .then(list => live && setAgents(list))
-      .catch(() => live && setAgents([]));
-    return () => {
-      live = false;
-    };
-  }, []);
+/** The agent group, plus a live reachability probe for the chosen agent. */
+function AgentField(props: any): JSX.Element {
+  const agentId: string = props?.formData?.id ?? '';
+  const [status, setStatus] = React.useState('checking…');
+  const [ok, setOk] = React.useState<boolean | null>(null);
 
   React.useEffect(() => {
     let live = true;
     setStatus('checking…');
     setOk(null);
-    if (!value) {
+    if (!agentId) {
       return;
     }
-    fetchHealth(value)
+    fetchHealth(agentId)
       .then(health => {
         if (!live) {
           return;
         }
         setOk(health.ok);
         // The hostname is here on purpose: a tunnel aimed at the wrong
-        // machine looks exactly like a working one otherwise (docs/13 R12).
+        // machine otherwise looks exactly like a working one (docs/13 R12).
         setStatus(
           health.ok
-            ? `reachable — ${health.detail}${health.hostname ? ` on ${health.hostname}` : ''}`
+            ? `reachable — ${health.detail}${
+                health.hostname ? ` on ${health.hostname}` : ''
+              }`
             : health.detail
         );
       })
-      .catch(err => live && (setOk(false), setStatus(String(err))));
+      .catch(err => {
+        if (live) {
+          setOk(false);
+          setStatus(String(err));
+        }
+      });
     return () => {
       live = false;
     };
-  }, [value]);
+  }, [agentId]);
 
-  const known = agents.length
-    ? agents
-    : [
-        {
-          id: value,
-          label: value,
-          contextWindow: 0,
-          local: true,
-          requiresConfig: []
-        }
-      ];
-
-  return (
-    <div className="jv-settings-field">
-      <label className="jv-settings-label">Agent</label>
-      <select
-        className="jv-settings-select"
-        value={value}
-        onChange={event => props.onChange(event.target.value)}
-      >
-        {known.map(agent => (
-          <option key={agent.id} value={agent.id}>
-            {agent.label}
-            {agent.local ? '' : ' (remote)'}
-          </option>
-        ))}
-      </select>
+  return withDefaultField(
+    props,
+    <div className="jv-settings-extra">
       <div
         className={`jv-settings-status ${
           ok === null ? '' : ok ? 'jv-ok' : 'jv-bad'
@@ -164,91 +133,39 @@ function AgentField(props: any): JSX.Element {
       >
         {status}
       </div>
-      {AGENT_NOTES[value] ? (
-        <div className="jv-settings-status">{AGENT_NOTES[value]}</div>
+      {AGENT_NOTES[agentId] ? (
+        <div className="jv-settings-status">{AGENT_NOTES[agentId]}</div>
       ) : null}
     </div>
   );
 }
 
-/** A prefix that parses as code would swallow real cells; say so immediately. */
-function PrefixField(props: any): JSX.Element {
-  const value: string = props.formData ?? '';
-  const verdict = validatePrefix(value);
-  return (
-    <div className="jv-settings-field">
-      <label className="jv-settings-label">Prompt cell prefix</label>
-      <input
-        className="jv-settings-input"
-        value={value}
-        onChange={event => props.onChange(event.target.value)}
-      />
-      <div className={`jv-settings-status ${verdict.ok ? 'jv-ok' : 'jv-bad'}`}>
-        {verdict.ok
-          ? `A code cell starting with ${value} becomes a prompt.`
-          : verdict.reason}
-      </div>
+/** The trigger group, plus a verdict on the prefix as it is typed. */
+function TriggerField(props: any): JSX.Element {
+  const prefix: string = props?.formData?.prefix ?? '';
+  const verdict = validatePrefix(prefix);
+  return withDefaultField(
+    props,
+    <div className={`jv-settings-status ${verdict.ok ? 'jv-ok' : 'jv-bad'}`}>
+      {verdict.ok
+        ? `A code cell starting with ${prefix} becomes a prompt.`
+        : verdict.reason}
     </div>
   );
 }
 
-/** A field that only matters for one adapter, labelled as such. */
-function adapterField(
-  label: string,
-  forAgent: string,
-  placeholder: string,
-  help: string
-) {
-  return function AdapterField(props: any): JSX.Element {
-    return (
-      <div className="jv-settings-field">
-        <label className="jv-settings-label">
-          {label} <span className="jv-settings-scope">agent: {forAgent}</span>
-        </label>
-        <input
-          className="jv-settings-input"
-          value={props.formData ?? ''}
-          placeholder={placeholder}
-          onChange={event => props.onChange(event.target.value)}
-        />
-        <div className="jv-settings-status">{help}</div>
-      </div>
-    );
-  };
-}
-
 export const settingsRenderersPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-vybe:settings-renderers',
-  description:
-    'Custom settings widgets for the agent, prefix, and adapter fields.',
+  description: 'Custom settings widgets for the agent and the trigger prefix.',
   autoStart: true,
   requires: [IFormRendererRegistry],
   activate: (_app: JupyterFrontEnd, registry: IFormRendererRegistry): void => {
-    const add = (property: string, component: (props: any) => JSX.Element) =>
-      registry.addRenderer(`${SETTINGS_PLUGIN}.${property}`, {
-        fieldRenderer: component
-      });
-
-    add('agent', AgentField);
-    add('trigger', PrefixField);
-    add(
-      'agent.command',
-      adapterField(
-        'Command',
-        'command',
-        'claude -p',
-        'Split with shlex and run without a shell. The prompt is the last argument.'
-      )
-    );
-    add(
-      'agent.endpoint',
-      adapterField(
-        'Endpoint',
-        'openai-compat',
-        'http://127.0.0.1:8000',
-        'Base URL. The health check lists the models it actually serves.'
-      )
-    );
+    registry.addRenderer(`${SETTINGS_PLUGIN}.agent`, {
+      fieldRenderer: AgentField
+    });
+    registry.addRenderer(`${SETTINGS_PLUGIN}.trigger`, {
+      fieldRenderer: TriggerField
+    });
   }
 };
 

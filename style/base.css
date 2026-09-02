@@ -483,3 +483,27 @@
 .jv-status-bubble.jv-notice .jv-bubble-main {
   color: var(--jp-warn-color1);
 }
+
+.jv-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.jv-history-gear {
+  padding: 0 4px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--jp-ui-font-color2);
+  background: none;
+  border: none;
+}
+
+.jv-history-gear:hover {
+  color: var(--jp-ui-font-color1);
+}
+
+.jv-settings-extra {
+  margin-top: 4px;
+}

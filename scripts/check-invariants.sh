@@ -86,6 +86,27 @@ else
   echo "pass  T-FRAMES: every emitted frame op is handled"
 fi
 
+# T-RENDERERS: a settings field renderer must name a top-level schema
+# property. addRenderer splits its id at the LAST dot, so an id like
+# "jupyter-vybe:settings.agent.command" registers against a plugin called
+# "jupyter-vybe:settings.agent" -- which does not exist, so the renderer is
+# silently never used. Two were dead that way (docs/13 R14).
+bad=""
+for id in $(grep -oE 'addRenderer\(`\$\{SETTINGS_PLUGIN\}\.[a-zA-Z.]+`' \
+    src/plugins/settingsRenderers.tsx 2>/dev/null \
+    | sed -E 's/.*SETTINGS_PLUGIN\}\.//; s/`$//'); do
+  case "$id" in
+    *.*) bad="$bad $id (nested: only top-level properties can have renderers)" ;;
+    *) grep -q "\"$id\": {" schema/settings.json || bad="$bad $id (not in schema)" ;;
+  esac
+done
+if [ -n "$bad" ]; then
+  echo "FAIL T-RENDERERS: settings renderers that can never fire:$bad"
+  fail=1
+else
+  echo "pass  T-RENDERERS: every settings renderer names a real top-level property"
+fi
+
 # T-MUTATE: only mutations.ts may write to the notebook model.
 offenders=$(grep -rlE 'sharedModel\.(insertCell|deleteCell|setSource)' src/ 2>/dev/null \
   | grep -v 'src/notebook/mutations.ts' || true)

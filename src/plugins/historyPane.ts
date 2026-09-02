@@ -33,7 +33,10 @@ class HistoryPane extends Widget {
   private _path = '';
   private _panel: NotebookPanel | null = null;
 
-  constructor(private readonly settings: IVybeSettings) {
+  constructor(
+    private readonly settings: IVybeSettings,
+    private readonly _openSettings: () => void = () => undefined
+  ) {
     super();
     this.addClass('jv-history-pane');
     this.title.label = 'Prompt history';
@@ -43,7 +46,17 @@ class HistoryPane extends Widget {
 
     const header = document.createElement('div');
     header.className = 'jv-history-header';
-    header.textContent = 'Prompt history';
+    const heading = document.createElement('span');
+    heading.textContent = 'Prompt history';
+    // The settings pane is three menus deep otherwise, and this pane is the
+    // one piece of vybe chrome that is always on screen.
+    const gear = document.createElement('button');
+    gear.className = 'jv-history-gear';
+    gear.textContent = '⚙';
+    gear.title = 'Jupyter Vybe settings';
+    gear.setAttribute('aria-label', 'Open Jupyter Vybe settings');
+    gear.onclick = () => this._openSettings();
+    header.append(heading, gear);
     this._status = document.createElement('div');
     this._status.className = 'jv-history-status';
     this._status.setAttribute('role', 'status');
@@ -264,7 +277,11 @@ export const historyPanePlugin: JupyterFrontEndPlugin<void> = {
     proposals: IVybeProposals,
     restorer: ILayoutRestorer | null
   ): void => {
-    const pane = new HistoryPane(settings);
+    const pane = new HistoryPane(settings, () => {
+      void app.commands.execute('settingeditor:open', {
+        query: 'Jupyter Vybe'
+      });
+    });
     pane.id = 'jupyter-vybe-history';
     app.shell.add(pane, 'right', { rank: 900 });
     restorer?.add(pane, 'jupyter-vybe-history');
