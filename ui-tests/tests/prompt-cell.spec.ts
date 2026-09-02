@@ -465,3 +465,37 @@ test('the thinking line reports a rate, not zero', async ({ page }) => {
     )
     .toMatch(/Thinking, [1-9][0-9]* tokens\/sec/);
 });
+
+test('a cell fills in as it arrives, before the tag closes', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', '> stream a cell slowly');
+
+  await page.notebook.runCell(0, { wait: false });
+
+  // Visible while the body is still arriving -- the whole point: a user
+  // watching a slow model sees the code being written, not a blank pause.
+  await expect
+    .poll(async () => (await cells(page)).map(c => c.source).join('\n'), {
+      timeout: 30000
+    })
+    .toContain('line_0 = 0');
+  const midway = await cells(page);
+  expect(midway.some(c => c.source.includes('line_5 = 5'))).toBe(false);
+  // And the fence never reaches the notebook, even mid-stream.
+  expect(midway.some(c => c.source.includes('```'))).toBe(false);
+
+  // The closing tag settles it, and the finished cell is whole.
+  await expect
+    .poll(async () => (await cells(page)).map(c => c.source).join('\n'), {
+      timeout: 30000
+    })
+    .toContain('line_5 = 5');
+  const after = await cells(page);
+  expect(after[1].source).toBe(
+    'line_0 = 0\nline_1 = 1\nline_2 = 2\nline_3 = 3\nline_4 = 4\nline_5 = 5'
+  );
+  expect(after[1].source).not.toContain('```');
+});

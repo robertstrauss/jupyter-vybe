@@ -145,6 +145,30 @@ export function insertCellsBelow(
   return ids;
 }
 
+/**
+ * Write a cell the round is still receiving.
+ *
+ * Deliberately *not* logged: the operation log is for things a user might undo,
+ * and a half-written cell is not one of them. The `insert` op that created the
+ * cell already covers removing it, so undo stays correct however far the
+ * streaming got.
+ *
+ * Only ever called on a cell this round created, never on the user's own.
+ */
+export function streamIntoCell(
+  panel: NotebookPanel,
+  cellId: string,
+  source: string
+): void {
+  const cell = findCellModel(panel, cellId);
+  if (!cell || cell.sharedModel.getSource() === source) {
+    return;
+  }
+  panel.content.model!.sharedModel.transact(() => {
+    cell.sharedModel.setSource(source);
+  });
+}
+
 /** Apply an accepted proposal. The model is untouched until this runs. */
 export function applyProposal(
   panel: NotebookPanel,

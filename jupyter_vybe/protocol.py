@@ -41,6 +41,11 @@ class EventKind(str, Enum):
     PROSE = "prose"
     TOOL = "tool"
     ERROR = "protocol_error"
+    # Live-only, and opt-in: a body arriving, before its closing tag. The TOOL
+    # event that follows is authoritative and carries the finished body, so a
+    # consumer that ignores these two loses nothing but the liveness.
+    TOOL_START = "tool_start"
+    TOOL_DELTA = "tool_delta"
 
 
 @dataclass
@@ -55,6 +60,10 @@ class Event:
             return {"kind": "prose", "text": self.text}
         if self.kind is EventKind.TOOL:
             return {"kind": "tool", "name": self.name, "args": self.args}
+        if self.kind is EventKind.TOOL_START:
+            return {"kind": "tool_start", "name": self.name, "args": self.args}
+        if self.kind is EventKind.TOOL_DELTA:
+            return {"kind": "tool_delta", "name": self.name, "text": self.text}
         return {"kind": "protocol_error", "text": self.text}
 
 
@@ -64,16 +73,95 @@ class _State(Enum):
     BODY = "body"
 
 
-class StreamParser:
-    """Feed tokens in, get events out. Safe across arbitrary chunk boundaries."""
+class _BodyStream:
+    """Turns a growing raw body into a growing *clean* body.
 
-    def __init__(self) -> None:
+    The cleaning a finished body gets -- fence removal, dedent -- needs the
+    whole thing. This does as much of it as the text so far allows, and never
+    un-emits: it holds back anything that might turn out to be part of a
+    closing fence, and it fixes the dedent from the first non-blank line and
+    keeps it. Where a guess turns out wrong, the TOOL event at the end carries
+    the properly cleaned body and the consumer replaces what it streamed.
+    """
+
+    def __init__(self, cell_type: str = "code") -> None:
+        self._emitted = 0
+        self._indent: int | None = None
+        self._opened_fence = False
+        self._checked_fence = False
+        # Markdown bodies keep their fences, exactly as strip_body_fence does:
+        # a markdown cell whose content is a fenced example is legitimate.
+        self._fences_are_noise = cell_type != "markdown"
+
+    def delta(self, raw: str) -> str:
+        visible = self._visible(raw)
+        if len(visible) <= self._emitted:
+            return ""
+        out = visible[self._emitted :]
+        self._emitted = len(visible)
+        return out
+
+    def _visible(self, raw: str) -> str:
+        body = raw.replace("\r\n", "\n").replace("\r", "\n")
+        if body.startswith("\n"):
+            body = body[1:]
+        # A leading fence can only be recognised once its line has ended.
+        if self._fences_are_noise and not self._checked_fence and "\n" in body:
+            first, _, _ = body.partition("\n")
+            self._opened_fence = bool(_OPEN_FENCE_RE.match(first))
+            self._checked_fence = True
+        if self._opened_fence:
+            body = body.partition("\n")[2]
+        if self._indent is None:
+            for line in body.split("\n"):
+                if line.strip():
+                    self._indent = len(line) - len(line.lstrip(" \t"))
+                    break
+        if self._indent:
+            body = "\n".join(
+                line[self._indent :] if line.strip() else line
+                for line in body.split("\n")
+            )
+        return _hold_back_fence(body) if self._fences_are_noise else body
+
+
+def _hold_back_fence(body: str) -> str:
+    """Drop a trailing line that might be, or might become, a closing fence.
+
+    Emitting "``" and then discovering it was "```" would leave two backticks
+    in the user's cell that nothing ever removes. The whole last line is held,
+    not just an unterminated one: "```\n" is a complete line and still a fence.
+    """
+    trimmed = body.rstrip("\n")
+    head, sep, last = trimmed.rpartition("\n")
+    if _PARTIAL_FENCE_RE.fullmatch(last):
+        return f"{head}\n" if sep else ""
+    return body
+
+
+_OPEN_FENCE_RE = re.compile(r"[ \t]*```[A-Za-z0-9_+-]*[ \t]*$")
+_PARTIAL_FENCE_RE = re.compile(r"[ \t]*`{1,3}[ \t]*")
+
+
+class StreamParser:
+    """Feed tokens in, get events out. Safe across arbitrary chunk boundaries.
+
+    `stream_bodies` adds TOOL_START and TOOL_DELTA events as a tag body
+    arrives, so a caller can show the cell being written rather than waiting
+    for the closing tag. Off by default, which keeps `parse()` -- and the
+    golden fixtures both parsers are pinned to -- describing exactly the
+    outcome of a reply and nothing about its timing.
+    """
+
+    def __init__(self, stream_bodies: bool = False) -> None:
         self._buf = ""
         self._state = _State.TEXT
         self._tool = ""
         self._args: dict[str, str] = {}
         self._body = ""
         self._closed = False
+        self._stream_bodies = stream_bodies
+        self._stream: _BodyStream | None = None
 
     def feed(self, chunk: str) -> Iterator[Event]:
         self._buf += chunk
@@ -131,6 +219,12 @@ class StreamParser:
                     keep = 0 if final else _partial_suffix(self._buf, close)
                     self._body += self._buf[: len(self._buf) - keep]
                     self._buf = self._buf[len(self._buf) - keep :]
+                    if self._stream is not None:
+                        delta = self._stream.delta(self._body)
+                        if delta:
+                            yield Event(
+                                EventKind.TOOL_DELTA, name=self._tool, text=delta
+                            )
                     return
                 self._body += self._buf[:idx]
                 self._buf = self._buf[idx + len(close) :]
@@ -140,6 +234,7 @@ class StreamParser:
                 )
                 yield Event(EventKind.TOOL, name=self._tool, args=args)
                 self._tool, self._args, self._body = "", {}, ""
+                self._stream = None
                 self._state = _State.TEXT
 
     def _open_tag(self, raw: str) -> Iterator[Event]:
@@ -175,6 +270,11 @@ class StreamParser:
             return
         self._tool, self._args, self._body = name, args, ""
         self._state = _State.BODY
+        if self._stream_bodies:
+            self._stream = _BodyStream(args.get("type", "code"))
+            # The attributes are all known at the open tag, so the consumer can
+            # already say what is coming and where it goes.
+            yield Event(EventKind.TOOL_START, name=name, args=dict(args))
 
 
 def _partial_suffix(buf: str, token: str) -> int:

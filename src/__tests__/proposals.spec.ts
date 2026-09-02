@@ -67,14 +67,14 @@ describe('Proposals review lifecycle', () => {
         after: 'a = 2\n',
         prefix: '#%'
       })
-    ).toBe(true);
+    ).toBeTruthy();
     expect(
       proposals.stage(panel, 'round-1', {
         cellId: 'c2',
         after: 'b = 2\n',
         prefix: '#%'
       })
-    ).toBe(true);
+    ).toBeTruthy();
   };
 
   const panelWithTwo = () =>
@@ -135,13 +135,14 @@ describe('Proposals review lifecycle', () => {
   it('drops a proposal that differs only in its trailing newline', () => {
     const proposals = new Proposals();
     const panel = panelWithTwo();
+    // Unchanged source: nothing proposed, so nothing staged.
     expect(
       proposals.stage(panel, 'round-1', {
         cellId: 'c1',
         after: 'a = 1',
         prefix: '#%'
       })
-    ).toBe(false);
+    ).toBeNull();
   });
 });
 
@@ -388,5 +389,129 @@ describe('undoing the verdict that ended the round', () => {
 
     expect(cells[0].source).toBe('a = 1\n');
     expect(proposals.pendingCount(panel)).toBe(1);
+  });
+});
+
+describe('proposals that are still arriving', () => {
+  const panelWithCell = (source: string) => {
+    const cells = [{ id: 'c1', type: 'code', source }];
+    const models = cells.map(c => ({
+      id: c.id,
+      type: c.type,
+      sharedModel: {
+        getSource: () => c.source,
+        setSource: (s: string) => {
+          c.source = s;
+        }
+      }
+    }));
+    return {
+      id: 'panel-1',
+      context: { path: 'nb.ipynb' },
+      node: { classList: { add: () => undefined, remove: () => undefined } },
+      content: {
+        node: {
+          classList: { add: () => undefined, remove: () => undefined },
+          focus: () => undefined
+        },
+        activeCellIndex: 0,
+        mode: 'command',
+        widgets: [
+          {
+            model: { type: 'code' },
+            node: { scrollIntoView: () => undefined, focus: () => undefined }
+          }
+        ],
+        model: {
+          cells: { length: models.length, get: (i: number) => models[i] },
+          sharedModel: { transact: (fn: () => void) => fn() }
+        }
+      }
+    } as any;
+  };
+
+  it('stages an empty body without dismissing it as a no-op', () => {
+    const proposals = new Proposals();
+    const panel = panelWithCell('a = 1\n');
+
+    // An empty body would normally be "the model edited the cell into
+    // something", but here it just has not arrived yet.
+    const id = proposals.stage(panel, 'r1', {
+      cellId: 'c1',
+      after: '',
+      prefix: '#%',
+      streaming: true
+    });
+
+    expect(id).toBeTruthy();
+    expect(proposals.list(panel)[0].streaming).toBe(true);
+  });
+
+  it('re-diffs as the body grows', () => {
+    const proposals = new Proposals();
+    const panel = panelWithCell('a = 1\n');
+    const id = proposals.stage(panel, 'r1', {
+      cellId: 'c1',
+      after: '',
+      prefix: '#%',
+      streaming: true
+    })!;
+
+    proposals.updateStaged(panel, id, 'a = 2\n');
+
+    const proposal = proposals.list(panel)[0];
+    expect(proposal.after).toBe('a = 2\n');
+    expect(proposal.hunks.length).toBeGreaterThan(0);
+  });
+
+  it('takes the closing body as authoritative', () => {
+    const proposals = new Proposals();
+    const panel = panelWithCell('a = 1\n');
+    const id = proposals.stage(panel, 'r1', {
+      cellId: 'c1',
+      after: '',
+      prefix: '#%',
+      streaming: true
+    })!;
+    proposals.updateStaged(panel, id, 'a = 2');
+
+    // Whatever the stream guessed about fences and indentation, this wins.
+    proposals.finishStaged(panel, id, 'a = 2\n');
+
+    const proposal = proposals.list(panel)[0];
+    expect(proposal.after).toBe('a = 2\n');
+    expect(proposal.streaming).toBe(false);
+  });
+
+  it('drops an edit that turned out to be a no-op', () => {
+    const proposals = new Proposals();
+    const panel = panelWithCell('a = 1\n');
+    const id = proposals.stage(panel, 'r1', {
+      cellId: 'c1',
+      after: '',
+      prefix: '#%',
+      streaming: true
+    })!;
+
+    // The check stage() skips while a body is arriving, applied at the close.
+    proposals.finishStaged(panel, id, 'a = 1\n');
+
+    expect(proposals.pendingCount(panel)).toBe(0);
+  });
+
+  it('ignores an update once the body has finished', () => {
+    const proposals = new Proposals();
+    const panel = panelWithCell('a = 1\n');
+    const id = proposals.stage(panel, 'r1', {
+      cellId: 'c1',
+      after: '',
+      prefix: '#%',
+      streaming: true
+    })!;
+    proposals.finishStaged(panel, id, 'a = 2\n');
+
+    proposals.updateStaged(panel, id, 'nonsense');
+
+    expect(proposals.list(panel)[0].after).toBe('a = 2\n');
   });
 });

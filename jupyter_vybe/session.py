@@ -205,7 +205,9 @@ class AgentSession:
         for _ in range(max_tool_turns + 1):
             reply, pending = "", None
             emitted_tool = False
-            parser = StreamParser()
+            # Bodies stream: the user sees the cell being written instead of
+            # a blank pause, which on a local model is most of the wait.
+            parser = StreamParser(stream_bodies=True)
 
             # Progress is reported from here, on the raw stream, because
             # nothing downstream can see it: the parser buffers a tag body
@@ -355,6 +357,19 @@ class AgentSession:
 
     def _translate(self, event):
         """Map a parser event to a wire frame, flagging blocking tools."""
+        if event.kind is EventKind.TOOL_START:
+            args = dict(event.args)
+            if event.name == "propose_edit":
+                # Resolved now so the client can show *which* cell is being
+                # rewritten while it is still arriving.
+                args["cell"] = resolve_cell_ref(args.get("cell", ""), self._cells)
+                if not args["cell"]:
+                    # The TOOL event will report the protocol error properly;
+                    # starting a preview against nothing would be worse.
+                    return None, None
+            return {"op": "toolStart", "name": event.name, "args": args}, None
+        if event.kind is EventKind.TOOL_DELTA:
+            return {"op": "toolDelta", "name": event.name, "text": event.text}, None
         if event.kind is EventKind.PROSE:
             return ({"op": "prose", "delta": event.text} if event.text else None), None
         if event.kind is EventKind.ERROR:

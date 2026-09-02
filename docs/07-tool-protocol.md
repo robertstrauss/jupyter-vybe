@@ -1,5 +1,50 @@
 # 07 — Tool Protocol
 
+
+## Bodies stream
+
+A tag body is emitted as it arrives, not only when its closing tag lands.
+`StreamParser(stream_bodies=True)` adds two events to the ones the grammar
+above describes:
+
+| Event | When | Carries |
+|---|---|---|
+| `tool_start` | the open tag is complete | the tool name and every attribute |
+| `tool_delta` | more body has arrived | the new text, cleaned as far as is safe |
+| `tool` | the closing tag | the finished, authoritative body |
+
+This is what lets an `add_cell` create its cell immediately and fill it in as
+the model writes, rather than leaving the user watching nothing for the length
+of a generation. On a local model that pause is most of the wait.
+
+**The stream is provisional; the close is the answer.** Cleaning a body needs
+the whole of it — the dedent amount comes from the first non-blank line, and a
+closing fence cannot be told from content until it ends — so the streamer does
+as much as the text so far allows and the `tool` event replaces whatever it
+guessed. Two rules keep the guess from being visibly wrong:
+
+- **Never emit something that must be taken back.** A trailing line that could
+  be, or could become, a closing fence is held until the next line proves
+  otherwise. Emitting `` `` `` and then learning it was ` ``` ` would leave
+  backticks in the user's cell that nothing removes.
+- **Fix the indent once and keep it.** The first non-blank line sets it, so
+  the body does not reflow as it grows.
+
+Markdown bodies are streamed verbatim, fences included, for the same reason
+`strip_body_fence` leaves them alone: a markdown cell whose content is a fenced
+example is legitimate.
+
+**An edit does not stream into the notebook** — nothing is applied without a
+verdict, and writing into the user's cell to show progress would break that.
+It streams into the diff instead: the proposal is staged when the tag opens and
+its "after" grows as the body arrives, which shows the same progress without
+touching anything.
+
+Streaming is off by default, so `parse()` — and the golden fixtures both
+parsers are pinned to — describe exactly what a reply *did*, with nothing about
+when.
+
+
 ## Why a text protocol
 
 The two backends PROMPT names cannot be relied on for native function calling: the Ollama model

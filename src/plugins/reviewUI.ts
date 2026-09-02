@@ -187,6 +187,10 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
           continue;
         }
         cellWidget.node.classList.add('jv-proposal');
+        cellWidget.node.classList.toggle(
+          'jv-proposal-streaming',
+          !!proposal.streaming
+        );
         if (active && proposal.id === active.id) {
           cellWidget.node.classList.add('jv-proposal-active');
           created.push(attachControls(cellWidget.node, proposal));
@@ -195,9 +199,11 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
         cellWidget.node
           .querySelector('.jp-Cell-inputWrapper')
           ?.classList.add('jv-input-hidden');
-        const label = proposal.targetLabel
-          ? `editing cell ${i + 1}: ${proposal.targetLabel}`
-          : `editing cell ${i + 1}`;
+        const label = proposal.streaming
+          ? `writing an edit to cell ${i + 1}…`
+          : proposal.targetLabel
+            ? `editing cell ${i + 1}: ${proposal.targetLabel}`
+            : `editing cell ${i + 1}`;
         const overlay = new DiffOverlay(
           proposal.hunks,
           proposal.note ? `${label} — ${proposal.note}` : label

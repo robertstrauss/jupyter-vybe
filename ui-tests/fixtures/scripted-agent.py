@@ -15,7 +15,21 @@ import sys
 
 prompt = sys.argv[-1] if len(sys.argv) > 1 else ""
 
-if "think slowly please" in prompt:
+if "stream a cell slowly" in prompt:
+    # Writes a fenced body one line at a time, slowly enough that a test can
+    # see the cell filling up before the closing tag arrives.
+    import time
+
+    print('<vybe:add_cell type="code">')
+    print("```python")
+    sys.stdout.flush()
+    for i in range(6):
+        print(f"line_{i} = {i}")
+        sys.stdout.flush()
+        time.sleep(0.4)
+    print("```")
+    print("</vybe:add_cell>")
+elif "think slowly please" in prompt:
     # Streams a long tag body slowly, so the progress path is exercised: a
     # reply made only of tags is exactly the case that reported 0 tokens/sec.
     import time

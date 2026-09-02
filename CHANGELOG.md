@@ -4,6 +4,19 @@
 
 ## 1.2.0 (unreleased)
 
+### Cells are written in front of you
+
+- **A cell appears the moment its tag opens and fills in as the model writes
+  it**, rather than at the end. The parser used to buffer a body until its
+  closing tag, which on a local model is most of the wait spent watching
+  nothing. Fences and copied-in indentation are cleaned as it streams, so
+  nothing appears that has to be taken back, and the closing tag remains
+  authoritative.
+- **An edit streams into its diff**, not into your cell: nothing is applied
+  without a verdict, so the proposal is staged when the tag opens and its diff
+  grows as the body arrives. In-flight diffs are dimmed and read
+  "writing an edit to cell 3…".
+
 ### The round reports on itself, in the cell that caused it
 
 - **Progress and the review summary now render in the prompt cell's output

@@ -22,6 +22,8 @@ export interface IAgentFrame {
   prompt?: string;
   /** `progress`: characters received so far, cumulative. */
   chars?: number;
+  /** `toolDelta`: more of a tag body, cleaned as far as is safe so far. */
+  text?: string;
 }
 
 export interface IPromptRequest {

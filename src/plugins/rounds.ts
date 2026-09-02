@@ -18,6 +18,7 @@ import {
   convertPromptToMarkdown,
   insertCellsBelow,
   revertRound,
+  streamIntoCell,
   type ICellSpec
 } from '../notebook/mutations';
 import {
@@ -198,6 +199,12 @@ export class Rounds implements IVybeRounds {
     const pending: ICellSpec[] = [];
     let insertions = 0;
     let proposals = 0;
+    /**
+     * The tag currently arriving. A cell is created the moment its tag opens
+     * and filled as the body streams, so the wait is spent watching the code
+     * appear rather than watching nothing.
+     */
+    let streaming: { name: string; cellId: string; body: string } | null = null;
 
     const frames = this.agent.send(path, {
       roundId: round.id,
@@ -230,6 +237,58 @@ export class Rounds implements IVybeRounds {
         // tool tags; the prose it already streamed was that code, and must
         // not also land in the settled markdown cell (docs/13 R2).
         round.prose = '';
+      } else if (frame.op === 'toolStart') {
+        const name = frame.name!;
+        const args = frame.args ?? {};
+        if (name === 'add_cell' && insertions < this.settings.maxInsertions) {
+          // Created empty, in its final position, before a byte of body has
+          // arrived. Everything after this is filling it in.
+          const ids = insertCellsBelow(
+            panel,
+            this._anchorId(round, round.insertedIds.length),
+            [
+              {
+                type: args.type === 'markdown' ? 'markdown' : 'code',
+                source: ''
+              }
+            ],
+            round.log
+          );
+          if (ids.length) {
+            round.insertedIds.push(...ids);
+            streaming = { name, cellId: ids[0], body: '' };
+          }
+        } else if (
+          name === 'propose_edit' &&
+          proposals < this.settings.maxProposals
+        ) {
+          // An edit cannot stream into the notebook -- nothing is applied
+          // without a verdict -- so it streams into the diff instead, which
+          // shows the same progress without touching the user's cell.
+          const staged = this.proposals.stage(panel, round.id, {
+            cellId: args.cell ?? '',
+            after: '',
+            note: args.note,
+            prefix: this.settings.prefix,
+            streaming: true
+          });
+          if (staged) {
+            streaming = { name, cellId: staged, body: '' };
+          }
+        }
+      } else if (frame.op === 'toolDelta') {
+        if (streaming) {
+          streaming.body += frame.text ?? '';
+          if (streaming.name === 'add_cell') {
+            streamIntoCell(panel, streaming.cellId, streaming.body);
+          } else {
+            this.proposals.updateStaged(
+              panel,
+              streaming.cellId,
+              streaming.body
+            );
+          }
+        }
       } else if (frame.op === 'tool') {
         const name = frame.name!;
         const args = frame.args ?? {};
@@ -242,28 +301,43 @@ export class Rounds implements IVybeRounds {
             type: args.type === 'markdown' ? 'markdown' : 'code',
             source: args.body ?? ''
           });
-          // Stream cells in as they arrive; on a 7B model this is the
-          // difference between "instant" and "did it hang?".
-          const ids = insertCellsBelow(
-            panel,
-            this._anchorId(round, pending.length - 1),
-            [pending[pending.length - 1]],
-            round.log
-          );
-          round.insertedIds.push(...ids);
+          // The closing tag is authoritative: whatever the stream guessed
+          // about fences and indentation, this is the finished body.
+          if (streaming && streaming.name === 'add_cell') {
+            streamIntoCell(panel, streaming.cellId, args.body ?? '');
+          } else {
+            const ids = insertCellsBelow(
+              panel,
+              this._anchorId(round, round.insertedIds.length),
+              [pending[pending.length - 1]],
+              round.log
+            );
+            round.insertedIds.push(...ids);
+          }
+          streaming = null;
         } else if (name === 'propose_edit') {
           if (proposals >= this.settings.maxProposals) {
             continue;
           }
-          const staged = this.proposals.stage(panel, round.id, {
-            cellId: args.cell ?? '',
-            after: args.body ?? '',
-            note: args.note,
-            prefix: this.settings.prefix
-          });
-          if (staged) {
+          if (streaming && streaming.name === 'propose_edit') {
+            this.proposals.finishStaged(
+              panel,
+              streaming.cellId,
+              args.body ?? ''
+            );
             proposals++;
+          } else {
+            const staged = this.proposals.stage(panel, round.id, {
+              cellId: args.cell ?? '',
+              after: args.body ?? '',
+              note: args.note,
+              prefix: this.settings.prefix
+            });
+            if (staged) {
+              proposals++;
+            }
           }
+          streaming = null;
         } else if (frame.callId) {
           // Narrated because it is otherwise a silent pause: the agent has
           // stopped generating to ask the kernel something, and from outside

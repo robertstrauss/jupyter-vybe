@@ -539,3 +539,9 @@
 .jv-prompt-cell .jp-Cell-outputWrapper {
   display: block;
 }
+
+/* A diff still arriving: dimmed, so it does not invite a verdict on a body
+   that is not finished. */
+.jv-proposal-streaming .jv-diff-overlay {
+  opacity: 0.7;
+}

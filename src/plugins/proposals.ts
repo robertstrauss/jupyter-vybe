@@ -16,6 +16,8 @@ import { diffLines, normaliseSource, type IHunk } from '../ui/diff';
 
 export interface IProposal {
   id: string;
+  /** Still arriving: the diff shown is of a body that is not finished yet. */
+  streaming?: boolean;
   roundId: string;
   cellId: string;
   before: string;
@@ -32,6 +34,8 @@ export interface IStageRequest {
   after: string;
   note?: string;
   prefix: string;
+  /** Staged from an open tag, before its body has arrived. */
+  streaming?: boolean;
 }
 
 export interface IRoundHandle {
@@ -48,7 +52,16 @@ export interface IRoundHandle {
 }
 
 export interface IVybeProposals {
-  stage(panel: NotebookPanel, roundId: string, req: IStageRequest): boolean;
+  /** Returns the proposal's id, or null when it was not staged. */
+  stage(
+    panel: NotebookPanel,
+    roundId: string,
+    req: IStageRequest
+  ): string | null;
+  /** Replace the pending body of a proposal still arriving. */
+  updateStaged(panel: NotebookPanel, proposalId: string, after: string): void;
+  /** The body finished arriving: this one is authoritative. */
+  finishStaged(panel: NotebookPanel, proposalId: string, after: string): void;
   pendingCount(panel: NotebookPanel, roundId?: string): number;
   list(panel: NotebookPanel): IProposal[];
   beginReview(panel: NotebookPanel, round: IRoundHandle): void;
@@ -93,21 +106,29 @@ export class Proposals implements IVybeProposals {
     return this._changed;
   }
 
-  stage(panel: NotebookPanel, roundId: string, req: IStageRequest): boolean {
+  stage(
+    panel: NotebookPanel,
+    roundId: string,
+    req: IStageRequest
+  ): string | null {
     const model = findCellModel(panel, req.cellId);
     if (!model) {
-      return false;
+      return null;
     }
     // A settled prompt cell is the user's own prompt history, not the agent's
     // to rewrite (docs/03). Enforced here, not merely discouraged in the prompt.
     if (isSettledPromptCell(model, req.prefix)) {
-      return false;
+      return null;
     }
     const before = model.sharedModel.getSource();
-    if (normaliseSource(before) === normaliseSource(req.after)) {
+    if (
+      !req.streaming &&
+      normaliseSource(before) === normaliseSource(req.after)
+    ) {
       // Models frequently "edit" a cell into itself; drop silently. A reply
-      // that differs only in its trailing newline counts as itself.
-      return false;
+      // that differs only in its trailing newline counts as itself. A body
+      // still arriving gets this check when it finishes instead.
+      return null;
     }
     const proposal: IProposal = {
       id: UUID.uuid4(),
@@ -118,6 +139,7 @@ export class Proposals implements IVybeProposals {
       note: req.note,
       targetLabel: before.split('\n')[0].slice(0, 60),
       hunks: diffLines(before, req.after),
+      streaming: req.streaming ?? false,
       wasRendered:
         model.type === 'markdown' ? this._isRendered(panel, req.cellId) : false,
       state: 'pending'
@@ -127,7 +149,33 @@ export class Proposals implements IVybeProposals {
     list.push(proposal);
     this._byPanel.set(panel.id, list);
     this._changed.emit(panel);
-    return true;
+    return proposal.id;
+  }
+
+  updateStaged(panel: NotebookPanel, proposalId: string, after: string): void {
+    const proposal = this.list(panel).find(p => p.id === proposalId);
+    if (!proposal || !proposal.streaming) {
+      return;
+    }
+    proposal.after = after;
+    proposal.hunks = diffLines(proposal.before, after);
+    this._changed.emit(panel);
+  }
+
+  finishStaged(panel: NotebookPanel, proposalId: string, after: string): void {
+    const proposal = this.list(panel).find(p => p.id === proposalId);
+    if (!proposal) {
+      return;
+    }
+    proposal.streaming = false;
+    proposal.after = after;
+    proposal.hunks = diffLines(proposal.before, after);
+    // The check stage() skipped while the body was arriving: a model that
+    // "edits" a cell into itself has proposed nothing.
+    if (normaliseSource(proposal.before) === normaliseSource(after)) {
+      proposal.state = 'rejected';
+    }
+    this._changed.emit(panel);
   }
 
   logFor(panel: NotebookPanel): OperationLog {
