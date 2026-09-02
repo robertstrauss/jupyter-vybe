@@ -96,7 +96,13 @@ Used IPython tools to look up numpy.mean
 
 The rate is characters-received over seconds, converted with the estimator from
 [09](09-context-management.md) — an estimate of an estimate, and enough to answer "is it
-working". The lookup lines matter more than they look: an introspection call is a silent pause
+working".
+
+**The count comes from the server, on the raw stream.** The frontend cannot measure this: the
+tag parser buffers a body until its closing tag, so a reply made entirely of tool tags — the
+normal case — emits nothing to count until it has finished. The first version dutifully reported
+`0 tokens/sec` for the whole round. The server now sends a `progress` frame four times a second
+with the cumulative character count. The lookup lines matter more than they look: an introspection call is a silent pause
 in generation, and from outside a pause is indistinguishable from a hang.
 
 Once the agent has answered and edits are waiting:
@@ -117,31 +123,25 @@ the keys that resolve it do nothing.
 When no edits were proposed, or once the last verdict is in, the prompt becomes its markdown
 record and the cells the round inserted become the selection.
 
-## Status bubble
+## The review counter
 
-Sticky, top-right of the notebook panel (`position: sticky; top: 8px; float: right; z-index`
-above the cell toolbar but below dialogs):
+The only floating chrome. It exists for one failure mode — walking away with
+edits still unresolved — so it appears exactly while that is possible and
+vanishes the moment the last verdict lands.
 
 ```
-┌───────────────────────────────┐
-│ ⚡ 3 edits proposed            │
-│ click or ⌥E to review         │
-├───────────────────────────────┤
-│ reject all  ⌥⇧E               │
-└───────────────────────────────┘
+        ┌──────────────────────────────────────────────────┐
+        │ 3 edits left to review   reject the rest   ⌘Z … │
+        └──────────────────────────────────────────────────┘
 ```
 
-- Click, or the shortcut, jumps to the first unresolved proposal. The jump button is the entire
-  top of the bubble; reject-all sits below a divider, small and clearly labelled. They were once
-  adjacent and similarly sized, so a click meaning "show me" could discard the round (docs/14 N3).
-- **Reject-all is undoable.** One click discards a whole round's review, so the rejected batch is
-  kept and the bubble turns into `rejected 3 edits — undo ⌥⇧Z` instead of vanishing. Undoing
-  restores the proposals _and_ re-registers the round, so accepting afterwards still records to
-  the round's operation log. Staging any new proposal discards the undo.
-- The count decrements on each resolution, with a brief number-change animation.
-- Also renders round status during `RUNNING` (`⚡ thinking…` + elapsed time + a cancel affordance),
-  so there is one place to look for "is something happening".
-- Disappears on SETTLE.
+Top-centre and translucent, because it is a reminder rather than a control
+panel and it must not hide the code being reviewed. It carries the two ways
+out: reject what is left, or take a verdict back with `Cmd+Z`.
+
+Everything else a round has to say — progress, the context meter, errors, the
+proposal count itself — belongs to the prompt cell's output area, next to the
+prompt that caused it. There is no second place to look.
 
 ## Navigation and keyboard map
 

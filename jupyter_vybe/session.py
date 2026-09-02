@@ -34,6 +34,9 @@ from .protocol import (
 IDLE_SECONDS = 1800
 MAX_SESSIONS = 8
 RESYNC_EVERY = 10
+# How often to tell the client how much has arrived. Four times a second is
+# enough for a counter a human reads, and cheap enough not to matter.
+PROGRESS_INTERVAL = 0.25
 
 BLOCKING_TOOLS = {"ipython_help", "complete"}
 
@@ -204,8 +207,19 @@ class AgentSession:
             emitted_tool = False
             parser = StreamParser()
 
+            # Progress is reported from here, on the raw stream, because
+            # nothing downstream can see it: the parser buffers a tag body
+            # until its closing tag, so a reply made entirely of tool tags --
+            # the normal case -- emits no frames at all until it is finished.
+            # The client was dutifully reporting 0 tokens/sec for the whole
+            # round.
+            last_progress = 0.0
             async for chunk in self.adapter.stream(self.messages, self._cancel):
                 reply += chunk
+                now = time.monotonic()
+                if now - last_progress >= PROGRESS_INTERVAL:
+                    last_progress = now
+                    yield {"op": "progress", "chars": len(reply)}
                 for event in parser.feed(chunk):
                     if event.kind is EventKind.TOOL:
                         emitted_tool = True

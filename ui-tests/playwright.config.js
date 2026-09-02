@@ -17,11 +17,25 @@ const baseConfig = require('@jupyterlab/galata/lib/playwright-config');
  */
 const CONFIG_DIR = path.join(__dirname, '.jupyter-test');
 
+/**
+ * Not 8888.
+ *
+ * 8888 is where a person's own JupyterLab lives, and the developer of this
+ * extension is very likely to have one open — testing the extension. Sharing
+ * the port means the suite either refuses to start or, worse, quietly drives
+ * their session. Its own port costs nothing.
+ */
+const PORT = 8977;
+
 module.exports = {
   ...baseConfig,
+  use: {
+    ...baseConfig.use,
+    baseURL: `http://localhost:${PORT}`
+  },
   webServer: {
-    command: 'jlpm start',
-    url: 'http://localhost:8888/lab',
+    command: `jlpm start --port ${PORT}`,
+    url: `http://localhost:${PORT}/lab`,
     timeout: 120 * 1000,
     /*
      * Never reuse a running server.

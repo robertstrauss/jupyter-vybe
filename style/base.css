@@ -153,88 +153,62 @@
   position: relative;
 }
 
-/* ---- status bubble ---- */
-.jv-status-bubble {
+/* ---- the review counter (docs/03) ---- */
+
+/* Top-centre and translucent: a reminder that edits are still open, not a
+   control panel, and it must not hide the code being reviewed. */
+.jv-review-counter {
   position: absolute;
-  top: 8px;
-  right: 16px;
+  top: 6px;
+  left: 50%;
   z-index: 10;
   display: flex;
-  flex-direction: column;
-  min-width: 220px;
-  padding: 12px 16px;
+  gap: 12px;
+  align-items: center;
+  padding: 5px 14px;
+  transform: translateX(-50%);
   font-family: var(--jp-ui-font-family);
-  font-size: var(--jp-ui-font-size2);
-  background: var(--jp-layout-color1);
-  border: 1px solid var(--jp-border-color1);
-  border-radius: 8px;
-  box-shadow: var(--jp-elevation-z4);
-}
-
-.jv-bubble-main,
-.jv-bubble-sub {
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-  background: none;
-  border: none;
+  font-size: var(--jp-ui-font-size1);
   color: var(--jp-ui-font-color1);
+  background: color-mix(in srgb, var(--jp-layout-color1) 82%, transparent);
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 999px;
+  box-shadow: var(--jp-elevation-z2);
+  backdrop-filter: blur(3px);
 }
 
-/* Clicking the bubble means "take me there", so the jump target is the whole
-   width of it and reject-all is a small, separate control (docs/14 N3). */
-.jv-bubble-main {
-  font-size: var(--jp-ui-font-size2);
+.jv-review-counter:hover {
+  background: var(--jp-layout-color1);
+}
+
+.jv-counter-label {
   font-weight: 600;
-  line-height: 1.3;
 }
 
-.jv-bubble-main:hover {
-  color: var(--jp-brand-color1);
-}
-
-.jv-bubble-hint {
-  margin-top: 2px;
+.jv-counter-reject {
+  padding: 1px 8px;
+  cursor: pointer;
+  font-family: inherit;
   font-size: var(--jp-ui-font-size0);
-  color: var(--jp-ui-font-color3);
+  color: var(--jp-ui-font-color2);
+  background: none;
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 999px;
 }
 
-.jv-bubble-rule {
-  height: 1px;
-  margin: 10px -16px 8px;
-  background: var(--jp-border-color2);
-}
-
-.jv-bubble-sub {
-  align-self: flex-start;
-  font-size: var(--jp-ui-font-size0);
-  color: var(--jp-ui-font-color3);
-}
-
-.jv-bubble-sub:hover {
+.jv-counter-reject:hover {
   color: var(--jp-error-color1);
+  border-color: var(--jp-error-color1);
 }
 
-.jv-bubble-main:focus-visible,
-.jv-bubble-sub:focus-visible {
+.jv-counter-reject:focus-visible {
   outline: 2px solid var(--jp-brand-color1);
   outline-offset: 2px;
 }
 
-.jv-status-bubble.jv-generating .jv-bubble-main {
-  color: var(--jp-warn-color1);
-}
-
-/* After a reject-all the sub-button is the recovery, not the danger. */
-.jv-status-bubble.jv-undo .jv-bubble-main {
-  font-weight: 400;
-  color: var(--jp-ui-font-color2);
-}
-
-.jv-status-bubble.jv-undo .jv-bubble-sub {
-  font-size: var(--jp-ui-font-size1);
-  font-weight: 600;
-  color: var(--jp-brand-color1);
+.jv-counter-hint {
+  font-size: var(--jp-ui-font-size0);
+  color: var(--jp-ui-font-color3);
 }
 
 /* ---- inserted cells ---- */
@@ -481,23 +455,6 @@
   opacity: 0.6;
 }
 
-.jv-status-bubble.jv-problem {
-  border-color: var(--jp-error-color1);
-}
-
-.jv-status-bubble.jv-problem .jv-bubble-main {
-  color: var(--jp-error-color1);
-}
-
-/* A notice is information the user should have, not a failure to fix. */
-.jv-status-bubble.jv-notice {
-  border-color: var(--jp-warn-color1);
-}
-
-.jv-status-bubble.jv-notice .jv-bubble-main {
-  color: var(--jp-warn-color1);
-}
-
 .jv-history-header {
   display: flex;
   align-items: center;
@@ -552,6 +509,23 @@
   margin-top: 2px;
   font-size: var(--jp-ui-font-size0);
   color: var(--jp-ui-font-color2);
+}
+
+.jv-prompt-output.jv-problem {
+  border-left-color: var(--jp-error-color1);
+}
+
+.jv-prompt-output.jv-problem .jv-prompt-headline {
+  color: var(--jp-error-color1);
+}
+
+/* A notice is information the user should have, not a failure to fix. */
+.jv-prompt-output.jv-problem.jv-notice {
+  border-left-color: var(--jp-warn-color1);
+}
+
+.jv-prompt-output.jv-problem.jv-notice .jv-prompt-headline {
+  color: var(--jp-warn-color1);
 }
 
 .jv-prompt-hint {

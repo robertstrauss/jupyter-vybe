@@ -15,7 +15,19 @@ import sys
 
 prompt = sys.argv[-1] if len(sys.argv) > 1 else ""
 
-if "aim at a cell that is not there" in prompt:
+if "think slowly please" in prompt:
+    # Streams a long tag body slowly, so the progress path is exercised: a
+    # reply made only of tags is exactly the case that reported 0 tokens/sec.
+    import time
+
+    print('<vybe:add_cell type="code">')
+    sys.stdout.flush()
+    for i in range(12):
+        print(f"value_{i} = {i} * 100  # a line of a slowly written cell")
+        sys.stdout.flush()
+        time.sleep(0.25)
+    print("</vybe:add_cell>")
+elif "aim at a cell that is not there" in prompt:
     # Names a cell number the notebook does not have: the commonest
     # recoverable protocol failure, and the one that used to produce silence.
     print('<vybe:propose_edit cell="99" note="nowhere">')

@@ -329,12 +329,12 @@ test('a protocol error is shown, not swallowed', async ({ page }) => {
 
   // The round used to produce nothing at all here: no cell, no message, no
   // clue. Silence is the failure mode this design exists to avoid.
-  const bubble = page.locator('.jv-status-bubble.jv-problem');
-  await expect(bubble).toBeVisible({ timeout: 60000 });
-  await expect(bubble).toContainText('problem');
-  // And it is recorded where the prompt ends up, so it survives the dismissal.
+  // The round used to produce nothing at all here: no cell, no message, no
+  // clue. The record lands in the settled prompt cell, which is where it
+  // survives -- the live output area belongs to the round, and the round is
+  // over (docs/13 R14).
   await expect
-    .poll(async () => (await cells(page))[1].source)
+    .poll(async () => (await cells(page))[1].source, { timeout: 60000 })
     .toContain('Protocol error');
   // The notebook itself is untouched by a failed round.
   expect((await cells(page))[0].source).toBe('value = 1');
@@ -347,10 +347,8 @@ test('an agent that falls over says so', async ({ page }) => {
 
   await page.notebook.runCell(0, { wait: false });
 
-  const bubble = page.locator('.jv-status-bubble.jv-problem');
-  await expect(bubble).toBeVisible({ timeout: 60000 });
   await expect
-    .poll(async () => (await cells(page))[0].source)
+    .poll(async () => (await cells(page))[0].source, { timeout: 60000 })
     .toContain('fell over');
 });
 
@@ -371,9 +369,10 @@ test('a reply without tool tags is recovered, and the user is told', async ({
     })
     .toContain('def salvaged()');
   // ...but the user is told, because that is when to check the output harder.
-  const bubble = page.locator('.jv-status-bubble.jv-notice');
-  await expect(bubble).toBeVisible();
-  await expect(bubble).toContainText('without tool tags');
+  // The notice is shown live and recorded in the settled cell after.
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toContain('without tool tags');
 });
 
 test('Cmd+Z after an insertion takes the whole round back', async ({
@@ -399,4 +398,70 @@ test('Cmd+Z after an insertion takes the whole round back', async ({
   const after = await cells(page);
   expect(after[0].source).toContain('add a doubling function');
   expect(after.some(c => c.source.includes('def double'))).toBe(false);
+});
+
+test('the review counter appears only while edits are open', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> double the value above');
+
+  // Nothing floating before a round: the counter exists for one failure mode,
+  // walking away with edits unresolved, and only for as long as that is
+  // possible.
+  expect(await page.locator('.jv-review-counter').count()).toBe(0);
+
+  await page.notebook.runCell(1, { wait: false });
+
+  const counter = page.locator('.jv-review-counter');
+  await expect(counter).toBeVisible({ timeout: 60000 });
+  await expect(counter).toContainText('1 edit left to review');
+  await expect(counter).toContainText('⌘Z');
+
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('y');
+
+  await expect(counter).toBeHidden();
+});
+
+test('the counter rejects the rest without touching the notebook', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> double the value above');
+
+  await page.notebook.runCell(1, { wait: false });
+  const counter = page.locator('.jv-review-counter');
+  await expect(counter).toBeVisible({ timeout: 60000 });
+
+  await counter.locator('.jv-counter-reject').click();
+
+  await expect(counter).toBeHidden();
+  expect((await cells(page))[0].source).toBe('value = 1');
+});
+
+test('the thinking line reports a rate, not zero', async ({ page }) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', '> think slowly please');
+
+  await page.notebook.runCell(0, { wait: false });
+
+  // A reply made only of tool tags streams nothing the client can see until
+  // each tag closes, so the rate was stuck at zero for the whole round: the
+  // server reports progress from the raw stream now.
+  await expect
+    .poll(
+      async () =>
+        await page
+          .locator('.jv-prompt-output.jv-thinking')
+          .textContent()
+          .catch(() => ''),
+      { timeout: 30000 }
+    )
+    .toMatch(/Thinking, [1-9][0-9]* tokens\/sec/);
 });

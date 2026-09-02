@@ -14,7 +14,7 @@ import { Widget } from '@lumino/widgets';
  * round does not either.
  */
 
-export type PromptOutputKind = 'thinking' | 'review' | 'idle';
+export type PromptOutputKind = 'thinking' | 'review' | 'problem' | 'idle';
 
 export class PromptOutput extends Widget {
   private _headline: HTMLElement;
@@ -59,7 +59,7 @@ export class PromptOutput extends Widget {
     this._renderNotes(notes);
     this._hint.textContent = '';
     this.node.classList.add('jv-thinking');
-    this.node.classList.remove('jv-review');
+    this.node.classList.remove('jv-review', 'jv-problem', 'jv-notice');
   }
 
   /** Waiting on the user: how many edits, and the two keys that resolve them. */
@@ -71,7 +71,26 @@ export class PromptOutput extends Widget {
     this._renderNotes(notes);
     this._hint.textContent = 'Enter to review · N to reject all';
     this.node.classList.add('jv-review');
-    this.node.classList.remove('jv-thinking');
+    this.node.classList.remove('jv-thinking', 'jv-problem', 'jv-notice');
+  }
+
+  /**
+   * Something went wrong, or something worth knowing happened.
+   *
+   * Here rather than in a floating bubble: the round reports on itself in one
+   * place, and a failure belongs next to the prompt that caused it. The
+   * settled markdown cell keeps the text too, so it survives the round
+   * (docs/13 R14).
+   */
+  showProblem(message: string, severity: 'problem' | 'notice'): void {
+    this._kind = 'problem';
+    this._headline.textContent =
+      severity === 'problem' ? 'The agent hit a problem' : 'Worth knowing';
+    this._notes.textContent = '';
+    this._hint.textContent = message;
+    this.node.classList.remove('jv-thinking', 'jv-review');
+    this.node.classList.add('jv-problem');
+    this.node.classList.toggle('jv-notice', severity === 'notice');
   }
 
   private _renderNotes(notes: string[]): void {

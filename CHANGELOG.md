@@ -18,11 +18,22 @@
 - **Two unchorded keys**, `Enter` to start reviewing and `N` to reject the lot,
   replacing `⌥E` / `⌥⇧E`. Once no verdicts are outstanding, the cells the round
   inserted become the selection.
+- **One piece of floating chrome, and only one**: a translucent counter at the
+  top of the notebook while edits are open — how many are left, a button to
+  reject the rest, and a reminder that `Cmd+Z` takes a verdict back. It exists
+  for a single failure mode, walking away with edits unresolved, so it appears
+  exactly while that is possible. Progress, the context meter and errors all
+  moved into the prompt cell alongside everything else.
 
 ### Fixed
 
+- **`Thinking, 0 tokens/sec`.** The rate was counted from what the frontend
+  could see, but the tag parser buffers a body until its closing tag — so a
+  reply made entirely of tool tags, which is the normal case, streamed nothing
+  to count until it had finished. The server reports progress from the raw
+  stream now, four times a second.
 - **The settings pane was blank.** A custom field renderer rendered a settings
-  *group* as a React child, which throws during render and takes every setting
+  _group_ as a React child, which throws during render and takes every setting
   with it. Two other renderers were registered against a plugin id that does
   not exist and had never once fired.
 - **`Cmd+Z` after an insertion did nothing.** It now removes what the round
@@ -44,7 +55,7 @@
 ### Measured, and not shipped
 
 Letting the model wrap tag bodies in ``` fences — on the theory that it is the
-habit every model already has — makes `qwen2.5-coder:7b` *worse*: 59/60 → 56/60
+habit every model already has — makes `qwen2.5-coder:7b` _worse_: 59/60 → 56/60
 on tool choice and 23/24 → 20/24 on edit targeting, repeated. The parser now
 tolerates a fence anyway, because models do it whether or not they are invited
 to and a fence that reaches a cell is a syntax error.

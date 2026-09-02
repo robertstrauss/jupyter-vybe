@@ -126,114 +126,48 @@ export class ReviewControls extends Widget {
   }
 }
 
-/** Sticky top-right counter; also the round status while generating. */
-export class StatusBubble extends Widget {
+/**
+ * The one floating thing: a review counter (docs/03).
+ *
+ * It exists for a single failure mode — walking away with edits still
+ * unresolved. So it appears only during review, says how many are left, and
+ * offers the two ways out: reject the rest, or take a verdict back. It is
+ * top-centre and translucent because it is a reminder, not a control panel,
+ * and it must not hide the code being reviewed.
+ *
+ * Everything else a round has to say now belongs to the prompt cell's own
+ * output area, next to the prompt that caused it.
+ */
+export class ReviewCounter extends Widget {
   private _label: HTMLElement;
-  private _hint: HTMLElement;
-  private _sub: HTMLButtonElement;
 
-  constructor(
-    onJump: () => void,
-    onRejectAll: () => void,
-    onUndo: () => void,
-    onCancel: () => void
-  ) {
+  constructor(onRejectAll: () => void) {
     const node = document.createElement('div');
-    node.className = 'jv-status-bubble';
-    // Polite: a round's progress should not interrupt what is being read.
+    node.className = 'jv-review-counter';
     node.setAttribute('role', 'status');
     node.setAttribute('aria-live', 'polite');
 
-    // The main button is the whole top of the bubble and does the safe thing:
-    // take me to the first edit. Reject-all is a small, separate, clearly
-    // labelled control below a divider -- previously the two sat close enough
-    // that a click meaning "show me" could discard the round (docs/14 N3).
-    const main = document.createElement('button');
-    main.className = 'jv-bubble-main';
-    main.setAttribute('aria-label', 'Go to the first proposed edit');
-    main.onclick = onJump;
+    const label = document.createElement('span');
+    label.className = 'jv-counter-label';
 
-    const hint = document.createElement('div');
-    hint.className = 'jv-bubble-hint';
+    const reject = document.createElement('button');
+    reject.className = 'jv-counter-reject';
+    reject.textContent = 'reject the rest';
+    reject.setAttribute('aria-label', 'Reject all remaining proposed edits');
+    reject.onclick = onRejectAll;
 
-    const rule = document.createElement('div');
-    rule.className = 'jv-bubble-rule';
+    const hint = document.createElement('span');
+    hint.className = 'jv-counter-hint';
+    hint.textContent = '⌘Z undoes a verdict';
 
-    const sub = document.createElement('button');
-    sub.className = 'jv-bubble-sub';
-    sub.textContent = 'reject all  ⌥⇧E';
-    sub.setAttribute('aria-label', 'Reject all proposed edits');
-    sub.onclick = onRejectAll;
-
-    node.append(main, hint, rule, sub);
+    node.append(label, reject, hint);
     super({ node });
-    this._label = main;
-    this._hint = hint;
-    this._sub = sub;
-    this._onUndo = onUndo;
-    this._onRejectAll = onRejectAll;
-    this._onCancel = onCancel;
+    this._label = label;
   }
 
-  private _onUndo: () => void;
-  private _onRejectAll: () => void;
-  private _onCancel: () => void;
-
-  showGenerating(elapsedSeconds: number, context = ''): void {
-    this._sub.setAttribute('aria-label', 'Cancel this round');
-    this._label.textContent = `⚡ thinking… ${elapsedSeconds}s`;
-    // The context meter lives here rather than in its own widget: it is only
-    // interesting while a request is being built, and this is where the user
-    // is already looking (docs/04).
-    this._hint.textContent = context;
-    this._sub.textContent = 'cancel  ⌃C';
-    // The button said "cancel" but still ran reject-all: it was wired once in
-    // the constructor and never rebound (docs/14 N3).
-    this._sub.onclick = this._onCancel;
-    this.node.classList.add('jv-generating');
-    this.node.classList.remove('jv-undo');
-  }
-
-  showPending(count: number, jumpKey = '⌥E'): void {
-    this._sub.setAttribute('aria-label', 'Reject all proposed edits');
-    this._label.textContent = `⚡ ${count} edit${count === 1 ? '' : 's'} proposed`;
-    this._hint.textContent = `click or ${jumpKey} to review`;
-    this._sub.textContent = 'reject all  ⌥⇧E';
-    this._sub.onclick = this._onRejectAll;
-    this.node.classList.remove('jv-generating', 'jv-undo', 'jv-problem');
-  }
-
-  /**
-   * Something went wrong mid-round. Shown rather than logged: the alternative
-   * is a round that produces nothing and says nothing, which reads as the
-   * extension being broken.
-   */
-  showProblem(
-    message: string,
-    onDismiss: () => void = () => undefined,
-    severity: 'problem' | 'notice' = 'problem'
-  ): void {
-    this._label.textContent =
-      severity === 'problem' ? '⚠ the agent hit a problem' : '⚡ worth knowing';
-    this._hint.textContent = message.slice(0, 140);
-    this._sub.textContent = 'dismiss';
-    this._sub.onclick = () => {
-      onDismiss();
-      this.hide();
-    };
-    this.node.classList.remove('jv-generating', 'jv-undo');
-    this.node.classList.toggle('jv-problem', severity === 'problem');
-    this.node.classList.toggle('jv-notice', severity === 'notice');
-  }
-
-  /** After a reject-all: the round is gone, but not irrecoverably. */
-  showUndo(count: number, undoKey = '⌥⇧Z'): void {
-    this._sub.setAttribute('aria-label', 'Undo rejecting all proposed edits');
-    this._label.textContent = `rejected ${count} edit${count === 1 ? '' : 's'}`;
-    this._hint.textContent = '';
-    this._sub.textContent = `undo  ${undoKey}`;
-    this._sub.onclick = this._onUndo;
-    this.node.classList.remove('jv-generating', 'jv-problem');
-    this.node.classList.add('jv-undo');
+  showRemaining(count: number): void {
+    this._label.textContent = `${count} edit${
+      count === 1 ? '' : 's'
+    } left to review`;
   }
 }

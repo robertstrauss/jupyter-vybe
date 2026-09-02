@@ -20,6 +20,8 @@ export interface IAgentFrame {
   completionTokens?: number;
   /** prompts.showAssembled: the prompt the agent was actually given. */
   prompt?: string;
+  /** `progress`: characters received so far, cumulative. */
+  chars?: number;
 }
 
 export interface IPromptRequest {

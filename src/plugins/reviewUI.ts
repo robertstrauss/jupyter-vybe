@@ -8,7 +8,7 @@ import { Widget } from '@lumino/widgets';
 import { IVybeProposals, type IProposal } from './proposals';
 import { IVybeRounds, IVybeSettings, type IRoundStatus } from '../tokens';
 import { CommandIDs } from './commands';
-import { DiffOverlay, ReviewControls, StatusBubble } from '../ui/DiffOverlay';
+import { DiffOverlay, ReviewControls, ReviewCounter } from '../ui/DiffOverlay';
 import { PromptOutput, outputHostFor } from '../ui/PromptOutput';
 
 /** Renders the diff overlays, the per-cell controls, and the status bubble. */
@@ -24,7 +24,7 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
     settings: IVybeSettings,
     rounds: IVybeRounds
   ): void => {
-    const bubbles = new Map<string, StatusBubble>();
+    const counters = new Map<string, ReviewCounter>();
     const overlays = new Map<string, Widget[]>();
     /** One prompt-cell output panel per notebook, moved between cells. */
     const outputs = new Map<string, { widget: PromptOutput; cellId: string }>();
@@ -35,20 +35,21 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
      */
     const showingProblem = new Set<string>();
 
-    const bubbleFor = (panel: NotebookPanel): StatusBubble => {
-      let b = bubbles.get(panel.id);
-      if (!b) {
-        b = new StatusBubble(
-          () => app.commands.execute(CommandIDs.gotoFirst),
-          () => app.commands.execute(CommandIDs.rejectAll),
-          () => app.commands.execute(CommandIDs.undoRejectAll),
-          () => app.commands.execute(CommandIDs.cancel)
+    /**
+     * Created on first use, not on first render: a notebook that has never
+     * run a prompt should carry none of our chrome at all.
+     */
+    const counterFor = (panel: NotebookPanel): ReviewCounter => {
+      let counter = counters.get(panel.id);
+      if (!counter) {
+        counter = new ReviewCounter(() =>
+          app.commands.execute(CommandIDs.rejectAll)
         );
-        b.addClass('jv-bubble-host');
-        Widget.attach(b, panel.node);
-        bubbles.set(panel.id, b);
+        counter.addClass('jv-counter-host');
+        Widget.attach(counter, panel.node);
+        counters.set(panel.id, counter);
       }
-      return b;
+      return counter;
     };
 
     /**
@@ -76,7 +77,15 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
         return null;
       }
       const existing = outputs.get(panel.id);
-      if (existing && existing.cellId === promptCellId) {
+      // Reused only if it is still attached to *this* cell's node. Converting
+      // the prompt to markdown replaces the cell widget, taking our attached
+      // node with it -- so a cached widget can be detached and invisible while
+      // still matching by id.
+      if (
+        existing &&
+        existing.cellId === promptCellId &&
+        cellWidget.node.contains(existing.widget.node)
+      ) {
         return existing.widget;
       }
       existing?.widget.dispose();
@@ -142,30 +151,20 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
     const render = (panel: NotebookPanel) => {
       clearOverlays(panel);
       const pending = proposals.list(panel).filter(p => p.state === 'pending');
-      const bubble = bubbleFor(panel);
 
       if (!pending.length) {
-        clearOutput(panel);
-      }
-      if (showingProblem.has(panel.id)) {
-        return; // a problem is on screen; leave it until it is dismissed
-      }
-      if (!pending.length) {
-        // A reject-all leaves nothing pending but is worth offering back for
-        // a moment, in case the click was not meant (docs/14 N3).
-        const undoable = proposals.undoableRejection(panel);
-        if (undoable) {
-          bubble.show();
-          bubble.showUndo(undoable);
-        } else {
-          bubble.hide();
+        counters.get(panel.id)?.hide();
+        if (!showingProblem.has(panel.id)) {
+          clearOutput(panel);
         }
         return;
       }
-      // The count lives in the prompt cell's output area, where the user is
-      // already looking, rather than in a corner of the screen. The bubble is
-      // now only for things that went wrong.
-      bubble.hide();
+      // The counter exists for one failure mode: walking away with edits
+      // still open. So it appears exactly while that is possible.
+      const counter = counterFor(panel);
+      counter.show();
+      counter.showRemaining(pending.length);
+
       const promptCellId = proposals.roundPromptCellId(panel);
       if (promptCellId) {
         outputFor(panel, promptCellId)?.showReview(pending.length, []);
@@ -247,32 +246,32 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
     };
 
     rounds.statusChanged.connect((_r, status: IRoundStatus) => {
-      const bubble = bubbleFor(status.panel);
       if (status.phase === 'problem') {
+        // Shown while the round is live. Afterwards the settled markdown cell
+        // carries the text -- which is the durable home for it, because
+        // converting the prompt replaces the cell's DOM and rendering the
+        // markdown replaces it again, taking any attached widget with it.
         showingProblem.add(status.panel.id);
-        bubble.show();
-        bubble.showProblem(
+        outputFor(status.panel, status.promptCellId)?.showProblem(
           status.message ?? 'unknown error',
-          () => showingProblem.delete(status.panel.id),
           status.severity ?? 'problem'
         );
       } else if (status.phase === 'generating') {
         // A new round supersedes the last one's complaint.
         showingProblem.delete(status.panel.id);
+        // The context meter goes in with the activity lines: it belonged to
+        // the bubble, and the bubble is now only a review counter.
+        const measured = meter(status);
         outputFor(status.panel, status.promptCellId)?.showThinking(
           status.tokensPerSecond,
-          status.notes
+          measured ? [...status.notes, measured] : status.notes
         );
         markPending(status.panel, status.promptCellId, false);
-        bubble.show();
-        bubble.showGenerating(status.elapsedSeconds, meter(status));
       } else if (
-        !proposals.pendingCount(status.panel) &&
-        !showingProblem.has(status.panel.id)
+        status.phase === 'ended' &&
+        !proposals.pendingCount(status.panel)
       ) {
-        bubble.hide();
-      }
-      if (status.phase === 'ended' && !proposals.pendingCount(status.panel)) {
+        showingProblem.delete(status.panel.id);
         clearOutput(status.panel);
       }
     });

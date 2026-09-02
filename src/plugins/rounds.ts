@@ -218,9 +218,13 @@ export class Rounds implements IVybeRounds {
       if (round.state === 'cancelled') {
         break;
       }
-      if (frame.op === 'prose' && frame.delta) {
+      if (frame.op === 'progress') {
+        // Cumulative, from the server's view of the raw stream -- the only
+        // place the whole reply is visible as it arrives.
+        round.receivedChars = frame.chars ?? round.receivedChars;
+        this._emit(round, 'generating', round.startedAt);
+      } else if (frame.op === 'prose' && frame.delta) {
         round.prose += frame.delta;
-        round.receivedChars += frame.delta.length;
       } else if (frame.op === 'proseReset') {
         // The server salvaged fenced code blocks from a reply that used no
         // tool tags; the prose it already streamed was that code, and must
@@ -229,7 +233,6 @@ export class Rounds implements IVybeRounds {
       } else if (frame.op === 'tool') {
         const name = frame.name!;
         const args = frame.args ?? {};
-        round.receivedChars += (args.body ?? '').length;
         if (name === 'add_cell') {
           if (insertions >= this.settings.maxInsertions) {
             continue;
@@ -288,12 +291,14 @@ export class Rounds implements IVybeRounds {
         // the server recovered cells from it. Say so: the cells are real, but
         // the user should know they came from a reply the protocol did not
         // fit, because that is when to check them harder (docs/13 R2).
-        this._emitProblem(
-          round,
+        const salvaged =
           `the agent replied without tool tags; ${frame.count ?? 0} cell(s) ` +
-            'were recovered from a code block',
-          'notice'
-        );
+          'were recovered from a code block';
+        // Recorded as well as shown: the live output area belongs to the
+        // round, and this is exactly the kind of thing worth knowing when
+        // reading the notebook back a week later.
+        round.prose += `\n\n_Note: ${salvaged}_`;
+        this._emitProblem(round, salvaged, 'notice');
       } else if (frame.op === 'resync') {
         // The server has lost its picture of this notebook and wants
         // everything again. Unhandled, this frame ended the round in silence.
