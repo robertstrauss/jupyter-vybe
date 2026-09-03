@@ -95,6 +95,13 @@ Only top-level properties can have renderers — `addRenderer` splits its id at 
 which `scripts/check-invariants.sh` enforces as T-RENDERERS after two renderers were silently
 dead that way.
 
+**A group is written back carrying only what is actually set.** rjsf hands the renderer a
+`formData` already filled in with every schema default, and writing that back verbatim persists
+all of them — after which they no longer follow the default when we change it. That is not
+hypothetical: it pinned `completion.triggerKey: "Alt-Tab"` into a real settings file, so moving
+the default to `Alt-\` had no effect for the one person who had ever opened the panel. A key is
+written only when it differs from its default, or when it is the one being changed.
+
 ## Read-only indicators in the pane
 
 - **Context meter** — **built, in the status bubble rather than the pane**: while a round is
