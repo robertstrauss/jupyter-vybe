@@ -61,3 +61,72 @@ test('the settings pane keeps the fields inside a customised group', async ({
   expect(text).toContain('Per-turn timeout');
   expect(text).toContain('Sidecar URL');
 });
+
+test('the panel greys out what the chosen agent does not use', async ({
+  page
+}) => {
+  await openVybeSettings(page);
+
+  // A local model is the default, so the fields belonging to the other two
+  // agents are inert -- present, so they can be found, but visibly not in
+  // play, with the reason beside them.
+  const command = page.locator('#jv-agent-command');
+  await expect(command).toBeDisabled();
+  await expect(page.locator('#jv-agent-endpoint')).toBeDisabled();
+  await expect(page.locator('#jv-agent-apiKeyEnv')).toBeDisabled();
+
+  // The example of what belongs in the box, rather than a description of it.
+  await expect(command).toHaveAttribute('placeholder', 'claude -p');
+
+  // Choosing that agent brings its fields to life, and puts the others out.
+  await page.locator('#jv-agent-id').selectOption('command');
+  await expect(command).toBeEnabled();
+  await expect(page.locator('#jv-agent-endpoint')).toBeDisabled();
+});
+
+test('descriptions are behind an (i), not printed down the page', async ({
+  page
+}) => {
+  await openVybeSettings(page);
+
+  const panel = page.locator('.jp-SettingsPanel');
+  const wording = 'Cells outside it are summarised';
+  // Present in the DOM, because it is the answer to the question the label
+  // raises -- but not on screen until asked for.
+  await expect(panel.getByText(wording, { exact: false })).toBeHidden();
+
+  await page
+    .locator('label[for="jv-context-cellWindow"] .jv-info-button')
+    .click();
+
+  await expect(panel.getByText(wording, { exact: false })).toBeVisible();
+});
+
+test('the global prompt is a textarea holding the shipped default', async ({
+  page
+}) => {
+  await openVybeSettings(page);
+
+  const box = page.locator('textarea#jv-prompts-global');
+  await expect(box).toBeVisible();
+  // Filled with what is actually in use, so it can be edited rather than
+  // guessed at. An empty box means "the default", which says nothing.
+  await expect(box).toHaveValue(/Match the style of the code already/);
+});
+
+test('completion gets its own agent, and is greyed while it is off', async ({
+  page
+}) => {
+  await openVybeSettings(page);
+
+  // Inline completion is off by default -- it costs a model call -- so the
+  // rest of the group, its agent included, is inert.
+  const agent = page.locator('#jv-completion-agentId');
+  await expect(agent).toBeDisabled();
+
+  await page.locator('#jv-completion-enabled').check();
+  await expect(agent).toBeEnabled();
+  // Blank means "whatever writes the cells"; the alternatives are the same
+  // agents, because a completion agent is an agent.
+  await expect(agent).toHaveValue('');
+});

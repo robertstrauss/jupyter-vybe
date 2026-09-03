@@ -10,23 +10,27 @@ import * as React from 'react';
 import { validatePrefix } from '../notebook/prefixCheck';
 
 /**
- * Custom settings widgets (docs/04), registered through IFormRendererRegistry.
+ * The settings panel (docs/04).
+ *
+ * Every group is rendered from its own schema by one component rather than by
+ * JupyterLab's default object field, which buys three things the default
+ * cannot give: a control can be greyed out when the rest of the settings make
+ * it irrelevant, an empty box can show an example of what belongs in it, and
+ * the prose can move out of the panel and behind an (i) that is only opened by
+ * someone who wants it. A panel where a third of the text is about agents you
+ * are not using is a panel nobody reads.
  *
  * TWO RULES, both learned by breaking them:
  *
- * 1. **A field renderer must render the default field, not replace it.**
- *    `addRenderer` keys on `<pluginId>.<property>`, and our properties are
- *    object groups, so `formData` is the whole group. The first version built
- *    its own control from it and rendered the object as a React child, which
- *    throws (React #31) and blanks the entire settings panel — every setting
- *    for every group, gone. Wrapping `registry.fields.ObjectField` keeps
- *    JupyterLab's own rendering of every sub-field and adds ours beneath.
- *
- * 2. **Only top-level properties can have renderers.** `addRenderer` splits
+ * 1. **Only top-level properties can have renderers.** `addRenderer` splits
  *    the id at its *last* dot, so `jupyter-vybe:settings.agent.command`
  *    registers against a plugin called `jupyter-vybe:settings.agent`, which
  *    does not exist. Two renderers were silently dead that way. T-RENDERERS
  *    in scripts/check-invariants.sh now fails on it.
+ *
+ * 2. **`formData` is the whole group.** Rendering it as a React child throws
+ *    (React #31) and blanks the entire settings panel -- every setting for
+ *    every group, gone. Sub-values are read and written by key.
  */
 
 const SETTINGS_PLUGIN = 'jupyter-vybe:settings';
@@ -50,6 +54,70 @@ const AGENT_NOTES: Record<string, string> = {
     'Any OpenAI-compatible endpoint: vLLM, llama.cpp, LM Studio, hosted.'
 };
 
+/**
+ * Examples, shown greyed in an empty box.
+ *
+ * Only for fields whose right answer is a shape rather than a value: knowing
+ * that a command looks like `claude -p` is most of what there is to know about
+ * the field, and it is not something a description can convey as quickly.
+ */
+const PLACEHOLDERS: Record<string, string> = {
+  'agent.command': 'claude -p',
+  'agent.endpoint': 'http://localhost:8000/v1',
+  'agent.model': 'qwen2.5-coder:7b',
+  'agent.apiKeyEnv': 'OPENAI_API_KEY',
+  'agent.sidecarUrl': 'http://127.0.0.1:8791',
+  'completion.agentId': 'same as the agent above',
+  'prompts.global': 'The shipped default is shown; edit it to replace it.'
+};
+
+/** Fields that want room to write in rather than a line to type on. */
+const MULTILINE = new Set(['prompts.global']);
+
+/**
+ * Which fields the rest of the settings make irrelevant.
+ *
+ * Greyed rather than hidden: a control that disappears leaves the user
+ * wondering whether they imagined it, and the reason it is off is exactly the
+ * setting sitting above it.
+ */
+const RELEVANCE: Record<string, (group: Record<string, any>) => string | null> =
+  {
+    'agent.command': g =>
+      g.id === 'command' ? null : 'Only used by the "command" agent.',
+    'agent.commandPersistent': g =>
+      g.id === 'command' ? null : 'Only used by the "command" agent.',
+    'agent.endpoint': g =>
+      g.id === 'openai-compat'
+        ? null
+        : 'Only used by the "openai-compat" agent.',
+    'agent.model': g =>
+      g.id === 'openai-compat'
+        ? null
+        : 'Only used by the "openai-compat" agent.',
+    'agent.apiKeyEnv': g =>
+      g.id === 'openai-compat'
+        ? null
+        : 'Only used by the "openai-compat" agent.',
+    'agent.sidecarUrl': g =>
+      g.host === 'client'
+        ? null
+        : 'Only used when the agent runs on your machine.',
+    'context.maxOutputChars': g =>
+      g.includeOutputs ? null : 'Outputs are not being sent.',
+    'history.location': g => (g.persist ? null : 'History is not being kept.'),
+    'completion.debounceMs': () =>
+      'Suggestions are asked for on Option+Tab, not on a timer.',
+    'completion.enabled': () => null,
+    'completion.maxTokens': g =>
+      g.enabled ? null : 'Inline completion is off.',
+    'completion.timeoutSeconds': g =>
+      g.enabled ? null : 'Inline completion is off.',
+    'completion.multiline': g =>
+      g.enabled ? null : 'Inline completion is off.',
+    'completion.agentId': g => (g.enabled ? null : 'Inline completion is off.')
+  };
+
 interface IHealth {
   ok: boolean;
   detail: string;
@@ -72,20 +140,194 @@ async function fetchHealth(agentId: string): Promise<IHealth> {
   return (await response.json()) as IHealth;
 }
 
-/** Renders the group as JupyterLab would, then adds a line of our own. */
-function withDefaultField(props: any, extra: React.ReactNode): JSX.Element {
-  const ObjectField = props?.registry?.fields?.ObjectField;
+/** The shipped prompt text, so the global prompt box can start from it. */
+async function fetchDefaults(): Promise<Record<string, string>> {
+  const settings = ServerConnection.makeSettings();
+  const url = URLExt.join(settings.baseUrl, 'jupyter-vybe', 'defaults');
+  const response = await ServerConnection.makeRequest(
+    url,
+    { method: 'GET' },
+    settings
+  );
+  if (!response.ok) {
+    throw new ServerConnection.ResponseError(response);
+  }
+  return (await response.json()) as Record<string, string>;
+}
+
+/**
+ * The (i). Opens on hover for a glance and stays open on click for a read,
+ * which is the difference between a description you skim past and one you go
+ * looking for.
+ */
+function Info(props: { text: string }): JSX.Element {
+  const [pinned, setPinned] = React.useState(false);
   return (
-    <div className="jv-settings-group">
-      {ObjectField ? <ObjectField {...props} /> : null}
-      {extra}
+    <span className={`jv-info ${pinned ? 'jv-info-pinned' : ''}`}>
+      <button
+        type="button"
+        className="jv-info-button"
+        aria-expanded={pinned}
+        aria-label="What this does"
+        onClick={() => setPinned(p => !p)}
+      >
+        i
+      </button>
+      <span className="jv-info-bubble" role="note">
+        {props.text}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The group's own heading.
+ *
+ * JupyterLab's default object field draws one, and replacing that field means
+ * taking the heading on too -- without it the panel is an unbroken column of
+ * controls with no way to tell where the agent settings end and the context
+ * settings begin.
+ */
+function GroupHeading(props: { schema: any }): JSX.Element | null {
+  const title = props.schema?.title;
+  if (!title) {
+    return null;
+  }
+  return (
+    <h3 className="jv-settings-heading">
+      {title}
+      {props.schema.description ? (
+        <Info text={props.schema.description} />
+      ) : null}
+    </h3>
+  );
+}
+
+interface IFieldProps {
+  group: string;
+  name: string;
+  schema: any;
+  value: any;
+  disabledReason: string | null;
+  onChange: (value: any) => void;
+}
+
+function Field(props: IFieldProps): JSX.Element {
+  const { schema, value, disabledReason } = props;
+  const key = `${props.group}.${props.name}`;
+  const id = `jv-${props.group}-${props.name}`;
+  const disabled = disabledReason !== null;
+  const placeholder = PLACEHOLDERS[key];
+  const common = { id, disabled, className: 'jv-field-control' };
+
+  let control: JSX.Element;
+  if (schema.type === 'boolean') {
+    control = (
+      <input
+        {...common}
+        type="checkbox"
+        checked={!!value}
+        onChange={e => props.onChange(e.target.checked)}
+      />
+    );
+  } else if (Array.isArray(schema.enum)) {
+    control = (
+      <select
+        {...common}
+        value={value ?? ''}
+        onChange={e => props.onChange(e.target.value)}
+      >
+        {schema.enum.map((option: string) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  } else if (schema.type === 'integer' || schema.type === 'number') {
+    control = (
+      <input
+        {...common}
+        type="number"
+        value={value ?? ''}
+        onChange={e => {
+          const next = e.target.value;
+          // An empty box is a box being cleared, not a zero: writing 0 into
+          // the settings under the user's cursor makes the field unusable.
+          props.onChange(next === '' ? undefined : Number(next));
+        }}
+      />
+    );
+  } else if (MULTILINE.has(key)) {
+    control = (
+      <textarea
+        {...common}
+        rows={12}
+        placeholder={placeholder}
+        value={value ?? ''}
+        onChange={e => props.onChange(e.target.value)}
+      />
+    );
+  } else {
+    control = (
+      <input
+        {...common}
+        type="text"
+        placeholder={placeholder}
+        value={value ?? ''}
+        onChange={e => props.onChange(e.target.value)}
+      />
+    );
+  }
+
+  return (
+    <div className={`jv-field ${disabled ? 'jv-field-disabled' : ''}`}>
+      <label className="jv-field-label" htmlFor={id}>
+        {schema.title ?? props.name}
+        {schema.description ? <Info text={schema.description} /> : null}
+      </label>
+      {control}
+      {disabledReason ? (
+        <div className="jv-field-reason">{disabledReason}</div>
+      ) : null}
     </div>
   );
 }
 
-/** The agent group, plus a live reachability probe for the chosen agent. */
-function AgentField(props: any): JSX.Element {
-  const agentId: string = props?.formData?.id ?? '';
+/** Renders one settings group from its schema, and whatever else it needs. */
+function group(
+  name: string,
+  extra?: (data: Record<string, any>) => React.ReactNode
+) {
+  return function Group(props: any): JSX.Element {
+    const data: Record<string, any> = props?.formData ?? {};
+    const properties: Record<string, any> = props?.schema?.properties ?? {};
+    const set = (key: string, value: any) =>
+      props.onChange({ ...data, [key]: value });
+
+    return (
+      <div className="jv-settings-group">
+        <GroupHeading schema={props?.schema} />
+        {Object.keys(properties).map(key => (
+          <Field
+            key={key}
+            group={name}
+            name={key}
+            schema={properties[key]}
+            value={data[key]}
+            disabledReason={RELEVANCE[`${name}.${key}`]?.(data) ?? null}
+            onChange={value => set(key, value)}
+          />
+        ))}
+        {extra ? extra(data) : null}
+      </div>
+    );
+  };
+}
+
+/** Whether the chosen agent can actually be reached, and what it is. */
+function AgentHealth(props: { agentId: string }): JSX.Element {
+  const { agentId } = props;
   const [status, setStatus] = React.useState('checking…');
   const [ok, setOk] = React.useState<boolean | null>(null);
 
@@ -123,8 +365,7 @@ function AgentField(props: any): JSX.Element {
     };
   }, [agentId]);
 
-  return withDefaultField(
-    props,
+  return (
     <div className="jv-settings-extra">
       <div
         className={`jv-settings-status ${
@@ -140,23 +381,73 @@ function AgentField(props: any): JSX.Element {
   );
 }
 
-/** The trigger group, plus a verdict on the prefix as it is typed. */
-function TriggerField(props: any): JSX.Element {
-  const prefix: string = props?.formData?.prefix ?? '';
-  const verdict = validatePrefix(prefix);
-  return withDefaultField(
-    props,
-    <div className={`jv-settings-status ${verdict.ok ? 'jv-ok' : 'jv-bad'}`}>
-      {verdict.ok
-        ? `A code cell starting with ${prefix} becomes a prompt.`
-        : verdict.reason}
+/**
+ * The global prompt, starting from the text that is actually in use.
+ *
+ * An empty box means "use the shipped default", which tells the user nothing
+ * about what that default says -- so the box is filled with it. Nothing is
+ * written to settings until they change something: pinning today's default
+ * into their configuration as a side effect of opening the panel would mean
+ * they never see the next one.
+ */
+function GlobalPrompt(props: any): JSX.Element {
+  const [shipped, setShipped] = React.useState('');
+  React.useEffect(() => {
+    let live = true;
+    fetchDefaults()
+      .then(d => {
+        if (live) {
+          setShipped(d.globalPrompt ?? '');
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const data: Record<string, any> = props?.formData ?? {};
+  const properties: Record<string, any> = props?.schema?.properties ?? {};
+  const set = (key: string, value: any) =>
+    props.onChange({ ...data, [key]: value });
+
+  return (
+    <div className="jv-settings-group">
+      <GroupHeading schema={props?.schema} />
+      {Object.keys(properties).map(key => (
+        <Field
+          key={key}
+          group="prompts"
+          name={key}
+          schema={properties[key]}
+          value={key === 'global' ? data.global || shipped : data[key]}
+          disabledReason={null}
+          onChange={value => set(key, value)}
+        />
+      ))}
     </div>
   );
 }
 
+/** The trigger group, plus a verdict on the prefix as it is typed. */
+const TriggerField = group('trigger', data => {
+  const verdict = validatePrefix(data.prefix ?? '');
+  return (
+    <div className={`jv-settings-status ${verdict.ok ? 'jv-ok' : 'jv-bad'}`}>
+      {verdict.ok
+        ? `A code cell starting with ${data.prefix} becomes a prompt.`
+        : verdict.reason}
+    </div>
+  );
+});
+
+const AgentField = group('agent', data => (
+  <AgentHealth agentId={data.id ?? ''} />
+));
+
 export const settingsRenderersPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-vybe:settings-renderers',
-  description: 'Custom settings widgets for the agent and the trigger prefix.',
+  description: 'The settings panel, rendered from the schema.',
   autoStart: true,
   requires: [IFormRendererRegistry],
   activate: (_app: JupyterFrontEnd, registry: IFormRendererRegistry): void => {
@@ -165,6 +456,21 @@ export const settingsRenderersPlugin: JupyterFrontEndPlugin<void> = {
     });
     registry.addRenderer(`${SETTINGS_PLUGIN}.trigger`, {
       fieldRenderer: TriggerField
+    });
+    for (const name of [
+      'context',
+      'agentTools',
+      'review',
+      'completion',
+      'history',
+      'privacy'
+    ]) {
+      registry.addRenderer(`${SETTINGS_PLUGIN}.${name}`, {
+        fieldRenderer: group(name)
+      });
+    }
+    registry.addRenderer(`${SETTINGS_PLUGIN}.prompts`, {
+      fieldRenderer: GlobalPrompt
     });
   }
 };

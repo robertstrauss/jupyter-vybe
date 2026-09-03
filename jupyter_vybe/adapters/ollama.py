@@ -95,6 +95,42 @@ class OllamaAdapter(Adapter):
                 continue
         return False
 
+    async def warm(self) -> None:
+        """Load the weights now, so the first prompt does not pay for it.
+
+        A zero-token generate is how ollama is asked to load a model without
+        being asked anything: it resolves the model, maps it into memory, and
+        holds it for KEEP_ALIVE. Measured at 3.47s cold against 0.6s warm for
+        the first token (docs/08), all of it on the first prompt of a session
+        -- which is exactly the one that forms the user's impression.
+
+        Every failure is swallowed. Warming is an optimisation; a server that
+        is not up, or a model that is not pulled, is a problem for the real
+        request to report properly.
+        """
+        payload = {
+            "model": self.model,
+            "prompt": "",
+            "stream": False,
+            "keep_alive": KEEP_ALIVE,
+        }
+
+        def call() -> None:
+            req = urllib.request.Request(
+                f"{self.host}/api/generate",
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=120):
+                pass
+
+        try:
+            if not await self.ensure_server():
+                return
+            await asyncio.to_thread(call)
+        except Exception:
+            return
+
     async def complete_raw(self, prompt: str, max_tokens: int, timeout: float) -> str:
         """A raw, non-chat completion, for fill-in-the-middle (docs/12 D5).
 

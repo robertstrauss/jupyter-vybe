@@ -51,6 +51,16 @@ class Adapter(Protocol):
 
     async def health(self) -> HealthStatus: ...
 
+    async def warm(self) -> None:
+        """Get ready to answer, before anyone has asked anything.
+
+        Optional, and best-effort by definition: an adapter that cannot be
+        warmed does nothing here and is no worse off. For a local runtime this
+        is the difference between a first prompt at three and a half seconds
+        and one at half a second, which is the difference between a tool that
+        feels broken on first use and one that does not.
+        """
+
     def stream(self, messages: list[Message], cancel: asyncio.Event) -> AsyncIterator[str]: ...
 
     async def close(self) -> None: ...

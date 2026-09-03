@@ -504,6 +504,123 @@
   margin-top: 4px;
 }
 
+/* ---- the settings panel, rendered from the schema (docs/04) ---- */
+
+.jv-settings-heading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 10px;
+  font-size: var(--jp-ui-font-size2);
+  font-weight: 600;
+  color: var(--jp-ui-font-color0);
+}
+
+.jv-field {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.jv-field-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--jp-ui-font-size1);
+  font-weight: 600;
+  color: var(--jp-ui-font-color1);
+}
+
+.jv-field-control {
+  width: 100%;
+  padding: 4px 6px;
+  font-family: var(--jp-ui-font-family);
+  font-size: var(--jp-ui-font-size1);
+  color: var(--jp-ui-font-color1);
+  background: var(--jp-layout-color1);
+  border: 1px solid var(--jp-border-color2);
+  border-radius: 2px;
+}
+
+/* A checkbox stretched to the full width is a very large checkbox. */
+.jv-field-control[type='checkbox'] {
+  width: auto;
+  justify-self: start;
+}
+
+textarea.jv-field-control {
+  font-family: var(--jp-code-font-family);
+  font-size: var(--jp-code-font-size);
+  line-height: 1.4;
+  resize: vertical;
+}
+
+/* Greyed, not hidden: a control that vanishes leaves the user wondering
+   whether they imagined it, and the reason it is off is the setting above. */
+.jv-field-disabled {
+  opacity: 0.45;
+}
+
+.jv-field-reason {
+  font-size: var(--jp-ui-font-size0);
+  font-style: italic;
+  color: var(--jp-ui-font-color2);
+}
+
+.jv-info {
+  position: relative;
+  display: inline-flex;
+}
+
+.jv-info-button {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  font-family: var(--jp-ui-font-family);
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 13px;
+  color: var(--jp-ui-font-color2);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 50%;
+}
+
+.jv-info-button:hover {
+  color: var(--jp-ui-font-color1);
+  border-color: var(--jp-ui-font-color1);
+}
+
+/* Hover for a glance, click to pin for a read. */
+.jv-info-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: -6px;
+  z-index: 10;
+  display: none;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 8px;
+  font-size: var(--jp-ui-font-size0);
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--jp-ui-font-color1);
+  white-space: normal;
+  background: var(--jp-layout-color2);
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+}
+
+.jv-info-pinned .jv-info-bubble,
+.jv-info:hover .jv-info-bubble,
+.jv-info-button:focus-visible + .jv-info-bubble {
+  display: block;
+}
+
 /* ---- the prompt cell's output area (docs/03) ---- */
 
 /* Aligned with where real output would appear, so a round reads as the cell

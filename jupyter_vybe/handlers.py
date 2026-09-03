@@ -41,6 +41,21 @@ class AgentsHandler(APIHandler):
         self.finish(json.dumps({"agents": agents}))
 
 
+class DefaultsHandler(APIHandler):
+    """The shipped prompt text, so the settings panel can start from it.
+
+    An empty global-prompt setting means "use the default", which tells the
+    user nothing about what the default says. The panel fills the box with
+    this instead of leaving them to guess at what they are overriding.
+    """
+
+    @web.authenticated
+    async def get(self) -> None:
+        from .assembler import _load
+
+        self.finish(json.dumps({"globalPrompt": _load("global.md")}))
+
+
 class HealthHandler(APIHandler):
     """Per-adapter probe. Reports which host actually answered (docs/06, R12)."""
 
@@ -280,6 +295,7 @@ def setup_handlers(web_app) -> None:
         [
             (url_path_join(base, NAMESPACE, "agents"), AgentsHandler),
             (url_path_join(base, NAMESPACE, "health"), HealthHandler),
+            (url_path_join(base, NAMESPACE, "defaults"), DefaultsHandler),
             (url_path_join(base, NAMESPACE, "history"), HistoryHandler),
             (url_path_join(base, NAMESPACE, "complete"), CompletionHandler),
             (url_path_join(base, NAMESPACE, "ws"), AgentSocket),

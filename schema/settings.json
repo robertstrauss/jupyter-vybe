@@ -21,7 +21,9 @@
           "default": ">"
         }
       },
-      "default": { "prefix": ">" }
+      "default": {
+        "prefix": ">"
+      }
     },
     "agent": {
       "type": "object",
@@ -43,7 +45,7 @@
         },
         "command": {
           "type": "string",
-          "title": "Command (agent \"command\")",
+          "title": "Command",
           "description": "Run with shell=False after shlex splitting, e.g. claude -p. The prompt is appended as the last argument.",
           "default": ""
         },
@@ -55,12 +57,13 @@
         },
         "endpoint": {
           "type": "string",
-          "title": "Endpoint (agent \"openai-compat\")",
-          "default": "http://127.0.0.1:8000"
+          "title": "Endpoint",
+          "default": "http://127.0.0.1:8000",
+          "description": "Base URL of the OpenAI-compatible server, including /v1."
         },
         "model": {
           "type": "string",
-          "title": "Model id (agent \"openai-compat\")",
+          "title": "Model id",
           "description": "As the endpoint names it in /v1/models. A wrong id is the most common misconfiguration; the health check lists what is actually served.",
           "default": ""
         },
@@ -80,12 +83,14 @@
         "sidecarUrl": {
           "type": "string",
           "title": "Sidecar URL",
-          "default": "http://127.0.0.1:8137"
+          "default": "http://127.0.0.1:8137",
+          "description": "Where jupyter-vybe-local is listening on your own machine."
         },
         "timeoutSeconds": {
           "type": "integer",
           "title": "Per-turn timeout (seconds)",
-          "default": 120
+          "default": 120,
+          "description": "How long one turn may take before the round is abandoned."
         }
       },
       "default": {
@@ -113,27 +118,32 @@
         "windowTokens": {
           "type": "integer",
           "title": "Model context window (tokens)",
-          "default": 32768
+          "default": 32768,
+          "description": "The model's context length. Used to decide what to trim, not sent anywhere."
         },
         "reserveTokens": {
           "type": "integer",
           "title": "Reserved for the reply (tokens)",
-          "default": 2048
+          "default": 2048,
+          "description": "Held back from the window for the reply, so a long notebook cannot crowd out the answer."
         },
         "cellWindow": {
           "type": "integer",
-          "title": "Full-fidelity cell window (0 = whole notebook)",
-          "default": 0
+          "title": "Full-fidelity cell window",
+          "default": 0,
+          "description": "How many cells around the prompt are sent in full. Cells outside it are summarised to a signature and a line count. 0 sends the whole notebook, which is what you want until a notebook outgrows the context window."
         },
         "includeOutputs": {
           "type": "boolean",
           "title": "Include cell outputs",
-          "default": true
+          "default": true,
+          "description": "Send what the cells printed as well as their source."
         },
         "maxOutputChars": {
           "type": "integer",
           "title": "Max characters per output",
-          "default": 2000
+          "default": 2000,
+          "description": "Longer outputs are truncated in the middle."
         }
       },
       "default": {
@@ -158,10 +168,14 @@
         "showAssembled": {
           "type": "boolean",
           "title": "Log the assembled prompt to the console",
-          "default": false
+          "default": false,
+          "description": "Prints the exact text sent to the model to the browser console."
         }
       },
-      "default": { "global": "", "showAssembled": false }
+      "default": {
+        "global": "",
+        "showAssembled": false
+      }
     },
     "agentTools": {
       "type": "object",
@@ -177,17 +191,20 @@
         "maxInsertions": {
           "type": "integer",
           "title": "Max added cells",
-          "default": 8
+          "default": 8,
+          "description": "Cells one round may add, however many the model asks for."
         },
         "maxProposals": {
           "type": "integer",
           "title": "Max proposed edits",
-          "default": 12
+          "default": 12,
+          "description": "Edits one round may offer for review."
         },
         "maxToolTurns": {
           "type": "integer",
           "title": "Max lookups per request",
-          "default": 6
+          "default": 6,
+          "description": "How many times the agent may look something up before it must answer."
         }
       },
       "default": {
@@ -204,19 +221,22 @@
         "autoScroll": {
           "type": "boolean",
           "title": "Smooth-scroll between edits",
-          "default": true
+          "default": true,
+          "description": "Scroll between proposals as you accept or reject them."
         },
         "acceptKey": {
           "type": "string",
           "title": "Accept / reject keys",
           "enum": ["yn", "enter-backspace"],
-          "default": "yn"
+          "default": "yn",
+          "description": "Whether accept is Y/N, or Enter to accept and Backspace to reject."
         },
         "mergeCommentStyle": {
           "type": "string",
           "title": "Comment style for merged edits",
           "enum": ["auto", "hash", "slashes", "none"],
-          "default": "auto"
+          "default": "auto",
+          "description": "Comment marker for lines an Enter merge replaced. 'auto' follows the kernel's language."
         }
       },
       "default": {
@@ -235,6 +255,21 @@
           "title": "Suggest completions as you type",
           "default": false
         },
+        "agentId": {
+          "type": "string",
+          "title": "Completion agent",
+          "description": "Which agent writes the suggestions. Blank uses the same one as the cell generations. Completions are asked for far more often, so a smaller, faster model usually belongs here.",
+          "enum": [
+            "",
+            "ollama-qwen25-coder-7b",
+            "ollama-qwen25-coder-14b",
+            "ollama-qwen25-coder-3b",
+            "turbofieldfare-gemma4",
+            "command",
+            "openai-compat"
+          ],
+          "default": ""
+        },
         "debounceMs": {
           "type": "integer",
           "title": "Wait before asking (milliseconds)",
@@ -244,7 +279,8 @@
         "maxTokens": {
           "type": "integer",
           "title": "Longest suggestion (tokens)",
-          "default": 64
+          "default": 64,
+          "description": "A ceiling on one suggestion. Short suggestions arrive sooner and are easier to judge."
         },
         "timeoutSeconds": {
           "type": "number",
@@ -255,7 +291,8 @@
         "multiline": {
           "type": "boolean",
           "title": "Allow multi-line suggestions",
-          "default": true
+          "default": true,
+          "description": "Allow a suggestion to run past the end of the current line."
         }
       },
       "default": {
@@ -273,7 +310,8 @@
         "maxEntries": {
           "type": "integer",
           "title": "Entries rendered at once",
-          "default": 200
+          "default": 200,
+          "description": "Older prompts stay on disk; this is only how many are drawn."
         },
         "persist": {
           "type": "boolean",
@@ -285,10 +323,15 @@
           "type": "string",
           "title": "History location",
           "enum": ["user", "adjacent"],
-          "default": "user"
+          "default": "user",
+          "description": "'user' keeps the record in your config directory; 'adjacent' beside the notebook."
         }
       },
-      "default": { "maxEntries": 200, "persist": true, "location": "user" }
+      "default": {
+        "maxEntries": 200,
+        "persist": true,
+        "location": "user"
+      }
     },
     "privacy": {
       "type": "object",
@@ -297,10 +340,13 @@
         "confirmRemoteAgents": {
           "type": "boolean",
           "title": "Confirm before sending a notebook to a non-local agent",
-          "default": true
+          "default": true,
+          "description": "Ask before a notebook leaves this machine."
         }
       },
-      "default": { "confirmRemoteAgents": true }
+      "default": {
+        "confirmRemoteAgents": true
+      }
     }
   },
   "additionalProperties": false
