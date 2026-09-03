@@ -68,6 +68,7 @@ const PLACEHOLDERS: Record<string, string> = {
   'agent.apiKeyEnv': 'OPENAI_API_KEY',
   'agent.sidecarUrl': 'http://127.0.0.1:8791',
   'completion.agentId': 'same as the agent above',
+  'completion.triggerKey': 'Alt-\\',
   'prompts.global': 'The shipped default is shown; edit it to replace it.'
 };
 

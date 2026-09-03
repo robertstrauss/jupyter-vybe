@@ -106,11 +106,11 @@ class VybeSettings implements IVybeSettings {
     return (this.group<number>('completion')['timeoutSeconds'] as number) ?? 8;
   }
   get completionMaxLines(): number {
-    return (this.group<number>('completion')['maxLines'] as number) ?? 2;
+    return (this.group<number>('completion')['maxLines'] as number) ?? 1;
   }
   get completionTriggerKey(): string {
     return (
-      (this.group<string>('completion')['triggerKey'] as string) || 'Alt-Tab'
+      (this.group<string>('completion')['triggerKey'] as string) || 'Alt-\\'
     );
   }
   /** Blank means "whatever writes the cells": one model, one thing to set up. */

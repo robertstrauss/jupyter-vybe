@@ -91,6 +91,9 @@ elif "You are completing a cell" in prompt:
     # is how pressing the trigger again extends a suggestion.
     print("```python")
     if "read_csv('data.csv')" in prompt:
+        # The second call sees its own first answer, on its own line, and
+        # continues from there -- which is what pressing the trigger again
+        # asks for and what the newline join exists to make true.
         print("df.head()")
     else:
         print("pd.read_csv('data.csv')")

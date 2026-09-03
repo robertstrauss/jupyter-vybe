@@ -236,6 +236,47 @@ last one is why this is a CodeMirror extension rather than an `IInlineCompletion
 framework owns Tab, and the one thing users get wrong with ghost text everywhere it exists is
 backspacing over it and losing what they wrote.
 
+### One line, unless one line would not parse
+
+The budget is a single line, and the trigger is pressed again for the next. A short certain line
+beats several guessed ones, and the user decides how far the prediction goes rather than reading
+a paragraph to find the sentence they wanted.
+
+The exception is code that would not stand on its own: a line ending in a colon, or leaving a
+bracket or a string unclosed. A `for` header with nothing under it is not a short answer, it is a
+syntax error, and accepting it puts one in the notebook. Those run on until the code parses, or
+until a hard cap of six extra lines, so a model that never closes what it opens cannot run away
+with the response.
+
+**Completeness is a property of the whole statement, not of the reply.** Measured against
+`qwen2.5-coder:7b`: asked to continue `monthly = df.groupby(`, it answered `'month',` — which
+looks finished read on its own and leaves a bracket open in the cell. Judged without the text the
+user had already typed, the limiter stopped one line short of parsing every time.
+
+**The join is decided by the client, because code does not begin with a newline.** The second
+press means "and then what?", and the model replies with a line, not with a line break — so the
+first fix for this was reported as suggestions arriving glued onto the end of the previous line.
+Whether the next answer starts a line of its own is decided from whether what is already
+suggested stands alone, and the same break is sent to the model, so what it continues is what the
+user is looking at.
+
+### Why the trigger is `Alt+\`
+
+Every obvious key is taken, and taken by something that will win:
+
+| Candidate    | Why not                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| `Tab`        | The kernel's completions — which this feature _feeds on_. Taking it takes its own input. |
+| `Shift+Tab`  | The kernel's docstrings, likewise fed to the model.                                      |
+| `Alt+Tab`    | The window manager on Windows and most Linux desktops. Never reaches the page.           |
+| `Ctrl+Tab`   | Browser tab switching off a Mac.                                                         |
+| `Cmd+Tab`    | Application switching on a Mac.                                                          |
+| `Ctrl+Space` | Input-source switching on macOS, and an IME toggle on many Linux setups.                 |
+
+`Alt+\` — Option+\ on a Mac — is what Copilot uses for the same action, which makes it both the
+one combination every layer leaves alone and the one a user is most likely to already know. It is
+a setting regardless, and the tooltip names whatever it is set to rather than assuming.
+
 ---
 
 ## D6 · The `Enter` rebinding during review

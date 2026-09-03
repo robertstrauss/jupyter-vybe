@@ -64,3 +64,40 @@ export function notebookAsScript(
   }
   return { script: parts.join('\n\n\n'), cellNumber };
 }
+
+/**
+ * Whether a suggestion is still mid-line, so the next one continues it rather
+ * than starting a line of its own.
+ *
+ * The second press of the trigger means "and then what?", and the answer is
+ * almost always a new line -- the server stops on a complete statement. When
+ * it did not, because the line-budget cap cut a runaway short, gluing the next
+ * answer onto a fresh line would break the statement in half. So the join is
+ * decided by whether what is there stands on its own.
+ *
+ * A colon counts as finished for this purpose even though the block is not:
+ * what a `for` header needs next is a body, on its own line.
+ */
+export function continuesTheLine(text: string): boolean {
+  const last = text.split('\n').pop() ?? '';
+  if (!last.trim()) {
+    return false;
+  }
+  if (/[:\\]\s*$/.test(last)) {
+    return false; // a block header wants a body beneath it, not more of itself
+  }
+  // An operator, a comma, or an unclosed bracket: the statement is unfinished.
+  return /[([{,+\-*/%=<>&|^]\s*$/.test(last) || openBrackets(text) > 0;
+}
+
+function openBrackets(text: string): number {
+  let depth = 0;
+  for (const ch of text) {
+    if ('([{'.includes(ch)) {
+      depth++;
+    } else if (')]}'.includes(ch)) {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return depth;
+}

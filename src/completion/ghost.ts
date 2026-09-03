@@ -5,6 +5,7 @@ import {
   type EditorState,
   type Extension
 } from '@codemirror/state';
+import { Platform } from '@lumino/domutils';
 import {
   Decoration,
   EditorView,
@@ -37,8 +38,20 @@ import {
  */
 
 /** Show, extend, or clear the suggestion. */
-export const setGhost = StateEffect.define<{ text: string; from: number }>();
+export const setGhost = StateEffect.define<{
+  text: string;
+  from: number;
+  rate?: number;
+}>();
 export const clearGhost = StateEffect.define<null>();
+/**
+ * The request has gone out and nothing has come back yet.
+ *
+ * A separate effect because this is the state the tooltip exists for: the
+ * seconds between pressing the key and the first character are exactly when a
+ * model call is indistinguishable from a key that did nothing.
+ */
+export const startGhost = StateEffect.define<{ from: number }>();
 
 export interface IGhost {
   /** The suggested text, which is not in the document. */
@@ -47,6 +60,8 @@ export interface IGhost {
   from: number;
   /** True while the model is still writing it. */
   streaming: boolean;
+  /** Estimated tokens per second, for the tooltip. Zero before the first. */
+  rate: number;
 }
 
 /**
@@ -92,11 +107,20 @@ export const ghostState = StateField.define<IGhost | null>({
   },
   update(value, tr) {
     for (const effect of tr.effects) {
+      if (effect.is(startGhost)) {
+        return {
+          text: '',
+          from: effect.value.from,
+          streaming: true,
+          rate: 0
+        };
+      }
       if (effect.is(setGhost)) {
         return {
           text: effect.value.text,
           from: effect.value.from,
-          streaming: true
+          streaming: true,
+          rate: effect.value.rate ?? 0
         };
       }
       if (effect.is(clearGhost)) {
@@ -129,21 +153,33 @@ export const ghostState = StateField.define<IGhost | null>({
 });
 
 /** What the keys mean, said where the user is looking. */
-const ghostTooltip = StateField.define<readonly Tooltip[]>({
-  create(state) {
-    return tooltipFor(state);
-  },
-  update(_value, tr) {
-    return tooltipFor(tr.state);
-  },
-  provide: field => showTooltip.computeN([field], state => state.field(field))
-});
+function ghostTooltip(trigger: string): Extension {
+  const field = StateField.define<readonly Tooltip[]>({
+    create(state) {
+      return tooltipFor(state, trigger);
+    },
+    update(_value, tr) {
+      return tooltipFor(tr.state, trigger);
+    },
+    provide: f => showTooltip.computeN([f], state => state.field(f))
+  });
+  return field;
+}
 
-function tooltipFor(state: EditorState): readonly Tooltip[] {
+function tooltipFor(state: EditorState, trigger: string): readonly Tooltip[] {
   const ghost = state.field(ghostState, false);
-  if (!ghost || !ghost.text) {
+  if (!ghost) {
     return [];
   }
+  // Before the first character the tooltip is the only sign the key did
+  // anything at all, and a local model can take a second or two to answer.
+  // "0 tokens/sec" reads as broken, so the rate appears once there is one.
+  const waiting = !ghost.text;
+  const text = waiting
+    ? ghost.rate > 0
+      ? `predicting, ${Math.round(ghost.rate)} tokens/sec`
+      : 'predicting…'
+    : `tab to accept · ${keyLabel(trigger)} to predict more · any other key to reject`;
   return [
     {
       pos: ghost.from,
@@ -152,9 +188,8 @@ function tooltipFor(state: EditorState): readonly Tooltip[] {
       arrow: false,
       create: () => {
         const dom = document.createElement('div');
-        dom.className = 'jv-ghost-tip';
-        dom.textContent =
-          'tab to accept · opt+tab to predict more · any other key to reject';
+        dom.className = `jv-ghost-tip ${waiting ? 'jv-ghost-waiting' : ''}`;
+        dom.textContent = text;
         return { dom };
       }
     }
@@ -181,8 +216,18 @@ export function currentGhost(view: EditorView): IGhost | null {
   return view.state.field(ghostState, false) ?? null;
 }
 
-export function showGhost(view: EditorView, text: string, from: number): void {
-  view.dispatch({ effects: setGhost.of({ text, from }) });
+export function showGhost(
+  view: EditorView,
+  text: string,
+  from: number,
+  rate = 0
+): void {
+  view.dispatch({ effects: setGhost.of({ text, from, rate }) });
+}
+
+/** Say the request has gone out, before there is anything to show for it. */
+export function beginGhost(view: EditorView, from: number): void {
+  view.dispatch({ effects: startGhost.of({ from }) });
 }
 
 export function dismissGhost(view: EditorView): boolean {
@@ -194,10 +239,33 @@ export function dismissGhost(view: EditorView): boolean {
 }
 
 export interface IGhostKeys {
-  /** The configured trigger, in CodeMirror's notation, e.g. `Alt-Tab`. */
+  /** The configured trigger, in CodeMirror's notation, e.g. `Alt-\`. */
   trigger: string;
   /** Ask for a suggestion, or for more of the one on screen. */
   predict: (view: EditorView) => boolean;
+}
+
+/**
+ * The trigger as a person would write it, for the tooltip.
+ *
+ * The tooltip has to name the key that actually works, and the key is a
+ * setting -- so telling everyone "opt+tab" would be wrong for anyone who
+ * changed it, and wrong on Linux besides.
+ */
+export function keyLabel(trigger: string): string {
+  const mac = Platform.IS_MAC;
+  const names: Record<string, string> = {
+    Mod: mac ? '⌘' : 'ctrl',
+    Cmd: '⌘',
+    Meta: mac ? '⌘' : 'win',
+    Alt: mac ? '⌥' : 'alt',
+    Ctrl: 'ctrl',
+    Shift: mac ? '⇧' : 'shift'
+  };
+  return trigger
+    .split('-')
+    .map(part => names[part] ?? part.toLowerCase())
+    .join(mac ? '' : '+');
 }
 
 /**
@@ -221,7 +289,11 @@ export function ghostKeymap(keys: IGhostKeys): Extension {
       },
       {
         key: 'Tab',
-        run: acceptGhost // returns false with no ghost, so Tab still indents
+        // Declines the key when there is no suggestion, so Tab carries on to
+        // JupyterLab and the kernel's completer. That is the whole reason the
+        // trigger is not Tab: this feature feeds on what Tab and Shift+Tab
+        // return, so taking either would be taking its own input.
+        run: acceptGhost
       },
       {
         key: 'Escape',
@@ -243,5 +315,5 @@ export function ghostKeymap(keys: IGhostKeys): Extension {
 }
 
 export function ghostExtension(keys: IGhostKeys): Extension {
-  return [ghostState, ghostTooltip, ghostKeymap(keys)];
+  return [ghostState, ghostTooltip(keys.trigger), ghostKeymap(keys)];
 }

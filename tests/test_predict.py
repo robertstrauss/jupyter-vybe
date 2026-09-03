@@ -18,13 +18,15 @@ from jupyter_vybe.completion import (
 
 
 def test_the_prompt_names_the_cell_and_the_limit():
-    prompt = build_predict_prompt("# In[1]:\ndf = ", cell=1, max_lines=2)
+    prompt = build_predict_prompt("# In[1]:\ndf = ", cell=1, max_lines=1)
 
     assert "cell 1" in prompt
-    assert "at most 2 line(s)" in prompt
-    # Being allowed to stop part-way is the instruction that makes a two-line
-    # limit produce useful answers instead of cramped ones.
+    assert "at most 1 line(s)" in prompt
+    # Being allowed to stop part-way is what makes a one-line limit produce
+    # useful answers instead of cramped ones.
     assert "expected and fine" in prompt
+    # And the exception that keeps a one-line answer from being a broken one.
+    assert "syntax error" in prompt
 
 
 def test_kernel_hints_are_included_only_when_there_are_any():
@@ -79,3 +81,49 @@ def test_the_users_own_spacing_survives_the_overlap_trim():
 
 def test_a_continuation_that_repeats_nothing_is_left_alone():
     assert clean_prediction("pd.read_csv('x')", "df = ", 2) == "pd.read_csv('x')"
+
+
+def test_one_line_is_one_line():
+    assert limit_lines("x = 1\ny = 2\nz = 3", 1) == "x = 1"
+
+
+def test_a_block_header_keeps_going_until_it_parses():
+    """A `for` with nothing under it is a syntax error, not a short answer."""
+    assert limit_lines("for row in rows:\n    print(row)\nz = 3", 1) == (
+        "for row in rows:\n    print(row)"
+    )
+
+
+def test_an_unclosed_bracket_keeps_going_too():
+    assert limit_lines('m = df.groupby(\n    "month"\n).sum()\nnext()', 1) == (
+        'm = df.groupby(\n    "month"\n).sum()'
+    )
+
+
+def test_an_unterminated_string_keeps_going():
+    assert limit_lines('s = """text\nmore\n"""\nafter()', 1) == 's = """text\nmore\n"""'
+
+
+def test_a_model_that_never_closes_what_it_opens_cannot_run_away():
+    runaway = "\n".join(["x = ("] + [f"  {i}," for i in range(50)])
+    # Capped, so a broken suggestion costs a bounded wait rather than the whole
+    # response. Truncated and wrong beats unbounded and wrong.
+    assert len(limit_lines(runaway, 1).split("\n")) <= 1 + 6
+
+
+def test_escapes_do_not_confuse_the_string_scanner():
+    assert limit_lines('p = "a\\"b"\nq = 2', 1) == 'p = "a\\"b"'
+
+
+def test_completeness_is_judged_against_what_was_already_typed():
+    """`'month',` looks finished alone and leaves a bracket open in the cell.
+
+    Measured against a live model: asked to continue `monthly = df.groupby(`
+    it answered exactly that, and judging the reply on its own stopped one line
+    short of code that parses.
+    """
+    reply = "    'month',\n).sum()\nprint(monthly)"
+    assert limit_lines(reply, 1) == "    'month',"
+    assert limit_lines(reply, 1, "monthly = df.groupby(") == (
+        "    'month',\n).sum()"
+    )

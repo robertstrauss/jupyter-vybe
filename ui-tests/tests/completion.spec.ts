@@ -5,6 +5,10 @@ import * as path from 'path';
  * Ghost text end to end (D5). The agent is a script returning a fixed, fenced
  * continuation, so this tests the wiring -- the trigger, the stream, the
  * cleaning, and what the keys do -- rather than a model.
+ *
+ * The trigger is Alt+\\, which is Copilot's: the one combination the window
+ * manager, the browser and the editors all leave alone. Tab and Shift+Tab stay
+ * the kernel's.
  */
 
 const PLUGIN = 'jupyter-vybe:settings';
@@ -21,7 +25,7 @@ test.use({
     ...galata.DEFAULT_SETTINGS,
     [PLUGIN]: {
       agent: { id: 'command', command: SCRIPTED_AGENT },
-      completion: { enabled: true, timeoutSeconds: 20, maxLines: 2 },
+      completion: { enabled: true, timeoutSeconds: 20, maxLines: 1 },
       history: { persist: false }
     }
   }
@@ -67,7 +71,7 @@ test('nothing is suggested until it is asked for', async ({ page }) => {
 test('the trigger key predicts the rest of the cell', async ({ page }) => {
   await typeInFirstCell(page, 'df = ');
 
-  await page.keyboard.press('Alt+Tab');
+  await page.keyboard.press('Alt+Backslash');
 
   await expect(ghost(page)).toBeVisible({ timeout: 30000 });
   await expect(ghost(page)).toContainText('read_csv');
@@ -76,13 +80,15 @@ test('the trigger key predicts the rest of the cell', async ({ page }) => {
   // And it is a suggestion, not text: the cell still holds what was typed.
   expect(await cellSource(page)).toBe('df = ');
 
-  // The tooltip says what the keys do, where the user is looking.
+  // The tooltip says what the keys do, where the user is looking, naming the
+  // trigger that is actually configured rather than a guess at it.
   await expect(page.locator('.jv-ghost-tip')).toContainText('tab to accept');
+  await expect(page.locator('.jv-ghost-tip')).toContainText('to predict more');
 });
 
 test('tab accepts the suggestion into the cell', async ({ page }) => {
   await typeInFirstCell(page, 'df = ');
-  await page.keyboard.press('Alt+Tab');
+  await page.keyboard.press('Alt+Backslash');
   await expect(ghost(page)).toBeVisible({ timeout: 30000 });
 
   await page.keyboard.press('Tab');
@@ -97,7 +103,7 @@ test('backspace rejects the suggestion without eating the code', async ({
   page
 }) => {
   await typeInFirstCell(page, 'df = ');
-  await page.keyboard.press('Alt+Tab');
+  await page.keyboard.press('Alt+Backslash');
   await expect(ghost(page)).toBeVisible({ timeout: 30000 });
 
   await page.keyboard.press('Backspace');
@@ -112,7 +118,7 @@ test('typing rejects the suggestion and keeps what was typed', async ({
   page
 }) => {
   await typeInFirstCell(page, 'df = ');
-  await page.keyboard.press('Alt+Tab');
+  await page.keyboard.press('Alt+Backslash');
   await expect(ghost(page)).toBeVisible({ timeout: 30000 });
 
   await page.keyboard.type('x');
@@ -125,13 +131,13 @@ test('the trigger again extends the suggestion rather than replacing it', async 
   page
 }) => {
   await typeInFirstCell(page, 'df = ');
-  await page.keyboard.press('Alt+Tab');
+  await page.keyboard.press('Alt+Backslash');
   await expect(ghost(page)).toContainText('read_csv', { timeout: 30000 });
 
   // The suggestion already on screen is part of what the model is continuing,
   // so asking again grows it. This is what makes a two-line default workable:
   // it is how much you are asked to read at once, not a ceiling on the total.
-  await page.keyboard.press('Alt+Tab');
+  await page.keyboard.press('Alt+Backslash');
 
   await expect(ghost(page)).toContainText('df.head()', { timeout: 30000 });
   // The first part is still there, not reconsidered and redrawn.
@@ -140,7 +146,24 @@ test('the trigger again extends the suggestion rather than replacing it', async 
   expect(await cellSource(page)).toBe('df = ');
 
   await page.keyboard.press('Tab');
-  await expect.poll(async () => await cellSource(page)).toContain('df.head()');
+  // The reported bug: the second answer arrived glued to the end of the first
+  // line, because code does not begin with a newline and nothing supplied one.
+  await expect
+    .poll(async () => await cellSource(page))
+    .toBe("df = pd.read_csv('data.csv')\ndf.head()");
+});
+
+test('says it is working before it has anything to show', async ({ page }) => {
+  await typeInFirstCell(page, 'df = ');
+
+  await page.keyboard.press('Alt+Backslash');
+
+  // The seconds between the key and the first character are exactly when a
+  // model call is indistinguishable from a key that did nothing.
+  await expect(page.locator('.jv-ghost-tip.jv-ghost-waiting')).toBeVisible();
+  // And it gives way to the suggestion, rather than sitting there.
+  await expect(ghost(page)).toContainText('read_csv', { timeout: 30000 });
+  await expect(page.locator('.jv-ghost-tip.jv-ghost-waiting')).toHaveCount(0);
 });
 
 test.describe('with completion off', () => {
@@ -157,7 +180,7 @@ test.describe('with completion off', () => {
 
   test('the trigger key does nothing', async ({ page }) => {
     await typeInFirstCell(page, 'df = ');
-    await page.keyboard.press('Alt+Tab');
+    await page.keyboard.press('Alt+Backslash');
     await page.waitForTimeout(2000);
     expect(await ghost(page).count()).toBe(0);
   });

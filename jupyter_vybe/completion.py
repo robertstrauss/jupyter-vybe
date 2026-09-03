@@ -153,15 +153,18 @@ Continue cell {cell} from exactly where it stops. Reply with code only -- no
 explanation, no fences, and do not repeat any of the code that is already
 there.
 
-Write at most {max_lines} line(s). Stopping part-way through something is
-expected and fine: the start of a function, a loop header, half an expression.
-The user asks again for more, so a short, certain continuation is worth more
-than a long, guessed one. If there is nothing sensible to add, reply with
-nothing at all.
+Write at most {max_lines} line(s), and prefer to stop at one. The user asks
+again for the next line, so a single certain line is worth more than several
+guessed ones, and stopping part-way through something is expected and fine.
+
+The one exception: if that line opens a block -- it ends in a colon, or leaves
+a bracket or a string unclosed -- write on until the block has a body and the
+code would parse. A `for` header with nothing under it is a syntax error, not
+a short answer.
 """
 
 
-def build_predict_prompt(script: str, cell: int, max_lines: int, hints: str = "") -> str:
+def build_predict_prompt(script: str, cell: int, max_lines: int = 1, hints: str = "") -> str:
     """The whole request, as one instruction turn."""
     parts = [
         PREDICT_INSTRUCTIONS.format(cell=cell, max_lines=max_lines),
@@ -189,18 +192,118 @@ def strip_fences(text: str) -> str:
 _FENCE_LINE = re.compile(r"^\s*```[A-Za-z0-9_+-]*\s*$")
 
 
-def limit_lines(text: str, max_lines: int) -> str:
+def limit_lines(text: str, max_lines: int, prefix: str = "") -> str:
     """Hold the model to the length it was asked for.
 
     Told "at most two lines", models write four. The instruction is worth
     having anyway -- it shapes what they aim for -- but the ceiling is enforced
     here, because a suggestion longer than advertised is one the user has to
     read all of before deciding.
+
+    The ceiling bends in exactly one place: code that would not parse. A line
+    that opens a block, or leaves a bracket or a string unclosed, is not a
+    short answer -- it is a broken one, and accepting it puts a syntax error in
+    the user's notebook. Those keep going until the code stands on its own, or
+    until the hard cap below, which exists so a model that never closes what it
+    opens cannot run away with the response.
+
+    `prefix` is what the user has already typed, and it is not optional in
+    practice. Completeness is a property of the whole statement, not of the
+    reply: asked to continue `monthly = df.groupby(`, a model answering
+    `'month',` has written something that looks finished on its own and leaves
+    a bracket open in the cell. Judged without the prefix, that stops one line
+    short of parsing, every time.
     """
     lines = text.split("\n")
-    if len(lines) <= max_lines:
-        return text
-    return "\n".join(lines[:max_lines])
+    kept: list[str] = []
+    for line in lines:
+        kept.append(line)
+        if len(kept) < max_lines:
+            continue
+        if not _incomplete(prefix + "\n".join(kept)):
+            break
+        if len(kept) >= max_lines + BLOCK_BODY_CAP:
+            break
+    return "\n".join(kept)
+
+
+# How far past the line budget a block body may run. Six lines is enough for
+# any reasonable loop or function body; past that the model has lost the
+# thread, and a runaway suggestion is worse than a truncated one.
+BLOCK_BODY_CAP = 6
+
+
+def _incomplete(text: str) -> bool:
+    """Whether stopping here would leave code that does not parse.
+
+    Deliberately a scanner rather than `compile()`: the text is a fragment of a
+    cell, so almost all of it fails to compile for reasons that have nothing to
+    do with whether the model should keep writing. What matters is narrower --
+    an unclosed bracket, an unterminated string, or a block header with no body
+    -- and those can be read off the characters.
+
+    Triple quotes are checked before single ones, or a docstring's opening
+    delimiter scans as an empty string followed by one more quote, and every
+    docstring in the notebook reads as unterminated.
+    """
+    i = 0
+    depth = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "#":
+            # A comment runs to the end of the line and may say anything.
+            newline = text.find("\n", i)
+            i = n if newline == -1 else newline
+            continue
+        if ch in QUOTES:
+            triple = text[i : i + 3]
+            if triple in TRIPLES:
+                close = text.find(triple, i + 3)
+                if close == -1:
+                    return True
+                i = close + 3
+                continue
+            after = _end_of_short_string(text, i)
+            if after is None:
+                return True
+            i = after
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        i += 1
+    if depth > 0:
+        return True
+    last = next((line for line in reversed(text.split("\n")) if line.strip()), "")
+    return last.rstrip().endswith((":", "\\"))
+
+
+QUOTES = ("'", '"')
+TRIPLES = ("'''", '"""')
+
+
+def _end_of_short_string(text: str, start: int) -> "int | None":
+    """Index just past a normal quoted string, or None if it never closes.
+
+    A newline ends the search: an unclosed single-quoted string is a broken
+    line, and treating the rest of the cell as string content would hide every
+    bracket in it from the scan.
+    """
+    quote = text[start]
+    i = start + 1
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == quote:
+            return i + 1
+        if ch == "\n":
+            return None
+        i += 1
+    return None
 
 
 def _without_overlap(text: str, already_typed: str) -> str:
@@ -233,5 +336,5 @@ def clean_prediction(text: str, already_typed: str, max_lines: int) -> str:
 
     text = _without_overlap(text, already_typed)
 
-    text = limit_lines(text, max_lines)
+    text = limit_lines(text, max_lines, already_typed)
     return text if text.strip() else ""

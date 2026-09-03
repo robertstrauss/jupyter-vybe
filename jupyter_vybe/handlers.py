@@ -18,8 +18,10 @@ from .completion import (
     build_predict_prompt,
     clean,
     clean_prediction,
+    limit_lines,
     looks_useless,
     should_be_multiline,
+    strip_fences,
 )
 from .history import HistoryStore, find_orphan
 from .session import SessionManager
@@ -240,7 +242,7 @@ class PredictHandler(APIHandler):
         script = body.get("script", "")
         cell = int(body.get("cell", 1))
         typed = body.get("typed", "")
-        max_lines = max(1, int(body.get("maxLines", 2)))
+        max_lines = max(1, int(body.get("maxLines", 1)))
         hints = body.get("hints", "")
         agent_id = body.get("agentId") or "ollama-qwen25-coder-7b"
         timeout = float(body.get("timeoutSeconds", 8))
@@ -269,7 +271,7 @@ class PredictHandler(APIHandler):
                     shown = clean_prediction(text, typed, max_lines)
                     self.write(json.dumps({"text": shown}) + "\n")
                     await self.flush()
-                    if _finished(text, max_lines):
+                    if _finished(text, max_lines, typed):
                         cancel.set()
                         break
 
@@ -290,13 +292,20 @@ class PredictHandler(APIHandler):
         super().on_connection_close()
 
 
-def _finished(text: str, max_lines: int) -> bool:
-    """Stop as soon as the answer is as long as it was allowed to be.
+def _finished(text: str, max_lines: int, typed: str = "") -> bool:
+    """Stop as soon as the answer is as long as it is allowed to be.
 
-    Models overshoot the line limit, and every token past the limit is one the
-    user waits for and never sees.
+    Models overshoot the line limit, and every token past it is one the user
+    waits for and never sees. "Allowed" is the limiter's judgement, not a line
+    count: a line that opens a block is not finished however short it is, so
+    the generation runs on until the code would parse.
+
+    Detected by the limiter having something to cut. While it returns the text
+    unchanged there is nothing yet to trim, which is the same thing as the
+    model not having finished the line.
     """
-    return len(clean_prediction(text, "", max_lines + 1).split("\n")) > max_lines
+    body = strip_fences(text)
+    return bool(body) and limit_lines(body, max_lines, typed) != body
 
 
 class AgentSocket(websocket.WebSocketHandler):

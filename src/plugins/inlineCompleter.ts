@@ -9,14 +9,19 @@ import type { EditorView } from '@codemirror/view';
 
 import { IVybeSettings } from '../tokens';
 import {
+  beginGhost,
   currentGhost,
   dismissGhost,
   ghostExtension,
   showGhost
 } from '../completion/ghost';
-import { notebookAsScript } from '../completion/notebookScript';
+import {
+  continuesTheLine,
+  notebookAsScript
+} from '../completion/notebookScript';
 import { predict } from '../completion/predict';
 import { complete, inspect } from '../introspect';
+import { estimateTokens } from '../notebook/snapshot';
 
 /**
  * Ghost text, on demand (decision D5).
@@ -77,12 +82,29 @@ class Predictor {
 
     const cursor = view.state.selection.main.head;
     const document = view.state.doc.toString();
-    // Pressing the trigger with a suggestion on screen means "and then what?",
-    // so the suggestion is part of what the model is continuing -- but it is
-    // still not in the document, and is not written there unless accepted.
+    /*
+     * Pressing the trigger with a suggestion on screen means "and then what?",
+     * so the suggestion is part of what the model is continuing -- but it is
+     * still not in the document, and is not written there unless accepted.
+     *
+     * The join is the part that bit: the model is asked for code, and code
+     * does not begin with a newline, so a second answer arrived glued to the
+     * end of the first line. Whether the next answer belongs on a new line is
+     * decided here, and the same break is sent to the model, so what it
+     * continues is what the user will see.
+     */
     const existing = currentGhost(view);
     const accepted = existing?.text ?? '';
-    const typed = document.slice(0, cursor) + accepted;
+    const join =
+      accepted && !accepted.endsWith('\n') && !continuesTheLine(accepted)
+        ? '\n'
+        : '';
+    const typed = document.slice(0, cursor) + accepted + join;
+
+    // Said before anything is asked for: a local model takes a beat, and a
+    // key that appears to do nothing is the failure this reports.
+    beginGhost(view, cursor);
+    const startedAt = Date.now();
 
     const cellId = panel.content.activeCell?.model.id ?? '';
     const script = notebookAsScript(panel, cellId, typed);
@@ -112,17 +134,28 @@ class Predictor {
           if (abort.signal.aborted) {
             return;
           }
+          // Typing dismisses the suggestion, and dismissing it means the
+          // request is no longer wanted: nobody is waiting for the answer, so
+          // the model is not left generating one.
+          if (!currentGhost(view)) {
+            abort.abort();
+            return;
+          }
           // The suggestion already on screen is kept in front of the new
           // one: the user asked for *more*, and having the accepted part
           // flicker away and back would read as it being reconsidered.
-          latest = accepted + text;
-          showGhost(view, latest, cursor);
+          latest = accepted + join + text;
+          const seconds = (Date.now() - startedAt) / 1000;
+          const rate = seconds > 0 ? estimateTokens(text) / seconds : 0;
+          showGhost(view, latest, cursor, rate);
         },
         abort.signal
       );
     } catch {
       // A prediction nobody sees is not worth an error in the editor.
     }
+    // Nothing came back, so nothing stays on screen -- including the
+    // "predicting…" tooltip, which would otherwise sit there forever.
     if (!abort.signal.aborted && !latest.trim()) {
       dismissGhost(view);
     }
@@ -141,6 +174,12 @@ class Predictor {
     typed: string,
     signal: AbortSignal
   ): Promise<string> {
+    const mode = this.settings.kernelIntrospection;
+    if (mode === 'off') {
+      // The same switch that governs the agent's own lookups. A user who has
+      // told us not to talk to their kernel meant all of us.
+      return '';
+    }
     const line = typed.split('\n').pop() ?? '';
     const target = /([A-Za-z_][\w.]*)$/.exec(line)?.[1];
     if (!target || !target.includes('.')) {
@@ -150,7 +189,10 @@ class Predictor {
     }
     try {
       const [completions, help] = await Promise.all([
-        complete(panel, line),
+        // Exactly what Tab and Shift+Tab ask the kernel, asked on the user's
+        // behalf: `complete_request` and `inspect_request`. Neither executes
+        // anything or advances the execution count (D1).
+        mode === 'inspect+complete' ? complete(panel, line) : '',
         inspect(panel, target.replace(/\.[^.]*$/, ''))
       ]);
       if (signal.aborted) {

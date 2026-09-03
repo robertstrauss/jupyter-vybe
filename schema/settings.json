@@ -274,14 +274,14 @@
         "triggerKey": {
           "type": "string",
           "title": "Trigger key",
-          "description": "CodeMirror key notation: Alt is Option on a Mac, Mod is Cmd there and Ctrl elsewhere. Alt-Tab is taken by the window manager on Windows and most Linux desktops -- pick something else there, e.g. Ctrl-Space.",
-          "default": "Alt-Tab"
+          "description": "CodeMirror key notation: Alt is Option on a Mac, Mod is Cmd there and Ctrl elsewhere. The default matches Copilot's trigger, which is the one combination the editors agree on and the one the window manager and the browser both leave alone. Tab and Shift+Tab are deliberately untouched: they are the kernel's completions and its docstrings, and this feature feeds on both.",
+          "default": "Alt-\\"
         },
         "maxLines": {
           "type": "integer",
-          "title": "Lines per suggestion",
-          "description": "How much is predicted at a time. Press the trigger again to extend a suggestion, so a small number here is not a limit on how much you can get -- it is how much you are asked to read before deciding.",
-          "default": 2,
+          "title": "Lines per request",
+          "description": "How much is predicted at a time. Press the trigger again for the next line, so this is not a limit on how much you can get -- it is how much you are asked to read before deciding. A line that opens a block runs on until the code would parse, whatever this says: a loop header with no body is a syntax error, not a short answer.",
+          "default": 1,
           "minimum": 1,
           "maximum": 20
         },

@@ -347,3 +347,24 @@ Insertions need no review, but per PROMPT the whole group must be selected after
 `notebook.activeCellIndex = firstInserted; notebook.extendContiguousSelectionTo(lastInserted)`.
 They also carry a transient `.jv-inserted` class that fades a subtle left accent bar over ~2s,
 so the eye lands on what is new without leaving permanent decoration.
+
+## Ghost text, and what the kernel contributes to it
+
+Not strictly review UI, but the same rule governs both: the extension owns the keys only where it
+has earned them.
+
+`Tab` and `Shift+Tab` stay the kernel's. That is not politeness — it is self-interest. Both are
+fed to the model: an attribute completion sends `complete_request` (what `Tab` returns) and
+`inspect_request` on the object (what `Shift+Tab` shows), so the suggestion knows what the object
+actually offers in _this_ session rather than what the model guesses from the notebook. Taking
+either key would be taking the feature's own input. Both honour
+`agentTools.kernelIntrospection`, the same switch that governs the agent's lookups: a user who
+said not to talk to their kernel meant all of us.
+
+`Tab` is bound, but only ever consumes the key when a suggestion is on screen; with none it
+declines and the key carries on to JupyterLab.
+
+The tooltip above the cursor is the whole progress report. Before the first character it reads
+`predicting…`, then the measured rate — a local model takes a beat, and in that beat a trigger
+key is indistinguishable from a key that did nothing. Once there is text it becomes the key map,
+naming the configured trigger rather than assuming what it is.

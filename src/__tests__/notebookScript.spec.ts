@@ -1,4 +1,7 @@
-import { notebookAsScript } from '../completion/notebookScript';
+import {
+  continuesTheLine,
+  notebookAsScript
+} from '../completion/notebookScript';
 
 /**
  * The completion prompt is the notebook as a script. What matters is where it
@@ -63,5 +66,38 @@ describe('the notebook as a script', () => {
   it('declines when the cell is not in this notebook', () => {
     // The user switched notebooks while the request was being built.
     expect(notebookAsScript(panel(notebook), 'gone', 'x')).toBeNull();
+  });
+});
+
+/**
+ * The reported bug: pressing the trigger again produced a second suggestion
+ * glued onto the end of the first line. Code does not begin with a newline,
+ * and nothing supplied one -- so the join has to be decided here, from whether
+ * what is already suggested stands on its own.
+ */
+describe('joining one suggestion to the next', () => {
+  it('starts a new line after a finished statement', () => {
+    expect(continuesTheLine("pd.read_csv('data.csv')")).toBe(false);
+  });
+
+  it('starts a new line after a block header, which wants a body', () => {
+    expect(continuesTheLine('for row in rows:')).toBe(false);
+    expect(continuesTheLine('def f(x):')).toBe(false);
+  });
+
+  it('stays on the line while the statement is unfinished', () => {
+    // The line-budget cap can cut a runaway short mid-expression; gluing the
+    // next answer onto a fresh line would break the statement in half.
+    expect(continuesTheLine('m = df.groupby(')).toBe(true);
+    expect(continuesTheLine('total = a +')).toBe(true);
+    expect(continuesTheLine('items = [1,')).toBe(true);
+  });
+
+  it('reads the whole suggestion, not only its last line', () => {
+    // The bracket opened two lines up is still open.
+    expect(continuesTheLine('m = df.groupby(\n    "month"')).toBe(true);
+    expect(continuesTheLine('m = df.groupby(\n    "month"\n).sum()')).toBe(
+      false
+    );
   });
 });
