@@ -214,6 +214,178 @@ test('Cmd+Z during review takes back the verdict, not the whole round', async ({
     .toBe('value = 1');
 });
 
+/**
+ * The user's report: undo brought the prompt cell back and focused it, while
+ * the diff and its buttons stayed on screen -- a review nobody was standing
+ * in. Taking a verdict back means being back at the diff you took it back
+ * from, with the keys aimed there.
+ */
+test('undo puts the cursor back on the diff, not on the prompt', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> double the value above');
+
+  await page.notebook.runCell(1, { wait: false });
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+    timeout: 60000
+  });
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('y');
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toContain('value = 2');
+
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.locator('.jv-diff-overlay')).toBeVisible();
+
+  // The restored diff is the focused cell -- proved by the next verdict
+  // landing on it without anything else being clicked first.
+  await page.keyboard.press('n');
+  await expect(page.locator('.jv-diff-overlay')).toHaveCount(0);
+  expect((await cells(page))[0].source).toBe('value = 1');
+});
+
+/**
+ * The user's report: Modify showed the merged text -- accepted lines live,
+ * replaced lines commented beneath -- and then put the cursor in the prompt
+ * cell, because accepting advances the review and edit mode followed the
+ * advance rather than the merge.
+ */
+test('modify leaves the cursor in the merged cell', async ({ page }) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> double the value above');
+
+  await page.notebook.runCell(1, { wait: false });
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+    timeout: 60000
+  });
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter'); // the merge verdict
+
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toContain('# value = 1');
+
+  // Typing goes into the cell that was just merged, which is the whole point
+  // of the verdict: it exists to be hand-edited.
+  await page.keyboard.type('  # mine');
+  await expect
+    .poll(async () => (await cells(page))[0].source)
+    .toContain('# mine');
+  // And nothing of it reached the prompt.
+  expect((await cells(page))[1].source).not.toContain('# mine');
+});
+
+/**
+ * A review is a session, not a decoration.
+ *
+ * The failure it exists to prevent: clicking away into another cell,
+ * forgetting the diffs, and leaving a round open -- which is how a proposal
+ * ends up applied days later, or never.
+ */
+test.describe('the review session', () => {
+  const openReview = async (page: any) => {
+    await page.goto();
+    await page.notebook.createNew();
+    await page.notebook.setCell(0, 'code', 'value = 1');
+    await page.notebook.addCell('code', '> double the value above');
+    await page.notebook.runCell(1, { wait: false });
+    await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+      timeout: 60000
+    });
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.jv-diff-overlay')).toBeVisible();
+  };
+
+  test('dims the notebook and refuses cells that are not under review', async ({
+    page
+  }) => {
+    await openReview(page);
+    await expect(page.locator('.jp-Notebook.jv-review-session')).toBeVisible();
+
+    // The trailing cell JupyterLab adds after running the last one: not under
+    // review, so not available.
+    const stray = page.locator('.jp-Notebook .jp-Cell').last();
+    await stray.click({ force: true });
+
+    // Refused, and said so, rather than silently doing nothing.
+    await expect(page.locator('.jv-counter-refused')).toBeVisible();
+    // And the review is still where it was.
+    await expect(page.locator('.jv-proposal-active')).toHaveCount(1);
+  });
+
+  test('refuses to walk the cursor out of the review', async ({ page }) => {
+    await openReview(page);
+    const before = await page.evaluate(
+      () =>
+        (window as any).jupyterapp.shell.currentWidget.content.activeCellIndex
+    );
+
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowUp');
+
+    // Cell-to-cell navigation is not needed inside a session -- the verdicts
+    // advance it and the counter's jump button covers being lost -- so it is
+    // declined rather than allowed to strand the user away from the diffs.
+    expect(
+      await page.evaluate(
+        () =>
+          (window as any).jupyterapp.shell.currentWidget.content.activeCellIndex
+      )
+    ).toBe(before);
+    await expect(page.locator('.jv-counter-refused')).toBeVisible();
+  });
+
+  test('escape rejects the rest and closes the session cleanly', async ({
+    page
+  }) => {
+    await openReview(page);
+
+    await page.keyboard.press('Escape');
+
+    // Every trace of it goes: the diffs, the counter, and the dimming.
+    await expect(page.locator('.jv-diff-overlay')).toHaveCount(0);
+    await expect(page.locator('.jv-review-counter')).toBeHidden();
+    await expect(page.locator('.jp-Notebook.jv-review-session')).toHaveCount(0);
+    // Rejected, so the notebook is exactly as it was.
+    expect((await cells(page))[0].source).toBe('value = 1');
+    // And the cells answer again.
+    await page.locator('.jp-Notebook .jp-Cell').last().click();
+    await expect(page.locator('.jv-counter-refused')).toHaveCount(0);
+  });
+
+  test('the counter carries every way out', async ({ page }) => {
+    await openReview(page);
+    const counter = page.locator('.jv-review-counter');
+
+    await expect(counter).toContainText('1 edit left to review');
+    // Both exits are on it, with the keys that do the same thing.
+    await expect(counter.locator('.jv-counter-jump')).toContainText('⏎');
+    await expect(counter.locator('.jv-counter-reject')).toContainText('esc');
+
+    await counter.locator('.jv-counter-reject').click();
+    await expect(page.locator('.jv-diff-overlay')).toHaveCount(0);
+  });
+
+  test('the verdict buttons say what they do, not only which key', async ({
+    page
+  }) => {
+    await openReview(page);
+    const controls = page.locator('.jv-review-controls');
+
+    await expect(controls.locator('.jv-accept')).toContainText('Accept');
+    await expect(controls.locator('.jv-reject')).toContainText('Reject');
+    await expect(controls.locator('.jv-modify')).toContainText('Modify');
+    // The key stays a caption beside the button, not a second line of prose.
+    await expect(controls.locator('.jv-review-key').first()).toHaveText('Y');
+  });
+});
+
 test('the review summary appears in the prompt cell, not in a corner', async ({
   page
 }) => {

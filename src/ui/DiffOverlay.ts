@@ -69,7 +69,7 @@ export interface IReviewActions {
   modifyKey?: string;
 }
 
-/** The ✓ / ✗ stack floating at the cell's right edge, with its shortcuts. */
+/** The verdict stack at the cell's right edge: what each does, and its key. */
 export class ReviewControls extends Widget {
   constructor(actions: IReviewActions) {
     const node = document.createElement('div');
@@ -79,6 +79,7 @@ export class ReviewControls extends Widget {
 
     const make = (
       glyph: string,
+      label: string,
       key: string,
       cls: string,
       title: string,
@@ -88,38 +89,61 @@ export class ReviewControls extends Widget {
       wrap.className = 'jv-review-button-wrap';
       const btn = document.createElement('button');
       btn.className = `jv-review-button ${cls}`;
-      btn.textContent = glyph;
       btn.title = `${title} (${key})`;
-      // The glyph is a symbol; the button needs a name.
       btn.setAttribute('aria-label', `${title} (keyboard: ${key})`);
       btn.onclick = fn;
-      const label = document.createElement('div');
-      label.className = 'jv-review-key';
-      label.textContent = key;
-      wrap.append(btn, label);
+
+      // The word, not only the symbol. A ✎ beside a ✓ and a ✗ is a guess;
+      // "Modify" is not. The key stays outside the button, where it reads as
+      // a caption rather than as part of what the button says.
+      const mark = document.createElement('span');
+      mark.className = 'jv-review-glyph';
+      mark.textContent = glyph;
+      const word = document.createElement('span');
+      word.className = 'jv-review-word';
+      word.textContent = label;
+      btn.append(mark, word);
+
+      const caption = document.createElement('div');
+      caption.className = 'jv-review-key';
+      caption.textContent = key;
+      wrap.append(btn, caption);
       return wrap;
     };
 
     node.append(
-      make('✓', actions.acceptKey, 'jv-accept', 'Accept', actions.onAccept),
-      make('✗', actions.rejectKey, 'jv-reject', 'Reject', actions.onReject)
+      make(
+        '✓',
+        'Accept',
+        actions.acceptKey,
+        'jv-accept',
+        'Accept',
+        actions.onAccept
+      ),
+      make(
+        '✗',
+        'Reject',
+        actions.rejectKey,
+        'jv-reject',
+        'Reject',
+        actions.onReject
+      )
     );
     // The merge verdict has always existed but was invisible: only the two
-    // buttons were ever drawn, so nothing said Enter did anything (docs/14 N2).
+    // buttons were ever drawn, so nothing said Enter did anything (docs/14
+    // N2). It now says so on the button, which is why the separate line of
+    // hint text underneath is gone -- it repeated the caption beside it.
     if (actions.onModify && actions.modifyKey) {
       node.append(
         make(
           '✎',
+          'Modify',
           actions.modifyKey,
           'jv-modify',
           'Modify: merge and edit by hand',
           actions.onModify
         )
       );
-      const hint = document.createElement('div');
-      hint.className = 'jv-review-hint';
-      hint.textContent = `${actions.modifyKey} to modify`;
-      node.append(hint);
     }
     super({ node });
     this.addClass('jv-review-controls-widget');
@@ -127,21 +151,24 @@ export class ReviewControls extends Widget {
 }
 
 /**
- * The one floating thing: a review counter (docs/03).
+ * The one floating thing: the review session's counter (docs/03).
  *
- * It exists for a single failure mode — walking away with edits still
- * unresolved. So it appears only during review, says how many are left, and
- * offers the two ways out: reject the rest, or take a verdict back. It is
- * top-centre and translucent because it is a reminder, not a control panel,
- * and it must not hide the code being reviewed.
+ * It exists for a single failure mode -- walking away with edits still
+ * unresolved -- and it is the session's only control surface, so it carries
+ * every way out: jump to the next edit, reject the rest, or take a verdict
+ * back. Translucent, because it is a reminder rather than a panel, and set
+ * below the toolbar rather than over it: floating across the notebook's own
+ * chrome made it read as part of JupyterLab instead of part of the round.
  *
- * Everything else a round has to say now belongs to the prompt cell's own
- * output area, next to the prompt that caused it.
+ * It is also where a refusal is reported. Clicking a greyed-out cell during a
+ * session does nothing, and doing nothing silently is indistinguishable from
+ * being broken -- so the border flashes red here, which both explains the
+ * refusal and points at the thing that ends it.
  */
 export class ReviewCounter extends Widget {
   private _label: HTMLElement;
 
-  constructor(onRejectAll: () => void) {
+  constructor(onRejectAll: () => void, onJump: () => void) {
     const node = document.createElement('div');
     node.className = 'jv-review-counter';
     node.setAttribute('role', 'status');
@@ -150,17 +177,38 @@ export class ReviewCounter extends Widget {
     const label = document.createElement('span');
     label.className = 'jv-counter-label';
 
-    const reject = document.createElement('button');
-    reject.className = 'jv-counter-reject';
-    reject.textContent = 'reject the rest';
-    reject.setAttribute('aria-label', 'Reject all remaining proposed edits');
-    reject.onclick = onRejectAll;
+    const action = (
+      cls: string,
+      text: string,
+      aria: string,
+      fn: () => void
+    ) => {
+      const btn = document.createElement('button');
+      btn.className = `jv-counter-button ${cls}`;
+      btn.textContent = text;
+      btn.setAttribute('aria-label', aria);
+      btn.onclick = fn;
+      return btn;
+    };
+
+    const jump = action(
+      'jv-counter-jump',
+      'jump to next  ⏎',
+      'Go to the next proposed edit',
+      onJump
+    );
+    const reject = action(
+      'jv-counter-reject',
+      'reject the rest  esc',
+      'Reject all remaining proposed edits',
+      onRejectAll
+    );
 
     const hint = document.createElement('span');
     hint.className = 'jv-counter-hint';
     hint.textContent = '⌘Z undoes a verdict';
 
-    node.append(label, reject, hint);
+    node.append(label, jump, reject, hint);
     super({ node });
     this._label = label;
   }
@@ -169,5 +217,18 @@ export class ReviewCounter extends Widget {
     this._label.textContent = `${count} edit${
       count === 1 ? '' : 's'
     } left to review`;
+  }
+
+  /**
+   * Say no, visibly.
+   *
+   * Restarted rather than merely re-added: a second refusal during the fade
+   * of the first would otherwise not flash at all, which is precisely when
+   * the user is jabbing at a cell and most needs the answer.
+   */
+  refuse(): void {
+    this.node.classList.remove('jv-counter-refused');
+    void this.node.offsetWidth; // reflow, so the animation restarts
+    this.node.classList.add('jv-counter-refused');
   }
 }

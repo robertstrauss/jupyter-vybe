@@ -94,17 +94,35 @@
   align-items: center;
 }
 
-/* The primary interaction of the whole extension: sized accordingly. */
+/* The primary interaction of the whole extension: sized accordingly, and
+   labelled in words -- a glyph stack asks the user to guess which one is the
+   merge. */
 .jv-review-button {
-  width: 52px;
-  height: 52px;
-  font-size: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 62px;
+  padding: 5px 0;
   line-height: 1;
   cursor: pointer;
   border: 1px solid var(--jp-border-color1);
   border-radius: 6px;
   background: var(--jp-layout-color1);
   box-shadow: var(--jp-elevation-z2);
+}
+
+.jv-review-glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.jv-review-word {
+  font-family: var(--jp-ui-font-family);
+  font-size: var(--jp-ui-font-size0);
+  font-weight: 600;
+  color: var(--jp-ui-font-color1);
 }
 
 .jv-review-button:hover {
@@ -128,10 +146,12 @@
 
 /* The merge verdict: real, but secondary to accept and reject. */
 .jv-review-button.jv-modify {
-  width: 40px;
-  height: 40px;
-  font-size: 20px;
+  width: 54px;
   color: var(--jp-brand-color1);
+}
+
+.jv-review-button.jv-modify .jv-review-glyph {
+  font-size: 18px;
 }
 
 .jv-review-key {
@@ -142,26 +162,19 @@
   color: var(--jp-ui-font-color2);
 }
 
-.jv-review-hint {
-  max-width: 84px;
-  font-family: var(--jp-ui-font-family);
-  font-size: var(--jp-ui-font-size0);
-  line-height: 1.2;
-  text-align: center;
-  color: var(--jp-ui-font-color3);
-}
-
 .jv-proposal-active {
   position: relative;
 }
 
 /* ---- the review counter (docs/03) ---- */
 
-/* Top-centre and translucent: a reminder that edits are still open, not a
-   control panel, and it must not hide the code being reviewed. */
+/* Translucent, and clear of the notebook's own toolbar: floating across the
+   toolbar made it read as part of JupyterLab rather than as part of the
+   round. It must not hide the code being reviewed either, hence the width it
+   is and not more. */
 .jv-review-counter {
   position: absolute;
-  top: 6px;
+  top: 46px;
   left: 50%;
   z-index: 10;
   display: flex;
@@ -187,7 +200,7 @@
   font-weight: 600;
 }
 
-.jv-counter-reject {
+.jv-counter-button {
   padding: 1px 8px;
   cursor: pointer;
   font-family: inherit;
@@ -196,6 +209,17 @@
   background: none;
   border: 1px solid var(--jp-border-color1);
   border-radius: 999px;
+  white-space: nowrap;
+}
+
+.jv-counter-button:focus-visible {
+  outline: 2px solid var(--jp-brand-color1);
+  outline-offset: 2px;
+}
+
+.jv-counter-jump:hover {
+  color: var(--jp-brand-color1);
+  border-color: var(--jp-brand-color1);
 }
 
 .jv-counter-reject:hover {
@@ -203,9 +227,42 @@
   border-color: var(--jp-error-color1);
 }
 
-.jv-counter-reject:focus-visible {
-  outline: 2px solid var(--jp-brand-color1);
-  outline-offset: 2px;
+/* Saying no, visibly. A click on a dimmed cell does nothing, and doing
+   nothing silently is indistinguishable from being broken -- so the refusal
+   is shown here, on the thing that ends the session. */
+@keyframes jv-counter-refuse {
+  0% {
+    border-color: var(--jp-error-color1);
+    box-shadow: 0 0 0 3px
+      color-mix(in srgb, var(--jp-error-color1) 35%, transparent);
+  }
+
+  100% {
+    border-color: var(--jp-border-color1);
+    box-shadow: var(--jp-elevation-z2);
+  }
+}
+
+.jv-counter-refused {
+  animation: jv-counter-refuse 700ms ease-out 1;
+}
+
+/* ---- the review session (docs/03) ---- */
+
+/* Everything that is not under review recedes and stops answering, so a
+   round cannot be abandoned by wandering off into another cell. */
+.jv-review-session .jp-Cell {
+  transition: opacity 150ms ease-out;
+}
+
+.jv-review-session .jp-Cell:not(.jv-proposal, .jv-prompt-cell) {
+  opacity: 0.32;
+  filter: saturate(0.4);
+}
+
+/* The cursor says it before the click does. */
+.jv-review-session .jp-Cell:not(.jv-proposal, .jv-prompt-cell) .jp-InputArea {
+  cursor: not-allowed;
 }
 
 .jv-counter-hint {

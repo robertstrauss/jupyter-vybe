@@ -42,14 +42,116 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
     const counterFor = (panel: NotebookPanel): ReviewCounter => {
       let counter = counters.get(panel.id);
       if (!counter) {
-        counter = new ReviewCounter(() =>
-          app.commands.execute(CommandIDs.rejectAll)
+        counter = new ReviewCounter(
+          () => app.commands.execute(CommandIDs.rejectAll),
+          () => app.commands.execute(CommandIDs.gotoFirst)
         );
         counter.addClass('jv-counter-host');
         Widget.attach(counter, panel.node);
         counters.set(panel.id, counter);
       }
       return counter;
+    };
+
+    /**
+     * A review is a session, not a decoration.
+     *
+     * Diffs used to sit in an ordinary notebook, so the user could click away
+     * into another cell, forget them, and leave a round open indefinitely --
+     * which is how a proposal ends up applied days later, or never. While
+     * edits are pending everything except them is dimmed and unclickable, and
+     * the only ways out are the verdicts, Escape, or the counter.
+     *
+     * The guard is a capture-phase listener rather than `pointer-events:
+     * none`, because a click that lands on nothing is indistinguishable from
+     * a broken page. It is caught, refused, and the refusal is shown.
+     */
+    const sessions = new Map<string, () => void>();
+
+    const cellAt = (panel: NotebookPanel, node: EventTarget | null) => {
+      let el = node instanceof Node ? node : null;
+      while (el && el !== panel.node) {
+        if (el instanceof HTMLElement && el.classList.contains('jp-Cell')) {
+          return el;
+        }
+        el = el.parentNode;
+      }
+      return null;
+    };
+
+    const startSession = (panel: NotebookPanel) => {
+      if (sessions.has(panel.id)) {
+        return;
+      }
+      panel.content.node.classList.add('jv-review-session');
+
+      const onPointer = (event: Event) => {
+        const cell = cellAt(panel, event.target);
+        if (!cell || cell.classList.contains('jv-proposal')) {
+          return; // our own chrome, or a cell under review
+        }
+        if (cell.classList.contains('jv-prompt-cell')) {
+          return; // the prompt is the round; it stays reachable
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        counters.get(panel.id)?.refuse();
+      };
+      // Capture, so it is refused before JupyterLab decides to focus it.
+      panel.content.node.addEventListener('mousedown', onPointer, true);
+      panel.content.node.addEventListener('click', onPointer, true);
+
+      /*
+       * The keyboard route out, blocked at the DOM rather than by chasing
+       * focus afterwards.
+       *
+       * The first attempt watched `activeCellChanged` and hauled the
+       * selection back. It fought JupyterLab for focus and lost in ways that
+       * were hard to see: the notebook adds a cell below the last one you run
+       * and selects it, which arrives *after* the round has put the cursor on
+       * the prompt, so the guard dragged the user onto a diff and the Enter
+       * meant to start the review became the merge verdict. Refusing the keys
+       * up front decides nothing about where the user is -- it only declines
+       * to move them.
+       *
+       * Cell-to-cell navigation is not needed inside a session anyway: the
+       * verdicts advance it, and the counter's jump button covers being lost.
+       */
+      const NAVIGATION = new Set([
+        'ArrowUp',
+        'ArrowDown',
+        'PageUp',
+        'PageDown',
+        'Home',
+        'End',
+        'j',
+        'k'
+      ]);
+      const onKey = (event: KeyboardEvent) => {
+        if (panel.content.mode !== 'command' || !NAVIGATION.has(event.key)) {
+          return;
+        }
+        if (event.ctrlKey || event.metaKey || event.altKey) {
+          return; // a chord is something else entirely; leave it alone
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        counters.get(panel.id)?.refuse();
+      };
+      panel.content.node.addEventListener('keydown', onKey, true);
+
+      sessions.set(panel.id, () => {
+        panel.content.node.classList.remove('jv-review-session');
+        panel.content.node.removeEventListener('mousedown', onPointer, true);
+        panel.content.node.removeEventListener('click', onPointer, true);
+        panel.content.node.removeEventListener('keydown', onKey, true);
+      });
+    };
+
+    /** The graceful exit: every trace of the session goes with it. */
+    const endSession = (panel: NotebookPanel) => {
+      sessions.get(panel.id)?.();
+      sessions.delete(panel.id);
     };
 
     /**
@@ -154,11 +256,13 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
 
       if (!pending.length) {
         counters.get(panel.id)?.hide();
+        endSession(panel);
         if (!showingProblem.has(panel.id)) {
           clearOutput(panel);
         }
         return;
       }
+      startSession(panel);
       // The counter exists for one failure mode: walking away with edits
       // still open. So it appears exactly while that is possible.
       const counter = counterFor(panel);
@@ -219,14 +323,13 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       const controls = new ReviewControls({
         onAccept: () => app.commands.execute(CommandIDs.accept),
         onReject: () => app.commands.execute(CommandIDs.reject),
-        // Enter is the merge verdict only when accept is Y/N; in
-        // enter-backspace mode Enter already means accept.
-        onModify: yn
-          ? () => app.commands.execute(CommandIDs.editProposal)
-          : undefined,
+        // The merge verdict exists under both key schemes. Enter carries it
+        // when accept is Y/N; when Enter is accept, Space does, so choosing
+        // the other keyboard preference does not quietly cost a verdict.
+        onModify: () => app.commands.execute(CommandIDs.editProposal),
         acceptKey: yn ? 'Y' : '⏎',
         rejectKey: yn ? 'N' : '⌫',
-        modifyKey: yn ? '⏎' : undefined
+        modifyKey: yn ? '⏎' : 'space'
       });
       void proposal;
       Widget.attach(controls, host);

@@ -61,23 +61,27 @@ free: dispose the overlay, unhide the editor.
 Floating over the cell's right edge, vertically stacked, per PROMPT §2:
 
 ```
-                                          ┌──────┐
-   ┌──────────────────────────────────┐   │  ✓   │   Y
-   │  - old line                      │   ├──────┤
-   │  + new line                      │   │  ✗   │   N
-   └──────────────────────────────────┘   ├──────┤
-                                          │  ✎   │   ⏎
-                                          └──────┘
-                                         ⏎ to modify
+                                       ┌──────────┐
+   ┌──────────────────────────────┐    │ ✓ Accept │   Y
+   │  - old line                  │    ├──────────┤
+   │  + new line                  │    │ ✗ Reject │   N
+   └──────────────────────────────┘    ├──────────┤
+                                       │ ✎ Modify │   ⏎
+                                       └──────────┘
 ```
 
 - Buttons are `position: sticky; top: …` inside an absolutely positioned right-edge container so
   they stay visible while a long cell scrolls.
-- Accept and reject are 52px: they are the primary interaction of the extension and were far too
-  small to hit comfortably at first (docs/14 N2).
-- Under each button, small text names its shortcut (`Y` / `N` / `⏎`).
-- The third verdict — merge and hand-edit — has a button of its own, smaller than the other two,
-  plus a line of text naming its key. It existed from the start but nothing on screen said so.
+- They are large: the primary interaction of the extension, and far too small to hit comfortably
+  at first (docs/14 N2).
+- **Each says what it does, in a word.** A stack of ✓, ✗ and ✎ asks the reader to guess which one
+  is the merge. The key stays a caption underneath, where it reads as a shortcut rather than as
+  part of what the button says — and the separate line of hint text that used to sit below the
+  stack is gone, because it repeated the caption two lines above it.
+- **The merge verdict exists under both key schemes.** With `Y`/`N` it is `Enter`, which is free;
+  when `Enter` is accept it is `Space`, which means nothing in command mode and sits under the
+  hand. Losing a whole verdict by preferring one keyboard scheme would have made the two quietly
+  unequal.
 - Only the _active_ proposal shows the stack; others show a thin left border marker so the user
   can see how many remain in view.
 
@@ -123,21 +127,54 @@ the keys that resolve it do nothing.
 When no edits were proposed, or once the last verdict is in, the prompt becomes its markdown
 record and the cells the round inserted become the selection.
 
+## The review session
+
+A review is a session, not a decoration. While edits are pending the notebook
+carries `jv-review-session`: every cell that is not under review — the prompt
+excepted, since it is the round — dims and stops answering. Clicks on one are
+caught in the capture phase and refused, and the notebook's own cell-to-cell
+navigation keys are declined.
+
+This exists for one failure mode: clicking away into another cell, forgetting
+the diffs, and leaving a round open. That is how a proposal gets applied days
+later, or never.
+
+Two things it must not be. It must not be a trap — `Escape` rejects
+everything remaining and closes it, from anywhere in the notebook, which is
+why that binding is scoped to the whole notebook rather than to a cell. And
+it must not refuse in silence: a click that does nothing is
+indistinguishable from a broken page, so the counter's border flashes red.
+
+The exit is graceful and total. The class, both listeners, the dimming, the
+diffs, and the counter all go together the moment the last verdict lands.
+
+**Guard the input, never chase the focus.** The first implementation watched
+`activeCellChanged` and hauled the selection back to a diff. It fought
+JupyterLab for focus and lost in ways that took a bisect to see: running the
+last cell makes JupyterLab add a cell below and select it, which arrives
+_after_ the round has put the cursor on the prompt — so the guard dragged the
+user onto a diff, and the `Enter` meant to start the review arrived as the
+merge verdict instead. Refusing keys and clicks up front decides nothing
+about where the user is; it only declines to move them.
+
 ## The review counter
 
-The only floating chrome. It exists for one failure mode — walking away with
-edits still unresolved — so it appears exactly while that is possible and
+The only floating chrome, and the session's only control surface. It exists
+for the failure mode above, so it appears exactly while that is possible and
 vanishes the moment the last verdict lands.
 
 ```
-        ┌──────────────────────────────────────────────────┐
-        │ 3 edits left to review   reject the rest   ⌘Z … │
-        └──────────────────────────────────────────────────┘
+   ┌───────────────────────────────────────────────────────────────┐
+   │ 3 edits left to review  jump to next ⏎  reject the rest esc  … │
+   └───────────────────────────────────────────────────────────────┘
 ```
 
-Top-centre and translucent, because it is a reminder rather than a control
-panel and it must not hide the code being reviewed. It carries the two ways
-out: reject what is left, or take a verdict back with `Cmd+Z`.
+Translucent, because it is a reminder rather than a control panel, and set
+below the notebook's toolbar rather than across it — floating over the
+toolbar made it read as part of JupyterLab instead of part of the round. It
+carries every way out: jump to the next edit, reject what is left, or take a
+verdict back with `Cmd+Z`. Each names the key that does the same thing, so
+the mouse teaches the keyboard.
 
 Everything else a round has to say — progress, the context meter, errors, the
 proposal count itself — belongs to the prompt cell's output area, next to the
@@ -166,23 +203,31 @@ selectors matched nothing and `Y` / `N` / `Enter` did nothing at all. Only the b
 which is exactly why it went unnoticed for so long — the first end-to-end run of the review flow
 is what found it.
 
-Review also _begins_ on the keyboard: `beginReview` selects the first proposal, puts the notebook
-in command mode, and takes focus. Settling a round leaves an editor focused otherwise, so the
-first `Y` went into a cell as the letter y.
+Review also _begins_ on the keyboard, but not by moving anyone: `beginReview` leaves the user on
+the prompt cell, which shows the count, and `Enter` starts the walk. Settling a round leaves an
+editor focused otherwise, so the first `Y` went into a cell as the letter y.
 
-| Keys                              | Command                                                               | Context                                  |
-| --------------------------------- | --------------------------------------------------------------------- | ---------------------------------------- |
-| `Shift+Enter` on `>` cell         | (core run, intercepted)                                               | always                                   |
-| `Cmd+Shift+Enter` on `>` markdown | `jupyter-vybe:reopen-prompt`                                          | always                                   |
-| `Alt+E`                           | `jupyter-vybe:goto-first-proposal`                                    | round active                             |
-| `Alt+Shift+E`                     | `jupyter-vybe:reject-all`                                             | round active                             |
-| `Y`                               | `jupyter-vybe:accept-proposal`                                        | command mode, on a proposal              |
-| `N`                               | `jupyter-vybe:reject-proposal`                                        | command mode, on a proposal              |
-| `Enter`                           | `jupyter-vybe:edit-proposal` — materialise the merge, enter edit mode | command mode, on a proposal              |
-| `J` / `K`, `↓` / `↑`              | next / previous proposal                                              | command mode, round active               |
-| `Cmd+Z`                           | `jupyter-vybe:undo` (layered, see [02](02-prompt-cells.md))           | round active                             |
-| `Ctrl+C`                          | `jupyter-vybe:cancel-round`                                           | round active                             |
-| `Alt+Shift+Z`                     | `jupyter-vybe:undo-reject-all`                                        | command mode (the round is already over) |
+_Never enter edit mode without saying which cell._ The merge verdict accepts the proposal first,
+and accepting advances the review — so `mode = 'edit'` landed the cursor on whatever the advance
+had selected, usually the prompt. The merge sets the active cell back to the merged one before
+entering edit mode, and puts the cursor at the end of it. Undo has the mirror of this problem:
+it restores the prompt cell for review, which focuses the prompt, so taking a verdict back has to
+focus the restored diff afterwards or the next `Y` lands nowhere.
+
+| Keys                                  | Command                                                               | Context                                  |
+| ------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------- |
+| `Shift+Enter` on `>` cell             | (core run, intercepted)                                               | always                                   |
+| `Cmd+Shift+Enter` on `>` markdown     | `jupyter-vybe:reopen-prompt`                                          | always                                   |
+| `Enter`                               | `jupyter-vybe:goto-first-proposal`                                    | on the prompt cell, edits pending        |
+| `N`                                   | `jupyter-vybe:reject-all`                                             | on the prompt cell, edits pending        |
+| `Escape`                              | `jupyter-vybe:reject-all` — the way out of a session                  | anywhere in a review session             |
+| `Y`                                   | `jupyter-vybe:accept-proposal`                                        | command mode, on a proposal              |
+| `N`                                   | `jupyter-vybe:reject-proposal`                                        | command mode, on a proposal              |
+| `Enter` (`Space` in the other scheme) | `jupyter-vybe:edit-proposal` — materialise the merge, enter edit mode | command mode, on a proposal              |
+| `J` / `K`, `↓` / `↑`                  | refused, with a flash — a session does not let you wander off         | command mode, review session             |
+| `Cmd+Z`                               | `jupyter-vybe:undo` (layered, see [02](02-prompt-cells.md))           | round active                             |
+| `Ctrl+C`                              | `jupyter-vybe:cancel-round`                                           | round active                             |
+| `Alt+Shift+Z`                         | `jupyter-vybe:undo-reject-all`                                        | command mode (the round is already over) |
 
 ### Why `Y` / `N` and not `Enter` / `Backspace`
 

@@ -13,7 +13,21 @@ import {
   isSettledPromptCell
 } from '../notebook/promptCell';
 import { kernelInfo } from '../notebook/snapshot';
-import { focusActiveCell } from './rounds';
+import { focusActiveCell, placeCursorAtEnd } from './rounds';
+
+/** Index of a cell by id, or -1. Local: mutations keeps its own, unexported. */
+function indexOfCellId(panel: NotebookPanel, cellId: string): number {
+  const cells = panel.content.model?.cells;
+  if (!cells) {
+    return -1;
+  }
+  for (let i = 0; i < cells.length; i++) {
+    if (cells.get(i).id === cellId) {
+      return i;
+    }
+  }
+  return -1;
+}
 
 export namespace CommandIDs {
   export const accept = 'jupyter-vybe:accept-proposal';
@@ -50,6 +64,15 @@ const ROUND_SELECTOR = '.jp-Notebook.jp-mod-commandMode.jv-round-active';
  */
 const PROMPT_PENDING_SELECTOR =
   '.jp-Notebook.jp-mod-commandMode .jp-Cell.jv-prompt-pending:focus';
+/**
+ * Anywhere in a notebook whose review session is open.
+ *
+ * Deliberately the whole notebook rather than a cell: Escape has to work from
+ * wherever the user has ended up, because it is the way out. A session the
+ * user cannot leave without finding the right cell first is a trap, and a
+ * modal state with no escape hatch is the thing people rightly hate.
+ */
+const SESSION_SELECTOR = '.jp-Notebook.jp-mod-commandMode.jv-review-session';
 
 export const commandsPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-vybe:commands',
@@ -118,7 +141,18 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
         const cellId = p.cellId;
         proposals.accept(panel, p.id);
         materialiseMerge(panel, cellId, merged, proposals.logFor(panel));
+        // Accepting advances the review, which moves the active cell on to
+        // the next proposal -- or, when that was the last one, to the prompt.
+        // Edit mode then landed the cursor there rather than in the merged
+        // cell, which is the one place the user has just been invited to
+        // type. Put it back before entering edit mode.
+        const idx = indexOfCellId(panel, cellId);
+        if (idx !== -1) {
+          panel.content.activeCellIndex = idx;
+          panel.content.deselectAll();
+        }
         panel.content.mode = 'edit';
+        placeCursorAtEnd(panel);
       }
     });
 
@@ -256,9 +290,14 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
 
     bind(CommandIDs.accept, yn ? ['Y'] : ['Enter'], REVIEW_SELECTOR);
     bind(CommandIDs.reject, yn ? ['N'] : ['Backspace'], REVIEW_SELECTOR);
-    if (yn) {
-      bind(CommandIDs.editProposal, ['Enter'], REVIEW_SELECTOR);
-    }
+    // Modify exists under both key schemes. In Y/N it is Enter, which is
+    // free; in Enter/Backspace, Enter is already accept, so it is Space --
+    // which has no meaning in command mode and is the only remaining key
+    // that sits under the hand. Losing a verdict because of a keyboard
+    // preference would have made the two schemes quietly unequal.
+    bind(CommandIDs.editProposal, yn ? ['Enter'] : ['Space'], REVIEW_SELECTOR);
+    // The way out of a review session, from anywhere in it.
+    bind(CommandIDs.rejectAll, ['Escape'], SESSION_SELECTOR);
     // Two keys, no chords: from the prompt cell, Enter starts the review and
     // N rejects the lot. A chord for the primary action of the tool was the
     // wrong default.

@@ -320,6 +320,12 @@ export class Proposals implements IVybeProposals {
     if (idx !== -1) {
       panel.content.activeCellIndex = idx;
       panel.content.mode = 'command';
+      // Focused, not merely active. Undo runs after the prompt cell has been
+      // put back for review, which focuses the prompt -- so without this the
+      // restored diff reappears while the cursor sits somewhere else, and the
+      // next Y or N lands nowhere. Taking a verdict back means being back at
+      // the diff you took it back from.
+      panel.content.widgets[idx]?.node.focus();
       panel.content.widgets[idx]?.node.scrollIntoView({
         behavior: 'smooth',
         block: 'center'
