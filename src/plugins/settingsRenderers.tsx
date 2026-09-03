@@ -106,14 +106,12 @@ const RELEVANCE: Record<string, (group: Record<string, any>) => string | null> =
     'context.maxOutputChars': g =>
       g.includeOutputs ? null : 'Outputs are not being sent.',
     'history.location': g => (g.persist ? null : 'History is not being kept.'),
-    'completion.debounceMs': () =>
-      'Suggestions are asked for on Option+Tab, not on a timer.',
     'completion.enabled': () => null,
-    'completion.maxTokens': g =>
-      g.enabled ? null : 'Inline completion is off.',
     'completion.timeoutSeconds': g =>
       g.enabled ? null : 'Inline completion is off.',
-    'completion.multiline': g =>
+    'completion.triggerKey': g =>
+      g.enabled ? null : 'Inline completion is off.',
+    'completion.maxLines': g =>
       g.enabled ? null : 'Inline completion is off.',
     'completion.agentId': g => (g.enabled ? null : 'Inline completion is off.')
   };

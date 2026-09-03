@@ -30,8 +30,9 @@ to them:
 ## Explicitly out of scope for v1.0
 
 - **Advanced inline autocompletion.** Described in README but absent from PROMPT's build list.
-  It is a different subsystem (`ICompletionProviderManager` + FIM prompting) with its own
-  latency budget. Deferred to v1.1 — see [12-decisions.md](12-decisions.md) D5.
+  It is a different subsystem with its own latency budget. Deferred to v1.1, where it shipped as
+  a FIM-prompted completion provider, and reworked in v1.2 into on-demand ghost text — see
+  [12-decisions.md](12-decisions.md) D5.
 - Multi-file / repository awareness. Context is the open notebook only.
 - Agent-initiated cell _deletion_ or _reordering_. The tool surface is add-below and
   propose-edit; nothing else.

@@ -71,7 +71,8 @@ arriving at the source rather than the plan:
 | `src/plugins/proposals.ts`       | Staging, review, verdicts, and both undo layers.                       |
 | `src/notebook/mutations.ts`      | The only module permitted to write to a notebook.                      |
 | `src/notebook/snapshot.ts`       | Serialisation and the truncation ladder.                               |
-| `src/plugins/inlineCompleter.ts` | Ghost text, and the machinery for not showing stale text.              |
+| `src/plugins/inlineCompleter.ts` | Ghost text on demand: the request, and what the kernel adds to it.     |
+| `src/completion/ghost.ts`        | The ghost text itself, and why Tab and Backspace are ours to bind.     |
 | `jupyter_vybe/protocol.py`       | The tagged-text parser, and salvage for models that will not use it.   |
 | `jupyter_vybe/assembler.py`      | Prompt assembly; the notebook as a numbered listing.                   |
 | `jupyter_vybe/diffsummary.py`    | What changed since the last turn, for follow-up prompts.               |

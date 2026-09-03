@@ -156,8 +156,10 @@ Verified against a live model end to end — handshake, hello, prompt, `add_cell
 eight tests that drive it through a real socket with real RFC 6455 frames, because a sidecar that
 only works when tested through a mock is a sidecar that does not work.
 
-**Advanced inline autocompletion** ([00](00-overview.md), [12](12-decisions.md) D5) as an
-`ICompletionProviderManager` provider using FIM prompting — `README_turbofieldfare.md` documents
-Gemma's `<|fim_prefix|>` / `<|fim_suffix|>` / `<|fim_middle|>` tokens, and Qwen2.5-Coder has its
-own FIM format, so both backends can serve it. Estimated ~8 days: a provider, a debounce/cancel
-policy, a ghost-text renderer, and a separate quality bench.
+**Advanced inline autocompletion** ([00](00-overview.md), [12](12-decisions.md) D5). Built in
+v1.1 as an `ICompletionProviderManager` provider using FIM prompting, and rebuilt in v1.2 as
+something quite different: a CodeMirror extension that asks nothing until a trigger key, sends
+the notebook as a script rather than the cell as a FIM pair, streams the answer into ghost text,
+and extends that ghost text when the trigger is pressed again. The estimate was right about the
+day count and wrong about the shape — most of the work turned out to be in what the keys mean,
+not in what the model is asked. See D5 for why each part changed.
