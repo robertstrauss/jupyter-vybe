@@ -37,6 +37,7 @@ import type { IRoundHandle } from '../plugins/proposals';
 const kernelSpec = { name: 'python3' };
 
 function fakePanel(): any {
+  const classes = new Set<string>();
   const cells = [
     { id: 'p1', type: 'code', source: '#% do a thing', metadata: {} }
   ];
@@ -47,8 +48,16 @@ function fakePanel(): any {
     content: {
       // The round marker lives on the content node -- the element carrying
       // .jp-Notebook -- because that is what the keybinding selectors match.
+      // Real enough to assert on: `jv-can-revert` is what makes Cmd+Z reach
+      // the round when focus has wandered off the cell.
       node: {
-        classList: { add: () => undefined, remove: () => undefined },
+        classList: {
+          add: (c: string) => classes.add(c),
+          remove: (c: string) => classes.delete(c),
+          contains: (c: string) => classes.has(c),
+          toggle: (c: string, on: boolean) =>
+            on ? classes.add(c) : classes.delete(c)
+        },
         focus: () => undefined
       },
       activeCellIndex: 0,
@@ -76,7 +85,8 @@ function fakePanel(): any {
           ]
         })
       }
-    }
+    },
+    classes
   };
 }
 
@@ -310,6 +320,21 @@ describe('Rounds', () => {
       // ...and the cursor put back in the prompt, because undoing a generation
       // is almost always the prelude to rewording it.
       expect(panel.content.mode).toBe('edit');
+    });
+
+    /**
+     * The user's report: Cmd+Z did nothing after a round settled. Settling
+     * replaces the prompt cell's widget and focus goes with it, so a binding
+     * that required a focused cell never fired. This class is the binding's
+     * other target, and it has to appear and vanish with the undo window.
+     */
+    it('marks the notebook while the round can still be taken back', async () => {
+      const { panel, rounds } = await settled();
+      expect(panel.classes.has('jv-can-revert')).toBe(true);
+
+      rounds.revertLast(panel);
+
+      expect(panel.classes.has('jv-can-revert')).toBe(false);
     });
 
     it('only reaches back one round', async () => {

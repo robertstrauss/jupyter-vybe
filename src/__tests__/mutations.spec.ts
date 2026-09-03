@@ -1,5 +1,18 @@
+/**
+ * `changeCellType` replaces the cell rather than mutating it, which is the
+ * whole reason the convert/revert path is delicate. The fake does the same:
+ * a new model object, of the new type, with the source carried across.
+ */
+jest.mock('@jupyterlab/notebook', () => ({
+  NotebookActions: {
+    changeCellType: (content: any, type: string) =>
+      content.replaceActiveCellType(type)
+  }
+}));
+
 import {
   OperationLog,
+  convertPromptToMarkdown,
   applyProposal,
   insertCellsBelow,
   findCellModel,
@@ -33,8 +46,31 @@ function fakePanel(initial: Fake[]): any {
     };
   }
 
+  /**
+   * `model.cells` lags inside a transaction: it does not see writes made in
+   * the transaction it is in. Modelled with a snapshot taken when the
+   * outermost transaction opens, because code that reads an index or a cell
+   * model back inside its own transaction gets a stale answer in the app and
+   * must get one here too.
+   */
+  let depth = 0;
+  let snapshot: any[] | null = null;
+
   const shared = {
-    transact: (fn: () => void) => fn(),
+    transact: (fn: () => void) => {
+      if (depth === 0) {
+        snapshot = cells.slice();
+      }
+      depth++;
+      try {
+        fn();
+      } finally {
+        depth--;
+        if (depth === 0) {
+          snapshot = null;
+        }
+      }
+    },
     // The ydoc's own view of the cells, which stays current inside a
     // transaction where `model.cells` does not -- that difference is a real
     // bug this suite now covers, so the fake has to model it.
@@ -61,17 +97,27 @@ function fakePanel(initial: Fake[]): any {
       mode: 'command',
       deselectAll: () => undefined,
       widgets: [],
+      replaceActiveCellType(type: string) {
+        const at = this.activeCellIndex;
+        const old = cells[at];
+        cells[at] = wrap({
+          id: old.id,
+          cell_type: type,
+          source: old.sharedModel.getSource()
+        });
+      },
       model: {
         cells: {
           get length() {
-            return cells.length;
+            return (snapshot ?? cells).length;
           },
-          get: (i: number) => cells[i]
+          get: (i: number) => (snapshot ?? cells)[i]
         },
         sharedModel: shared
       }
     },
     sources: () => cells.map(c => c.sharedModel.getSource()),
+    types: () => cells.map(c => c.type),
     ids: () => cells.map(c => c.id),
     /** Stands in for the user deleting a cell themselves. */
     userDeletes: (index: number) => shared.deleteCell(index)
@@ -186,6 +232,51 @@ describe('revertRound', () => {
 
     expect(panel.sources()).toEqual(before);
     expect(panel.ids()).toEqual(['a', 'b']);
+  });
+
+  /**
+   * The bug: undoing a settled round removed the cells it had inserted but
+   * left the prompt as settled markdown, so the user could not reword and
+   * re-run it. `changeCellType` ran inside the round-wide transaction, where
+   * `model.cells` still showed the pre-transaction notebook -- so the source
+   * was restored onto the cell model that had just been discarded.
+   */
+  it('gives the prompt cell back as an editable code cell', () => {
+    const panel = fakePanel([
+      { id: 'p', cell_type: 'code', source: '#% plot the data' }
+    ]);
+    const log = new OperationLog();
+
+    convertPromptToMarkdown(panel, 'p', '#% plot the data\n\ndone\n', log);
+    expect(panel.types()).toEqual(['markdown']);
+
+    revertRound(panel, log);
+
+    expect(panel.types()).toEqual(['code']);
+    expect(panel.sources()).toEqual(['#% plot the data']);
+  });
+
+  /**
+   * The same transaction bug, one step further on: with the deletes and the
+   * conversion sharing a transaction, the index looked up for the prompt was
+   * computed against a notebook that still held the inserted cells -- so the
+   * conversion landed on a cell the agent had written, or on the user's own.
+   */
+  it('finds the prompt cell after its inserted cells are removed', () => {
+    const panel = fakePanel([
+      { id: 'p', cell_type: 'code', source: '#% plot the data' },
+      { id: 'mine', cell_type: 'code', source: 'do not touch me' }
+    ]);
+    const log = new OperationLog();
+
+    insertCellsBelow(panel, 'p', [{ type: 'code', source: 'plot(x)' }], log);
+    convertPromptToMarkdown(panel, 'p', '#% plot the data\n', log);
+
+    revertRound(panel, log);
+
+    expect(panel.ids()).toEqual(['p', 'mine']);
+    expect(panel.types()).toEqual(['code', 'code']);
+    expect(panel.sources()).toEqual(['#% plot the data', 'do not touch me']);
   });
 
   it('unwinds in reverse, so two edits to one cell land back at the start', () => {

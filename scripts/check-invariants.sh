@@ -134,4 +134,26 @@ else
   echo "pass  D2: adapters are host-agnostic"
 fi
 
+# T-BUILD: the bundle the browser loads must be newer than the source.
+#
+# `jlpm build` runs `jupyter-builder`, and when that is not on PATH -- the
+# usual cause being a shell without the virtualenv activated -- the step is
+# skipped and the whole command still exits 0. The Playwright suite then runs
+# happily against whatever bundle was built last, so a fix can be "verified"
+# in a browser that never loaded it. That cost an afternoon; it does not get
+# to cost a second one.
+bundle=$(ls -t jupyter_vybe/labextension/static/lib_index_js.*.js 2>/dev/null | head -1)
+if [ -z "$bundle" ]; then
+  echo "FAIL T-BUILD: no built labextension; run 'jlpm build' with the venv active"
+  fail=1
+else
+  newer=$(find src -newer "$bundle" -name '*.ts*' -print -quit 2>/dev/null)
+  if [ -n "$newer" ]; then
+    echo "FAIL T-BUILD: $newer is newer than the built bundle; rebuild before testing"
+    fail=1
+  else
+    echo "pass  T-BUILD: the built bundle is current with src/"
+  fi
+fi
+
 exit $fail

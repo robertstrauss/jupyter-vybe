@@ -50,6 +50,31 @@ export function focusActiveCell(panel: NotebookPanel): void {
   }
 }
 
+/**
+ * Put the text cursor at the end of the active cell, ready to keep typing.
+ *
+ * Deferred, because the caller has just changed the cell's type: the widget
+ * carrying the editor is built on a later frame, and `editor` is null until
+ * then. `ready` resolves once it exists.
+ */
+export function placeCursorAtEnd(panel: NotebookPanel): void {
+  const cell = panel.content.activeCell;
+  if (!cell) {
+    return;
+  }
+  void cell.ready.then(() => {
+    const editor = cell.editor;
+    if (!editor || cell.isDisposed) {
+      return;
+    }
+    const text = cell.model.sharedModel.getSource();
+    editor.setCursorPosition(
+      editor.getPositionAt(text.length) ?? { line: 0, column: 0 }
+    );
+    editor.focus();
+  });
+}
+
 /** One prompt execution and everything it produces (docs/02). */
 export class Round {
   readonly id = UUID.uuid4();
@@ -133,6 +158,7 @@ export class Rounds implements IVybeRounds {
     // A new round replaces the last one's undo: Cmd+Z reaches back one round,
     // and reaching further would delete cells the user has since worked on.
     this._lastSettled.delete(panel.id);
+    this._markRevertable(panel);
     const round = new Round(panel, cell.model.id, source);
     this._active.set(panel.id, round);
     // On the *content* node, which is the element carrying .jp-Notebook: the
@@ -579,10 +605,13 @@ export class Rounds implements IVybeRounds {
     if (idx !== -1) {
       panel.content.activeCellIndex = idx;
       panel.content.deselectAll();
-      // Edit mode with the cursor in the prompt: undoing a round is almost
-      // always the prelude to rewording it.
+      // Edit mode with the cursor at the end of the prompt text: undoing a
+      // round is almost always the prelude to rewording it, and landing at
+      // the start of the line would mean pressing End before typing.
       panel.content.mode = 'edit';
+      placeCursorAtEnd(panel);
     }
+    this._markRevertable(panel);
     return true;
   }
 
@@ -631,6 +660,26 @@ export class Rounds implements IVybeRounds {
     if (round.state === 'settled' && round.log.operations.length) {
       this._lastSettled.set(round.panel.id, round);
     }
+    this._markRevertable(round.panel);
+  }
+
+  /**
+   * Advertise on the notebook node that there is a round to undo.
+   *
+   * The undo keybinding was scoped to the focused *cell*, which is only where
+   * focus is if nothing has disturbed it -- and settling a round disturbs it
+   * plenty: converting the prompt to markdown replaces that cell's widget, and
+   * the browser drops focus to the body along with it. Cmd+Z then went to
+   * core, which had nothing of ours to undo, and the round stood. A class on
+   * the notebook gives the binding a target that survives the churn, and being
+   * strictly more specific than core's selector it wins the tie outright
+   * rather than by registration order.
+   */
+  private _markRevertable(panel: NotebookPanel): void {
+    panel.content.node.classList.toggle(
+      'jv-can-revert',
+      this.canRevertLast(panel)
+    );
   }
 
   private _indexOf(panel: NotebookPanel, cellId: string): number {

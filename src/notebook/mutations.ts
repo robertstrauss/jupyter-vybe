@@ -8,9 +8,11 @@ import type { ICellModel } from '@jupyterlab/cells';
  * which is what keeps it structurally unable to corrupt a notebook. Direct
  * `model.cells` manipulation is banned elsewhere and enforced by lint.
  *
- * Every mutation of a round runs inside one `sharedModel.transact`, so the ydoc
- * undo manager sees the whole round as a single unit and a plain Cmd+Z reverts
- * it atomically.
+ * Writes run inside `sharedModel.transact` so the ydoc undo manager sees them
+ * as units. Note that `model.cells` does not observe writes made inside the
+ * transaction it is in: any index or cell model needed after a write has to be
+ * read once that write has committed. Getting this wrong is silent -- the write
+ * lands on a detached model -- and has cost this project two bugs.
  */
 
 export type ICellSpec = { type: 'code' | 'markdown'; source: string };
@@ -222,42 +224,86 @@ export function convertPromptToMarkdown(
   log.record({ kind: 'convert', cellId, beforeType, beforeSource });
 }
 
-/** Replay a round's operations backwards. Used by cancel and reject-all. */
+/**
+ * Replay a round's operations backwards. Used by cancel, reject-all and undo.
+ *
+ * One transaction per operation, not one around the lot.
+ *
+ * A single enclosing transaction reads better and would group the whole revert
+ * for the ydoc undo manager, but it is wrong twice over. `model.cells` does not
+ * see writes made inside the transaction it is in, so (a) after deleting the
+ * cells an insert added, the index lookups for the remaining operations are
+ * computed against a notebook that still contains them -- aiming an edit or a
+ * cell-type change at whatever now sits at that index -- and (b)
+ * `changeCellType` replaces the cell, so the model read back to restore the
+ * source is the detached one, and the write lands nowhere. That second bug is
+ * why undoing a round removed the inserted cells but left the prompt as
+ * settled markdown.
+ */
 export function revertRound(panel: NotebookPanel, log: OperationLog): void {
   const model = panel.content.model;
   if (!model) {
     return;
   }
-  model.sharedModel.transact(() => {
-    let op = log.pop();
-    while (op) {
-      if (op.kind === 'insert') {
-        for (const id of [...op.cellIds].reverse()) {
+  let op = log.pop();
+  while (op) {
+    if (op.kind === 'insert') {
+      const ids = [...op.cellIds].reverse();
+      model.sharedModel.transact(() => {
+        for (const id of ids) {
           const idx = sharedIndexOfCell(panel, id);
           if (idx !== -1) {
             model.sharedModel.deleteCell(idx);
           }
         }
-      } else if (op.kind === 'edit') {
-        const cell = findCellModel(panel, op.cellId);
-        cell?.sharedModel.setSource(op.before);
-      } else {
-        const idx = indexOfCell(panel, op.cellId);
-        if (idx !== -1) {
-          const priorActive = panel.content.activeCellIndex;
-          panel.content.activeCellIndex = idx;
-          panel.content.deselectAll();
-          NotebookActions.changeCellType(
-            panel.content,
-            op.beforeType as 'code' | 'markdown' | 'raw'
-          );
-          model.cells.get(idx).sharedModel.setSource(op.beforeSource);
-          panel.content.activeCellIndex = priorActive;
-        }
+      });
+    } else if (op.kind === 'edit') {
+      const cell = findCellModel(panel, op.cellId);
+      const before = op.before;
+      if (cell) {
+        model.sharedModel.transact(() => {
+          cell.sharedModel.setSource(before);
+        });
       }
-      op = log.pop();
+    } else {
+      revertConversion(panel, op);
     }
-  });
+    op = log.pop();
+  }
+}
+
+/**
+ * Put a converted cell back to the type and source it had.
+ *
+ * Deliberately outside any transaction: `changeCellType` swaps the cell for a
+ * new one, and only once the change has committed does `activeCell` name the
+ * cell that now exists. Reading it any earlier hands back the cell that was
+ * just thrown away.
+ */
+function revertConversion(
+  panel: NotebookPanel,
+  op: Extract<IOperation, { kind: 'convert' }>
+): void {
+  const model = panel.content.model;
+  const idx = model ? indexOfCell(panel, op.cellId) : -1;
+  if (!model || idx === -1) {
+    return;
+  }
+  const priorActive = panel.content.activeCellIndex;
+  panel.content.activeCellIndex = idx;
+  panel.content.deselectAll();
+  NotebookActions.changeCellType(
+    panel.content,
+    op.beforeType as 'code' | 'markdown' | 'raw'
+  );
+  const restored = model.cells.get(idx);
+  if (restored) {
+    const beforeSource = op.beforeSource;
+    model.sharedModel.transact(() => {
+      restored.sharedModel.setSource(beforeSource);
+    });
+  }
+  panel.content.activeCellIndex = priorActive;
 }
 
 /**

@@ -569,6 +569,50 @@ test('undo walks a whole round back, ending at an editable prompt', async ({
   expect(after.some(c => c.source.includes('added by the round'))).toBe(false);
 });
 
+/**
+ * The user's report, reproduced: a round that only inserts settles on its own,
+ * with no verdicts to give. That conversion replaces the prompt cell's widget
+ * and focus goes with it -- so the test deliberately does not click anything
+ * first, and asks for the whole round back in a single press.
+ */
+test('one undo takes back a settled round nobody had to review', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1');
+  await page.notebook.addCell('code', '> write me a helper');
+
+  await page.notebook.runCell(1, { wait: false });
+
+  // Settled without review: the cell is inserted and the prompt is markdown.
+  await expect.poll(async () => (await cells(page))[1].type).toBe('markdown');
+  await expect
+    .poll(async () => (await cells(page)).map(c => c.source).join('\n'))
+    .toContain('def double(x)');
+
+  // The class the notebook-level binding selects on, without which the key
+  // falls through to core: focus is on a cell here, but that has not been
+  // reliable, which is exactly why the binding no longer depends on it.
+  await expect(page.locator('.jp-Notebook.jv-can-revert')).toBeVisible();
+
+  await page.keyboard.press('ControlOrMeta+z');
+
+  // The inserted cell is gone and the prompt is editable code again.
+  await expect.poll(async () => (await cells(page))[1].type).toBe('code');
+  const after = await cells(page);
+  expect(after[0].source).toBe('value = 1');
+  expect(after[1].source).toBe('> write me a helper');
+  expect(after.some(c => c.source.includes('def double'))).toBe(false);
+
+  // And the cursor is in it, at the end, ready to be reworded.
+  await expect(page.locator('.jp-mod-editMode')).toBeVisible();
+  await page.keyboard.type(' properly');
+  await expect
+    .poll(async () => (await cells(page))[1].source)
+    .toBe('> write me a helper properly');
+});
+
 test('a misused tag is corrected without the user seeing it', async ({
   page
 }) => {

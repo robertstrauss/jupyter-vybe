@@ -265,16 +265,31 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
     bind(CommandIDs.gotoFirst, ['Enter'], PROMPT_PENDING_SELECTOR);
     bind(CommandIDs.rejectAll, ['N'], PROMPT_PENDING_SELECTOR);
     bind(CommandIDs.cancel, ['Ctrl C'], ROUND_SELECTOR);
-    // Bound at the *cell* level, where core's notebook-level undo selector
-    // does not reach: Lumino walks up from the focused element and stops at
-    // the first node with a match, so ours fires on the focused cell and core's
-    // still fires everywhere else. When this command is disabled -- nothing of
-    // ours left to undo -- Lumino skips it and core's undo gets the key, which
-    // is exactly the handover we want.
+    // Two selectors, because there are two situations.
+    //
+    // The cell-level one fires during review, when focus is on the cell the
+    // user is walking. The notebook-level one covers the case that made undo
+    // look broken: settling a round replaces the prompt cell's widget, focus
+    // falls back to the document, and a binding that required a focused cell
+    // never ran. `jv-can-revert` is on the notebook exactly while there is a
+    // round of ours to take back, and carrying that third class it outranks
+    // core's `.jp-Notebook.jp-mod-commandMode` on specificity rather than on
+    // registration order.
+    //
+    // Both hand over cleanly: when the command is disabled -- nothing of ours
+    // left to undo -- Lumino skips it and core's undo gets the key.
+    //
+    // `Accel` is Cmd on macOS and Ctrl everywhere else, which is the whole of
+    // the cross-platform story for every binding here.
     bind(
       CommandIDs.undo,
       ['Accel Z'],
       '.jp-Notebook.jp-mod-commandMode .jp-Cell:focus'
+    );
+    bind(
+      CommandIDs.undo,
+      ['Accel Z'],
+      '.jp-Notebook.jp-mod-commandMode.jv-can-revert'
     );
     // Not scoped to ROUND_SELECTOR: after a reject-all the round is over, so
     // the class that selector matches is already gone.
