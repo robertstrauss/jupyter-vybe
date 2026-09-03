@@ -100,9 +100,10 @@ class OllamaAdapter(Adapter):
 
         A zero-token generate is how ollama is asked to load a model without
         being asked anything: it resolves the model, maps it into memory, and
-        holds it for KEEP_ALIVE. Measured at 3.47s cold against 0.6s warm for
-        the first token (docs/08), all of it on the first prompt of a session
-        -- which is exactly the one that forms the user's impression.
+        holds it for KEEP_ALIVE. Measured on qwen2.5-coder:7b: 3.07s to the
+        first token cold, 0.20s once warmed, with the ~1s load moved to the
+        moment the notebook was opened. All of that used to land on the first
+        prompt of a session -- exactly the one that forms the impression.
 
         Every failure is swallowed. Warming is an optimisation; a server that
         is not up, or a model that is not pulled, is a problem for the real

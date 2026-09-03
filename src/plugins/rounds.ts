@@ -728,6 +728,33 @@ export const roundsPlugin: JupyterFrontEndPlugin<IVybeRounds> = {
     void isPromptCell;
     const rounds = new Rounds(tracker, agent, settings, proposals);
     setRounds(rounds);
+
+    /*
+     * Warm the agent when a notebook is opened, not when the first prompt is
+     * run. A local model costs about three seconds to load and 0.6s once
+     * loaded (docs/08), and paying that on the first prompt is precisely what
+     * makes a first prompt look like nothing happened.
+     *
+     * Opening the notebook is the right moment because it is the last one
+     * before the user could possibly ask for anything, and because it is
+     * already a moment they expect to wait a beat. Nothing is warmed when
+     * vybe is switched off: loading a model for someone who has disabled the
+     * extension would be pure imposition.
+     */
+    const warmed = new Set<string>();
+    const warm = (panel: NotebookPanel | null) => {
+      if (!panel || !settings.enabled) {
+        return;
+      }
+      const path = panel.context.path;
+      if (warmed.has(path)) {
+        return;
+      }
+      warmed.add(path);
+      agent.warm(path);
+    };
+    tracker.widgetAdded.connect((_t, panel) => warm(panel));
+
     return rounds;
   }
 };

@@ -50,6 +50,14 @@ export interface IVybeAgent {
    * and sends the whole notebook again rather than a diff.
    */
   resetContext(notebookPath: string): void;
+  /**
+   * Open the channel and tell the agent to get ready.
+   *
+   * Called when a notebook is opened rather than when a prompt is run: a
+   * local model takes about three seconds to load, and paying that on the
+   * first prompt is what makes a first prompt feel broken.
+   */
+  warm(notebookPath: string): void;
   toolResult(
     notebookPath: string,
     callId: string,
@@ -124,6 +132,19 @@ class AgentChannel {
     }
   }
 
+  /**
+   * Post, opening the socket first if it is not open yet.
+   *
+   * `post` is for messages about a round in flight, where a closed socket
+   * means there is nothing left to say to. Warming is the opposite: it is the
+   * first thing said on a channel, and dropping it because the socket had not
+   * finished connecting would silently undo the whole point of it.
+   */
+  async postWhenOpen(payload: Record<string, unknown>): Promise<void> {
+    const ws = await this.ensure();
+    ws.send(JSON.stringify(payload));
+  }
+
   dispose(): void {
     this._ws?.close();
     this._ws = null;
@@ -173,6 +194,15 @@ class VybeAgent implements IVybeAgent {
 
   cancel(notebookPath: string): void {
     this._channels.get(notebookPath)?.post({ op: 'cancel' });
+  }
+
+  warm(notebookPath: string): void {
+    // Unlike the others this *creates* the channel, which is the point: the
+    // hello frame is what builds the session the warm-up runs against. A
+    // failure is not worth reporting -- nobody asked for anything yet.
+    void this.channel(notebookPath)
+      .postWhenOpen({ op: 'warm' })
+      .catch(() => undefined);
   }
 
   resetContext(notebookPath: string): void {

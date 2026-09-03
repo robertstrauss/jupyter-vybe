@@ -20,6 +20,7 @@ from .history import HistoryStore
 from .assembler import (
     assemble_followup,
     assemble_initial,
+    preload_prompts,
     render_notebook,
     resolve_cell_ref,
 )
@@ -100,6 +101,22 @@ class AgentSession:
         except OSError as exc:
             # A read-only home directory loses the record, not the answer.
             _record("history_error", error=str(exc))
+
+    async def warm(self) -> None:
+        """Be ready before the first prompt, not because of it.
+
+        Best-effort throughout: warming is an optimisation, and anything that
+        goes wrong here is a problem for the real request to report properly
+        rather than something to fail an idle notebook over.
+        """
+        preload_prompts()
+        warm = getattr(self.adapter, "warm", None)
+        if warm is None:
+            return
+        try:
+            await warm()
+        except Exception:
+            return
 
     def reset(self) -> None:
         self.messages.clear()

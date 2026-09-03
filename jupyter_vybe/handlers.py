@@ -250,6 +250,11 @@ class AgentSocket(websocket.WebSocketHandler):
         elif op == "cancel":
             if self.session is not None:
                 self.session.cancel()
+        elif op == "warm":
+            # Fire and forget: the client is not waiting on this, and a
+            # notebook that is only being read should never block on it.
+            if self.session is not None:
+                asyncio.ensure_future(self.session.warm())
         elif op == "reset":
             if self.session is not None:
                 self.session.reset()

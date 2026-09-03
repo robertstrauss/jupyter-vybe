@@ -15,6 +15,16 @@ def _load(name: str) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def preload_prompts() -> None:
+    """Read every template once, so the first prompt does not read any.
+
+    Cheap next to loading a model -- assembly measured at 0.1ms (docs/08) --
+    but it is the same idea and it costs nothing to do it at the same time.
+    """
+    for name in ("universal.md", "global.md", "tooling.md", "filtering.md", "template.md"):
+        _load(name)
+
+
 def kernel_banner(kernel: dict) -> str:
     """Pinned context — never subject to the truncation ladder (D13, docs/09)."""
     language = kernel.get("language") or "unknown"
