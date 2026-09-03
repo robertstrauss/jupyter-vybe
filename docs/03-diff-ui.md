@@ -148,6 +148,26 @@ indistinguishable from a broken page, so the counter's border flashes red.
 The exit is graceful and total. The class, both listeners, the dimming, the
 diffs, and the counter all go together the moment the last verdict lands.
 
+### The merge is a session too
+
+Accepting a proposal removes it, and the merge verdict accepts — so the cell
+the user was just invited to hand-edit stopped being a proposal at the moment
+they were asked to edit it, and the review session promptly dimmed it and
+refused their clicks. The merge is therefore a state the session knows about,
+not the absence of one.
+
+While it is open, everything except the cell being edited recedes — the other
+diffs included, because stepping from a half-written merge into a diff would
+leave the merge behind unconfirmed. `Escape` confirms and walks on to the next
+edit; clicking away means the same thing, because a click outside a merge is
+someone finishing, not someone making a mistake. There is nothing to apply
+either way: the merged text has been in the cell since the verdict, and every
+keystroke since is the user's own.
+
+`jv-merge-session` and `jv-review-session` are mutually exclusive, which is
+what stops `Escape` meaning "confirm this merge" and "reject everything" at
+the same time.
+
 **Guard the input, never chase the focus.** The first implementation watched
 `activeCellChanged` and hauled the selection back to a diff. It fought
 JupyterLab for focus and lost in ways that took a bisect to see: running the
@@ -164,10 +184,27 @@ for the failure mode above, so it appears exactly while that is possible and
 vanishes the moment the last verdict lands.
 
 ```
-   ┌───────────────────────────────────────────────────────────────┐
-   │ 3 edits left to review  jump to next ⏎  reject the rest esc  … │
-   └───────────────────────────────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────┐
+   │             3 edits left to review                   │
+   │  [ Next Enter ]  [ Reject All esc ]  [ Undo Merge ⌘Z ]│
+   └──────────────────────────────────────────────────────┘
+
+   ┌──────────────────────────────────────────────────────┐
+   │              Manual proposal review                  │
+   │  [ Confirm Merge and Continue esc ]  [ Undo Merge ⌘Z ]│
+   └──────────────────────────────────────────────────────┘
 ```
+
+Two rows — what is happening, and what to do about it — because they read
+better stacked, and a card tall enough to hold both stops looking like a pill.
+Every action is a button naming the key that does the same thing, set as a
+`<kbd>` in the code font on a grey field so it reads as a key rather than as
+more of the label. That matters most for `esc`, the only one that is a word
+and would otherwise disappear into the sentence beside it.
+
+The border breathes between 30% and 60% brand colour over six seconds: slow
+enough to register as alive rather than as urgent, because the point is that
+an open review is still open, not that it needs attention this second.
 
 Translucent, because it is a reminder rather than a control panel, and set
 below the notebook's toolbar rather than across it — floating over the

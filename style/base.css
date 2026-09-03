@@ -171,25 +171,58 @@
 /* Translucent, and clear of the notebook's own toolbar: floating across the
    toolbar made it read as part of JupyterLab rather than as part of the
    round. It must not hide the code being reviewed either, hence the width it
-   is and not more. */
+   is and not more.
+
+   A card rather than a pill: two rows -- what is happening, and what to do
+   about it -- read better stacked, and a pill tall enough to hold both stops
+   looking like a pill. */
 .jv-review-counter {
   position: absolute;
   top: 46px;
   left: 50%;
   z-index: 10;
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
   align-items: center;
-  padding: 5px 14px;
+  justify-content: center;
+  min-height: 4rem;
+  padding: 8px 18px;
   transform: translateX(-50%);
   font-family: var(--jp-ui-font-family);
   font-size: var(--jp-ui-font-size1);
   color: var(--jp-ui-font-color1);
   background: color-mix(in srgb, var(--jp-layout-color1) 82%, transparent);
-  border: 1px solid var(--jp-border-color1);
-  border-radius: 999px;
+  border: 1px solid var(--jp-brand-color1);
+  border-radius: 1rem;
   box-shadow: var(--jp-elevation-z2);
   backdrop-filter: blur(3px);
+
+  /* Breathing, not blinking. Slow enough to register as alive rather than as
+     something demanding attention -- the point is that an open review is
+     still open, not that it is urgent. */
+  animation: jv-counter-breathe 6s ease-in-out infinite;
+}
+
+@keyframes jv-counter-breathe {
+  0%,
+  100% {
+    border-color: color-mix(in srgb, var(--jp-brand-color1) 30%, transparent);
+  }
+
+  50% {
+    border-color: color-mix(in srgb, var(--jp-brand-color1) 60%, transparent);
+  }
+}
+
+.jv-counter-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.jv-counter-actions > [hidden] {
+  display: none;
 }
 
 .jv-review-counter:hover {
@@ -201,15 +234,33 @@
 }
 
 .jv-counter-button {
-  padding: 1px 8px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 8px;
   cursor: pointer;
   font-family: inherit;
   font-size: var(--jp-ui-font-size0);
   color: var(--jp-ui-font-color2);
   background: none;
   border: 1px solid var(--jp-border-color1);
-  border-radius: 999px;
+  border-radius: 6px;
   white-space: nowrap;
+}
+
+/* The key, dressed as one: code font on a grey field, so it reads as a thing
+   you press rather than as more of the label. Which matters most for `esc` --
+   the only one that is a word, and the only one that would otherwise vanish
+   into the sentence beside it. */
+.jv-key {
+  padding: 0 5px;
+  font-family: var(--jp-code-font-family);
+  font-size: var(--jp-ui-font-size0);
+  line-height: 1.5;
+  color: var(--jp-ui-font-color1);
+  background: var(--jp-layout-color3);
+  border: 1px solid var(--jp-border-color2);
+  border-radius: 3px;
 }
 
 .jv-counter-button:focus-visible {
@@ -217,7 +268,9 @@
   outline-offset: 2px;
 }
 
-.jv-counter-jump:hover {
+.jv-counter-jump:hover,
+.jv-counter-confirm:hover,
+.jv-counter-undo:hover {
   color: var(--jp-brand-color1);
   border-color: var(--jp-brand-color1);
 }
@@ -238,11 +291,12 @@
   }
 
   100% {
-    border-color: var(--jp-border-color1);
+    border-color: color-mix(in srgb, var(--jp-brand-color1) 45%, transparent);
     box-shadow: var(--jp-elevation-z2);
   }
 }
 
+/* Replaces the breathing while it runs, and hands it back afterwards. */
 .jv-counter-refused {
   animation: jv-counter-refuse 700ms ease-out 1;
 }
@@ -251,7 +305,8 @@
 
 /* Everything that is not under review recedes and stops answering, so a
    round cannot be abandoned by wandering off into another cell. */
-.jv-review-session .jp-Cell {
+.jv-review-session .jp-Cell,
+.jv-merge-session .jp-Cell {
   transition: opacity 150ms ease-out;
 }
 
@@ -265,9 +320,23 @@
   cursor: not-allowed;
 }
 
-.jv-counter-hint {
-  font-size: var(--jp-ui-font-size0);
-  color: var(--jp-ui-font-color3);
+/* The merge session: one cell is being hand-edited, and everything else --
+   the other diffs included -- recedes. Stepping from a half-written merge
+   into another diff would leave the merge behind unconfirmed, so the other
+   diffs are dimmed here too rather than treated as still available. */
+.jv-merge-session .jp-Cell:not(.jv-merging) {
+  opacity: 0.32;
+  filter: saturate(0.4);
+}
+
+.jv-merge-session .jp-Cell:not(.jv-merging) .jp-InputArea {
+  cursor: pointer;
+}
+
+/* The one cell that is live, marked so it reads as the subject rather than as
+   one more cell that happens not to be dimmed. */
+.jv-merge-session .jv-merging {
+  border-left: 3px solid var(--jp-brand-color1);
 }
 
 /* ---- inserted cells ---- */

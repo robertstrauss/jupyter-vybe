@@ -42,10 +42,12 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
     const counterFor = (panel: NotebookPanel): ReviewCounter => {
       let counter = counters.get(panel.id);
       if (!counter) {
-        counter = new ReviewCounter(
-          () => app.commands.execute(CommandIDs.rejectAll),
-          () => app.commands.execute(CommandIDs.gotoFirst)
-        );
+        counter = new ReviewCounter({
+          onJump: () => app.commands.execute(CommandIDs.gotoFirst),
+          onRejectAll: () => app.commands.execute(CommandIDs.rejectAll),
+          onConfirmMerge: () => app.commands.execute(CommandIDs.confirmMerge),
+          onUndo: () => app.commands.execute(CommandIDs.undo)
+        });
         counter.addClass('jv-counter-host');
         Widget.attach(counter, panel.node);
         counters.set(panel.id, counter);
@@ -79,23 +81,44 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       return null;
     };
 
+    /**
+     * Whether a click is on something the current session still answers to.
+     *
+     * Two sessions, two answers. Reviewing diffs, the cells under review and
+     * the prompt stay live. Hand-editing a merge, only the cell being edited
+     * does -- the other diffs included, because stepping from a half-written
+     * merge into a diff would leave the merge behind unconfirmed.
+     */
+    const reachable = (panel: NotebookPanel, cell: HTMLElement): boolean => {
+      if (proposals.manualMerge(panel)) {
+        return cell.classList.contains('jv-merging');
+      }
+      return (
+        cell.classList.contains('jv-proposal') ||
+        cell.classList.contains('jv-prompt-cell')
+      );
+    };
+
     const startSession = (panel: NotebookPanel) => {
       if (sessions.has(panel.id)) {
         return;
       }
-      panel.content.node.classList.add('jv-review-session');
 
       const onPointer = (event: Event) => {
         const cell = cellAt(panel, event.target);
-        if (!cell || cell.classList.contains('jv-proposal')) {
-          return; // our own chrome, or a cell under review
-        }
-        if (cell.classList.contains('jv-prompt-cell')) {
-          return; // the prompt is the round; it stays reachable
+        if (!cell || reachable(panel, cell)) {
+          return;
         }
         event.preventDefault();
         event.stopPropagation();
-        counters.get(panel.id)?.refuse();
+        // Clicking away from a merge means the same as Escape does: the edit
+        // is the user's and it is finished, so it is confirmed rather than
+        // refused. Anywhere else, a click outside the session is declined.
+        if (proposals.manualMerge(panel)) {
+          void app.commands.execute(CommandIDs.confirmMerge);
+        } else {
+          counters.get(panel.id)?.refuse();
+        }
       };
       // Capture, so it is refused before JupyterLab decides to focus it.
       panel.content.node.addEventListener('mousedown', onPointer, true);
@@ -141,7 +164,10 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       panel.content.node.addEventListener('keydown', onKey, true);
 
       sessions.set(panel.id, () => {
-        panel.content.node.classList.remove('jv-review-session');
+        panel.content.node.classList.remove(
+          'jv-review-session',
+          'jv-merge-session'
+        );
         panel.content.node.removeEventListener('mousedown', onPointer, true);
         panel.content.node.removeEventListener('click', onPointer, true);
         panel.content.node.removeEventListener('keydown', onKey, true);
@@ -250,11 +276,24 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
       }
     };
 
+    /** Mark the cell being hand-edited, and only that one. */
+    const markMerging = (panel: NotebookPanel, cellId: string | null) => {
+      const cells = panel.content.model?.cells;
+      for (let i = 0; cells && i < cells.length; i++) {
+        panel.content.widgets[i]?.node.classList.toggle(
+          'jv-merging',
+          !!cellId && cells.get(i).id === cellId
+        );
+      }
+    };
+
     const render = (panel: NotebookPanel) => {
       clearOverlays(panel);
       const pending = proposals.list(panel).filter(p => p.state === 'pending');
+      const merging = proposals.manualMerge(panel);
+      markMerging(panel, merging);
 
-      if (!pending.length) {
+      if (!pending.length && !merging) {
         counters.get(panel.id)?.hide();
         endSession(panel);
         if (!showingProblem.has(panel.id)) {
@@ -263,16 +302,30 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
         return;
       }
       startSession(panel);
-      // The counter exists for one failure mode: walking away with edits
-      // still open. So it appears exactly while that is possible.
+      // Mutually exclusive, so `Escape` can never mean "confirm this merge"
+      // and "reject everything" at the same time.
+      panel.content.node.classList.toggle('jv-review-session', !merging);
+      panel.content.node.classList.toggle('jv-merge-session', !!merging);
+
       const counter = counterFor(panel);
       counter.show();
-      counter.showRemaining(pending.length);
-
-      const promptCellId = proposals.roundPromptCellId(panel);
-      if (promptCellId) {
-        outputFor(panel, promptCellId)?.showReview(pending.length, []);
-        markPending(panel, promptCellId, true);
+      if (merging) {
+        // The count is meaningless here -- the merge is not one of the edits
+        // left to review, it is the one being written -- and there is exactly
+        // one thing to do with it. The diffs still waiting are drawn, dimmed:
+        // hiding them would make the queue look shorter than it is.
+        counter.showMerging();
+        markPending(panel, proposals.roundPromptCellId(panel) ?? '', false);
+      }
+      // The counter exists for one failure mode: walking away with edits
+      // still open. So it appears exactly while that is possible.
+      if (!merging) {
+        counter.showRemaining(pending.length);
+        const promptCellId = proposals.roundPromptCellId(panel);
+        if (promptCellId) {
+          outputFor(panel, promptCellId)?.showReview(pending.length, []);
+          markPending(panel, promptCellId, true);
+        }
       }
 
       const active = proposals.activeProposal(panel);
@@ -295,7 +348,10 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
           'jv-proposal-streaming',
           !!proposal.streaming
         );
-        if (active && proposal.id === active.id) {
+        // No verdict buttons during a merge: the only thing to do is finish
+        // the edit in progress, and a stack of Accept/Reject beside a dimmed
+        // diff invites a click that the session would only refuse.
+        if (!merging && active && proposal.id === active.id) {
           cellWidget.node.classList.add('jv-proposal-active');
           created.push(attachControls(cellWidget.node, proposal));
         }

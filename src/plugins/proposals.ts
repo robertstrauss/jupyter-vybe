@@ -75,6 +75,20 @@ export interface IVybeProposals {
   activeProposal(panel: NotebookPanel): IProposal | null;
   /** The prompt cell of the round under review, for showing its summary. */
   roundPromptCellId(panel: NotebookPanel): string | null;
+  /**
+   * The merge verdict opens a session of its own (docs/03).
+   *
+   * Accepting a proposal removes it, so the cell the user was just invited to
+   * hand-edit stopped being a proposal at the moment they were asked to edit
+   * it -- and the review session promptly dimmed it and refused their clicks.
+   * The merge is therefore a state the session knows about, not the absence
+   * of one.
+   */
+  beginManualMerge(panel: NotebookPanel, cellId: string): void;
+  /** Confirm the hand-edit and hand the notebook back to the review. */
+  endManualMerge(panel: NotebookPanel): boolean;
+  /** The cell being hand-edited, if any. */
+  manualMerge(panel: NotebookPanel): string | null;
   /** Ask the UI to render again, without changing anything. */
   refresh(panel: NotebookPanel): void;
   clear(panel: NotebookPanel, roundId?: string): void;
@@ -95,6 +109,8 @@ export class Proposals implements IVybeProposals {
   private _undo = new Map<string, { ids: string[]; round: IRoundHandle }>();
   /** Verdicts in the order they were given, for round-scoped undo (docs/02). */
   private _resolved = new Map<string, string[]>();
+  /** The cell being hand-edited after a merge verdict, per notebook. */
+  private _merging = new Map<string, string>();
   /**
    * The round that just ended, kept so its log survives long enough to undo
    * the verdict that ended it. Without this the *last* accept of a round could
@@ -202,6 +218,23 @@ export class Proposals implements IVybeProposals {
 
   refresh(panel: NotebookPanel): void {
     this._changed.emit(panel);
+  }
+
+  beginManualMerge(panel: NotebookPanel, cellId: string): void {
+    this._merging.set(panel.id, cellId);
+    this._changed.emit(panel);
+  }
+
+  endManualMerge(panel: NotebookPanel): boolean {
+    if (!this._merging.delete(panel.id)) {
+      return false;
+    }
+    this._changed.emit(panel);
+    return true;
+  }
+
+  manualMerge(panel: NotebookPanel): string | null {
+    return this._merging.get(panel.id) ?? null;
   }
 
   roundPromptCellId(panel: NotebookPanel): string | null {
@@ -389,6 +422,9 @@ export class Proposals implements IVybeProposals {
   }
 
   clear(panel: NotebookPanel, roundId?: string): void {
+    // A round that is being torn down takes its merge with it, or the session
+    // outlives the thing it belonged to.
+    this._merging.delete(panel.id);
     const keep = roundId
       ? this.list(panel).filter(p => p.roundId !== roundId)
       : [];

@@ -39,6 +39,7 @@ export namespace CommandIDs {
   export const cancel = 'jupyter-vybe:cancel-round';
   export const reopenPrompt = 'jupyter-vybe:reopen-prompt';
   export const undo = 'jupyter-vybe:undo';
+  export const confirmMerge = 'jupyter-vybe:confirm-merge';
 }
 
 /**
@@ -73,6 +74,19 @@ const PROMPT_PENDING_SELECTOR =
  * modal state with no escape hatch is the thing people rightly hate.
  */
 const SESSION_SELECTOR = '.jp-Notebook.jp-mod-commandMode.jv-review-session';
+/**
+ * A merge being hand-edited. Mutually exclusive with the review session, so
+ * `Escape` cannot mean "confirm this merge" and "reject everything" at once.
+ *
+ * Two selectors because the user is normally in edit mode here and may step
+ * out of it, and both carry three classes so they outrank core's
+ * `.jp-Notebook.jp-mod-editMode` on specificity rather than on which of us
+ * registered last.
+ */
+const MERGE_SELECTORS = [
+  '.jp-Notebook.jp-mod-editMode.jv-merge-session',
+  '.jp-Notebook.jp-mod-commandMode.jv-merge-session'
+];
 
 export const commandsPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-vybe:commands',
@@ -139,6 +153,11 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
                 : commentFor(kernelInfo(panel).language, cell.model.type);
         const merged = mergedSource(p.hunks, p.after, comment);
         const cellId = p.cellId;
+        // Declared before the verdict lands. Accepting removes the proposal,
+        // and the review session dims everything that is not one -- so
+        // without this the cell the user was just invited to edit greys out
+        // and stops answering under their cursor.
+        proposals.beginManualMerge(panel, cellId);
         proposals.accept(panel, p.id);
         materialiseMerge(panel, cellId, merged, proposals.logFor(panel));
         // Accepting advances the review, which moves the active cell on to
@@ -249,6 +268,29 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
       }
     });
 
+    /**
+     * Confirm a hand-edited merge and hand the notebook back to the review.
+     *
+     * There is nothing to apply: the merged text has been in the cell since
+     * the verdict, and every keystroke since is the user's own. What ends is
+     * the session -- so this closes it and walks on to the next diff, which
+     * is what "and continue" means on the button.
+     */
+    app.commands.addCommand(CommandIDs.confirmMerge, {
+      label: 'Confirm merge and continue reviewing',
+      isEnabled: () => !!current() && !!proposals.manualMerge(current()!),
+      execute: () => {
+        const panel = current();
+        if (!panel || !proposals.endManualMerge(panel)) {
+          return;
+        }
+        panel.content.mode = 'command';
+        if (proposals.activeProposal(panel)) {
+          void app.commands.execute(CommandIDs.gotoFirst);
+        }
+      }
+    });
+
     app.commands.addCommand(CommandIDs.cancel, {
       label: 'Cancel agent round',
       execute: () => {
@@ -298,6 +340,11 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
     bind(CommandIDs.editProposal, yn ? ['Enter'] : ['Space'], REVIEW_SELECTOR);
     // The way out of a review session, from anywhere in it.
     bind(CommandIDs.rejectAll, ['Escape'], SESSION_SELECTOR);
+    // And the way out of a merge, which is a different session with a
+    // different Escape: confirm, and walk on to the next diff.
+    for (const selector of MERGE_SELECTORS) {
+      bind(CommandIDs.confirmMerge, ['Escape'], selector);
+    }
     // Two keys, no chords: from the prompt cell, Enter starts the review and
     // N rejects the lot. A chord for the primary action of the tool was the
     // wrong default.

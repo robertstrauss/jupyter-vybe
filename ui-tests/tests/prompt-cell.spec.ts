@@ -364,12 +364,94 @@ test.describe('the review session', () => {
     const counter = page.locator('.jv-review-counter');
 
     await expect(counter).toContainText('1 edit left to review');
-    // Both exits are on it, with the keys that do the same thing.
-    await expect(counter.locator('.jv-counter-jump')).toContainText('⏎');
-    await expect(counter.locator('.jv-counter-reject')).toContainText('esc');
+    // Every exit is on it, each naming the key that does the same thing.
+    await expect(counter.locator('.jv-counter-jump')).toContainText('Next');
+    await expect(counter.locator('.jv-counter-jump .jv-key')).toHaveText(
+      'Enter'
+    );
+    await expect(counter.locator('.jv-counter-reject')).toContainText(
+      'Reject All'
+    );
+    await expect(counter.locator('.jv-counter-reject .jv-key')).toHaveText(
+      'esc'
+    );
+    await expect(counter.locator('.jv-counter-undo')).toBeVisible();
+    // Not offered while there is nothing to merge back to.
+    await expect(counter.locator('.jv-counter-confirm')).toBeHidden();
 
     await counter.locator('.jv-counter-reject').click();
     await expect(page.locator('.jv-diff-overlay')).toHaveCount(0);
+  });
+
+  /**
+   * The user's report: the merge verdict accepts the proposal, so the cell
+   * stopped being one -- and the review session promptly dimmed the cell it
+   * had just invited them to edit, and refused their clicks on it.
+   */
+  test('a merge opens a session of its own around the cell being edited', async ({
+    page
+  }) => {
+    await openReview(page);
+    await page.keyboard.press('Enter'); // the merge verdict
+
+    const notebook = page.locator('.jp-Notebook');
+    await expect(notebook).toHaveClass(/jv-merge-session/);
+    // Mutually exclusive, so Escape cannot mean two things at once.
+    await expect(notebook).not.toHaveClass(/jv-review-session/);
+    await expect(page.locator('.jv-merging')).toHaveCount(1);
+
+    // And it is editable, which is the whole point of the verdict.
+    await page.keyboard.type('  # mine');
+    await expect
+      .poll(async () => (await cells(page))[0].source)
+      .toContain('# mine');
+
+    // The counter says what mode this is and offers the one thing to do.
+    const counter = page.locator('.jv-review-counter');
+    await expect(counter).toContainText('Manual proposal review');
+    await expect(counter.locator('.jv-counter-confirm')).toContainText(
+      'Confirm Merge and Continue'
+    );
+    await expect(counter.locator('.jv-counter-reject')).toBeHidden();
+  });
+
+  test('clicking away confirms the merge, as leaving edit mode would', async ({
+    page
+  }) => {
+    await openReview(page);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.jp-Notebook')).toHaveClass(/jv-merge-session/);
+    await page.keyboard.type('  # mine');
+
+    // A click outside a merge means what Escape means: the edit is the
+    // user's and it is finished. Refusing it would be treating a finished
+    // edit as a mistake.
+    await page.locator('.jp-Notebook .jp-Cell').last().click({ force: true });
+
+    await expect(page.locator('.jp-Notebook')).not.toHaveClass(
+      /jv-merge-session/
+    );
+    expect((await cells(page))[0].source).toContain('# mine');
+  });
+
+  test('escape confirms the merge and hands the notebook back', async ({
+    page
+  }) => {
+    await openReview(page);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.jp-Notebook')).toHaveClass(/jv-merge-session/);
+    await page.keyboard.type('  # mine');
+
+    await page.keyboard.press('Escape');
+
+    // The edit stands -- there was never anything to apply, it has been the
+    // user's text since the verdict -- and the session is gone with its
+    // formatting.
+    await expect(page.locator('.jp-Notebook')).not.toHaveClass(
+      /jv-merge-session/
+    );
+    expect((await cells(page))[0].source).toContain('# mine');
+    await expect(page.locator('.jv-merging')).toHaveCount(0);
   });
 
   test('the verdict buttons say what they do, not only which key', async ({

@@ -1,3 +1,4 @@
+import { Platform } from '@lumino/domutils';
 import { Widget } from '@lumino/widgets';
 import type { IHunk } from './diff';
 
@@ -167,8 +168,10 @@ export class ReviewControls extends Widget {
  */
 export class ReviewCounter extends Widget {
   private _label: HTMLElement;
+  private _reviewOnly: HTMLElement[];
+  private _mergeOnly: HTMLElement[];
 
-  constructor(onRejectAll: () => void, onJump: () => void) {
+  constructor(actions: ICounterActions) {
     const node = document.createElement('div');
     node.className = 'jv-review-counter';
     node.setAttribute('role', 'status');
@@ -177,46 +180,66 @@ export class ReviewCounter extends Widget {
     const label = document.createElement('span');
     label.className = 'jv-counter-label';
 
-    const action = (
-      cls: string,
-      text: string,
-      aria: string,
-      fn: () => void
-    ) => {
-      const btn = document.createElement('button');
-      btn.className = `jv-counter-button ${cls}`;
-      btn.textContent = text;
-      btn.setAttribute('aria-label', aria);
-      btn.onclick = fn;
-      return btn;
-    };
+    const row = document.createElement('div');
+    row.className = 'jv-counter-actions';
 
-    const jump = action(
-      'jv-counter-jump',
-      'jump to next  ⏎',
-      'Go to the next proposed edit',
-      onJump
-    );
-    const reject = action(
+    const next = button('jv-counter-jump', 'Next', 'Enter', actions.onJump);
+    const rejectAll = button(
       'jv-counter-reject',
-      'reject the rest  esc',
-      'Reject all remaining proposed edits',
-      onRejectAll
+      'Reject All',
+      'esc',
+      actions.onRejectAll
+    );
+    const confirm = button(
+      'jv-counter-confirm',
+      'Confirm Merge and Continue',
+      'esc',
+      actions.onConfirmMerge
+    );
+    const undo = button(
+      'jv-counter-undo',
+      'Undo Merge',
+      Platform.IS_MAC ? '⌘Z' : 'Ctrl+Z',
+      actions.onUndo
     );
 
-    const hint = document.createElement('span');
-    hint.className = 'jv-counter-hint';
-    hint.textContent = '⌘Z undoes a verdict';
-
-    node.append(label, jump, reject, hint);
+    row.append(next, rejectAll, confirm, undo);
+    node.append(label, row);
     super({ node });
     this._label = label;
+    this._reviewOnly = [next, rejectAll];
+    this._mergeOnly = [confirm];
+    this.showRemaining(0);
   }
 
   showRemaining(count: number): void {
     this._label.textContent = `${count} edit${
       count === 1 ? '' : 's'
     } left to review`;
+    this._setMode(false);
+  }
+
+  /**
+   * The merge has its own mode, because it has its own one thing to do.
+   *
+   * Offering "Reject All" beside a cell the user is in the middle of
+   * hand-editing invites them to throw away the edit they are making, and the
+   * count is meaningless here besides: the merge is not one of the edits left
+   * to review, it is the one being written.
+   */
+  showMerging(): void {
+    this._label.textContent = 'Manual proposal review';
+    this._setMode(true);
+  }
+
+  private _setMode(merging: boolean): void {
+    this.node.classList.toggle('jv-counter-merging', merging);
+    for (const el of this._reviewOnly) {
+      el.hidden = merging;
+    }
+    for (const el of this._mergeOnly) {
+      el.hidden = !merging;
+    }
   }
 
   /**
@@ -231,4 +254,39 @@ export class ReviewCounter extends Widget {
     void this.node.offsetWidth; // reflow, so the animation restarts
     this.node.classList.add('jv-counter-refused');
   }
+}
+
+export interface ICounterActions {
+  onJump: () => void;
+  onRejectAll: () => void;
+  onConfirmMerge: () => void;
+  onUndo: () => void;
+}
+
+/**
+ * One action: what it does, and the key that does the same thing.
+ *
+ * The key is a `<kbd>`, set in the code font on a grey field, so it reads as
+ * a key rather than as more of the sentence -- which matters most for `esc`,
+ * the only one that is a word and would otherwise disappear into the label
+ * beside it.
+ */
+function button(
+  cls: string,
+  label: string,
+  key: string,
+  onClick: () => void
+): HTMLElement {
+  const btn = document.createElement('button');
+  btn.className = `jv-counter-button ${cls}`;
+  btn.setAttribute('aria-label', `${label} (keyboard: ${key})`);
+  btn.onclick = onClick;
+
+  const text = document.createElement('span');
+  text.textContent = label;
+  const kbd = document.createElement('kbd');
+  kbd.className = 'jv-key';
+  kbd.textContent = key;
+  btn.append(text, kbd);
+  return btn;
 }
