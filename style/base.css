@@ -32,6 +32,7 @@
   font-family: var(--jp-code-font-family);
   font-size: var(--jp-code-font-size);
   line-height: var(--jp-code-line-height);
+
   /* And it scrolls inside its own box rather than pushing the pane sideways. */
   overflow-x: auto;
 }
@@ -40,6 +41,7 @@
   display: flex;
   white-space: pre;
   padding: 0 8px;
+
   /* Long lines scroll with the container instead of wrapping mid-token. */
   min-width: max-content;
 }
@@ -248,9 +250,17 @@
 }
 
 .jv-history-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   padding-bottom: 6px;
   font-weight: 600;
   border-bottom: 1px solid var(--jp-border-color2);
+}
+
+/* Pushes the buttons to the right, however many of them there are. */
+.jv-history-header > span:first-child {
+  flex: 1;
 }
 
 .jv-history-status {
@@ -455,12 +465,6 @@
   opacity: 0.6;
 }
 
-.jv-history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .jv-history-gear {
   padding: 0 4px;
   cursor: pointer;
@@ -473,6 +477,27 @@
 
 .jv-history-gear:hover {
   color: var(--jp-ui-font-color1);
+}
+
+/*
+ * Erase-context, beside the gear. Muted until hovered: it drops what the
+ * agent remembers, which is not something to invite by accident.
+ */
+.jv-history-erase {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--jp-ui-font-size1);
+  opacity: 0.55;
+  padding: 0 4px;
+}
+
+.jv-history-erase:hover {
+  opacity: 1;
+}
+
+.jv-history-erase[hidden] {
+  display: none;
 }
 
 .jv-settings-extra {

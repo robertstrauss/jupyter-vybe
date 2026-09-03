@@ -42,6 +42,14 @@ export interface IVybeAgent {
   /** One session per notebook path. Frames arrive on the returned async iterator. */
   send(notebookPath: string, req: IPromptRequest): AsyncIterable<IAgentFrame>;
   cancel(notebookPath: string): void;
+  /**
+   * Forget this notebook's conversation.
+   *
+   * Sessions are keyed by notebook path on both sides, so this reaches one
+   * notebook's history and no other's. The next prompt starts from turn zero
+   * and sends the whole notebook again rather than a diff.
+   */
+  resetContext(notebookPath: string): void;
   toolResult(
     notebookPath: string,
     callId: string,
@@ -165,6 +173,12 @@ class VybeAgent implements IVybeAgent {
 
   cancel(notebookPath: string): void {
     this._channels.get(notebookPath)?.post({ op: 'cancel' });
+  }
+
+  resetContext(notebookPath: string): void {
+    // Only if a channel exists: with none there is no conversation to forget,
+    // and opening one to say so would start the very session being cleared.
+    this._channels.get(notebookPath)?.post({ op: 'reset' });
   }
 
   toolResult(

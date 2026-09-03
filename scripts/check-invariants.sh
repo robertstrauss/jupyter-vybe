@@ -134,6 +134,19 @@ else
   echo "pass  D2: adapters are host-agnostic"
 fi
 
+# T-ACCEL: keybindings say Accel, never Cmd.
+#
+# Lumino maps `Accel` to Cmd on macOS and Ctrl everywhere else. A literal
+# `Cmd` binding is dead on Linux and Windows, and a literal `Ctrl` one fights
+# the platform on a Mac. `Ctrl C` for cancel is the deliberate exception: it
+# is the interrupt idiom on every platform, Macs included.
+if grep -nE "\['(Cmd|Command) " src/plugins/*.ts 2>/dev/null; then
+  echo "FAIL T-ACCEL: a keybinding hardcodes Cmd; use Accel so it works off a Mac"
+  fail=1
+else
+  echo "pass  T-ACCEL: keybindings use Accel, not Cmd"
+fi
+
 # T-BUILD: the bundle the browser loads must be newer than the source.
 #
 # `jlpm build` runs `jupyter-builder`, and when that is not on PATH -- the

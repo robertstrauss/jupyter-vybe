@@ -10,6 +10,7 @@ import { Clipboard } from '@jupyterlab/apputils';
 import { IEditorLanguageRegistry } from '@jupyterlab/codemirror';
 
 import { IVybeProposals } from './proposals';
+import { IVybeAgent } from './agentClient';
 import { IVybeSettings } from '../tokens';
 import {
   adoptHistory,
@@ -35,11 +36,13 @@ class HistoryPane extends Widget {
   private _status: HTMLElement;
   private _path = '';
   private _panel: NotebookPanel | null = null;
+  private _erase: HTMLButtonElement;
 
   constructor(
     private readonly settings: IVybeSettings,
     private readonly _openSettings: () => void = () => undefined,
-    private readonly _languages: IEditorLanguageRegistry | null = null
+    private readonly _languages: IEditorLanguageRegistry | null = null,
+    private readonly _resetContext: (path: string) => void = () => undefined
   ) {
     super();
     this.addClass('jv-history-pane');
@@ -60,7 +63,16 @@ class HistoryPane extends Widget {
     gear.title = 'Jupyter Vybe settings';
     gear.setAttribute('aria-label', 'Open Jupyter Vybe settings');
     gear.onclick = () => this._openSettings();
-    header.append(heading, gear);
+    // Only meaningful with a persistent conversation: without one every
+    // prompt is already single-shot, so there is nothing accumulated to
+    // erase and a button offering to do it would be a lie.
+    this._erase = document.createElement('button');
+    this._erase.className = 'jv-history-erase';
+    this._erase.textContent = '🗑';
+    this._erase.title = 'Erase conversation context';
+    this._erase.setAttribute('aria-label', 'Erase conversation context');
+    this._erase.onclick = () => this._eraseContext();
+    header.append(heading, this._erase, gear);
     this._status = document.createElement('div');
     this._status.className = 'jv-history-status';
     this._status.setAttribute('role', 'status');
@@ -70,8 +82,31 @@ class HistoryPane extends Widget {
     this.node.append(header, this._status, this._list);
   }
 
+  /**
+   * Forget what the agent remembers about this notebook.
+   *
+   * The prompt record on screen is untouched -- that is the user's history of
+   * what they asked, and it outlives any conversation. What goes is the
+   * agent's, so the next prompt re-reads the whole notebook instead of being
+   * told what changed since a turn it no longer has.
+   */
+  private _eraseContext(): void {
+    if (!this._path) {
+      return;
+    }
+    this._resetContext(this._path);
+    this._status.textContent =
+      'context erased — the next prompt sends the whole notebook';
+  }
+
+  /** Reflects whether there is a conversation to erase at all. */
+  private _syncEraseButton(): void {
+    this._erase.hidden = !this.settings.persistent;
+  }
+
   /** Not `show`: Widget already has one, and it means something else. */
   async showFor(panel: NotebookPanel | null): Promise<void> {
+    this._syncEraseButton();
     if (!panel) {
       this._path = '';
       this._render([], 'No notebook open.');
@@ -307,13 +342,14 @@ export const historyPanePlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-vybe:history-pane',
   description: 'The prompt record, rendered beside the notebook.',
   autoStart: true,
-  requires: [INotebookTracker, IVybeSettings, IVybeProposals],
+  requires: [INotebookTracker, IVybeSettings, IVybeProposals, IVybeAgent],
   optional: [ILayoutRestorer, IEditorLanguageRegistry],
   activate: (
     app: JupyterFrontEnd,
     tracker: INotebookTracker,
     settings: IVybeSettings,
     proposals: IVybeProposals,
+    agent: IVybeAgent,
     restorer: ILayoutRestorer | null,
     languages: IEditorLanguageRegistry | null
   ): void => {
@@ -324,7 +360,8 @@ export const historyPanePlugin: JupyterFrontEndPlugin<void> = {
           query: 'Jupyter Vybe'
         });
       },
-      languages
+      languages,
+      path => agent.resetContext(path)
     );
     pane.id = 'jupyter-vybe-history';
     app.shell.add(pane, 'right', { rank: 900 });
