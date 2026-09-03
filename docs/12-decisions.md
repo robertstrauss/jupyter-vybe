@@ -17,7 +17,7 @@ raised in review and are resolved below. All others stand at the recommendation.
 | D2  | Where the agent runs          | ✅ **revised** — `server` + tunnel in v1.0, sidecar v1.1    |
 | D3  | Tool-call format              | ✅ **revised** — tagged text only; native path deferred     |
 | D4  | Notebook metadata             | ✅ A — zero persisted metadata                              |
-| D5  | Autocomplete in v1.0          | ✅ A — defer to v1.1                                        |
+| D5  | Autocomplete in v1.0          | ✅ A — deferred to v1.1; rebuilt on demand in v1.2          |
 | D6  | Review keybindings            | ✅ **your call** — `Y`/`N` + `Enter` opens a merged edit    |
 | D7  | Diff rendering                | ✅ A — jsdiff + CM6 decorations                             |
 | D8  | Default global prompt         | ✅ **your call** — infer from notebook, else language idiom |
@@ -216,6 +216,25 @@ after the next keystroke is worse than none.
 Measured against `qwen2.5-coder:7b`: 0.4–1.3 s per completion, returning real code
 (`x / x.max() if x.max() != 0 else x` for `def normalise(x): return `). It is **off by default**
 — it costs a model call at a keystroke cadence, and a user who wants that should say so.
+
+**Rebuilt in v1.2, on demand.** Off-by-default was the wrong answer to the right worry. The cost
+is real, so the fix is to stop guessing when to pay it: nothing is requested until the trigger
+key. Once a request is deliberate, three things follow that the automatic version could not have.
+
+The context can be expensive, so the notebook goes in whole, as an nbconvert-style script — which
+replaced the FIM prompt entirely. FIM predicts a cell from itself; what a cell should say next is
+mostly decided by what the cells above it defined. It also cost a token vocabulary per model
+family and a raw-completion route per adapter, where an instruction turn is something every
+adapter can answer.
+
+Pressing the trigger again _extends_ the suggestion rather than replacing it, so the default of
+two lines is not a ceiling — it is how much the user is asked to read before deciding.
+
+And the ghost text is ours, so the keys are ours: `Tab` accepts, `Backspace` rejects **without
+deleting a character of the user's code**, and anything else rejects by simply happening. That
+last one is why this is a CodeMirror extension rather than an `IInlineCompletionProvider`: the
+framework owns Tab, and the one thing users get wrong with ghost text everywhere it exists is
+backspacing over it and losing what they wrote.
 
 ---
 

@@ -687,3 +687,26 @@ textarea.jv-field-control {
 .jv-proposal-streaming .jv-diff-overlay {
   opacity: 0.7;
 }
+
+/* ---- ghost text (docs/04) ---- */
+
+/* Unmistakably not the user's code: dimmed, italic, and never selectable, so
+   it cannot be copied out of the editor by accident. */
+.jv-ghost {
+  font-style: italic;
+  color: var(--jp-ui-font-color3);
+  pointer-events: none;
+  opacity: 0.75;
+  user-select: none;
+}
+
+.jv-ghost-tip {
+  padding: 2px 7px;
+  font-family: var(--jp-ui-font-family);
+  font-size: var(--jp-ui-font-size0);
+  color: var(--jp-ui-font-color1);
+  white-space: nowrap;
+  background: var(--jp-layout-color2);
+  border: 1px solid var(--jp-border-color1);
+  border-radius: 3px;
+}

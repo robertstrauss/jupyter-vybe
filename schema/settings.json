@@ -248,12 +248,13 @@
     "completion": {
       "type": "object",
       "title": "Inline completion",
-      "description": "Ghost-text suggestions from the same agent. Off by default: it costs a model call on a keystroke cadence.",
+      "description": "Ghost text from a local model, on demand. Nothing is requested until you press the trigger key.",
       "properties": {
         "enabled": {
           "type": "boolean",
-          "title": "Suggest completions as you type",
-          "default": false
+          "title": "Enable inline completion",
+          "default": false,
+          "description": "Suggestions are asked for with the trigger key below, never on a timer: each one costs a model call."
         },
         "agentId": {
           "type": "string",
@@ -270,29 +271,25 @@
           ],
           "default": ""
         },
-        "debounceMs": {
-          "type": "integer",
-          "title": "Wait before asking (milliseconds)",
-          "description": "Typing supersedes a request in flight; this is how long a pause counts as 'stopped typing'.",
-          "default": 300
+        "triggerKey": {
+          "type": "string",
+          "title": "Trigger key",
+          "description": "CodeMirror key notation: Alt is Option on a Mac, Mod is Cmd there and Ctrl elsewhere. Alt-Tab is taken by the window manager on Windows and most Linux desktops -- pick something else there, e.g. Ctrl-Space.",
+          "default": "Alt-Tab"
         },
-        "maxTokens": {
+        "maxLines": {
           "type": "integer",
-          "title": "Longest suggestion (tokens)",
-          "default": 64,
-          "description": "A ceiling on one suggestion. Short suggestions arrive sooner and are easier to judge."
+          "title": "Lines per suggestion",
+          "description": "How much is predicted at a time. Press the trigger again to extend a suggestion, so a small number here is not a limit on how much you can get -- it is how much you are asked to read before deciding.",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 20
         },
         "timeoutSeconds": {
           "type": "number",
           "title": "Give up after (seconds)",
-          "description": "A late suggestion is worse than none: by then you have typed on.",
-          "default": 4
-        },
-        "multiline": {
-          "type": "boolean",
-          "title": "Allow multi-line suggestions",
-          "default": true,
-          "description": "Allow a suggestion to run past the end of the current line."
+          "description": "A prediction is asked for deliberately, so it is worth waiting a little longer for than something that arrived uninvited.",
+          "default": 8
         }
       },
       "default": {

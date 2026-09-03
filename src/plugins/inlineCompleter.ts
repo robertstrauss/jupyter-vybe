@@ -2,125 +2,200 @@ import type {
   JupyterFrontEnd,
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
-import {
-  ICompletionProviderManager,
-  type CompletionHandler,
-  type IInlineCompletionContext,
-  type IInlineCompletionItem,
-  type IInlineCompletionList,
-  type IInlineCompletionProvider
-} from '@jupyterlab/completer';
-import { ServerConnection } from '@jupyterlab/services';
-import { URLExt } from '@jupyterlab/coreutils';
+import { IEditorExtensionRegistry } from '@jupyterlab/codemirror';
+import { EditorExtensionRegistry } from '@jupyterlab/codemirror';
+import { INotebookTracker, type NotebookPanel } from '@jupyterlab/notebook';
+import type { EditorView } from '@codemirror/view';
 
 import { IVybeSettings } from '../tokens';
+import {
+  currentGhost,
+  dismissGhost,
+  ghostExtension,
+  showGhost
+} from '../completion/ghost';
+import { notebookAsScript } from '../completion/notebookScript';
+import { predict } from '../completion/predict';
+import { complete, inspect } from '../introspect';
 
 /**
- * Inline completion — ghost text from the same local model (decision D5).
+ * Ghost text, on demand (decision D5).
  *
- * Held back from v1.0 on purpose: it is a different subsystem with a different
- * latency budget. A prompt cell may take thirty seconds and that is fine; a
- * completion that arrives after the next keystroke is worse than none, because
- * it flickers something stale in front of someone who has moved on.
+ * The first version of this was a JupyterLab inline completion provider that
+ * fired on a debounce as you typed. It was withdrawn: a suggestion costs a
+ * model call, and asking for one every time the user pauses spends their
+ * machine on work they did not request and mostly do not want. Nothing is
+ * requested now until the trigger key is pressed.
  *
- * Everything here follows from that. Requests are debounced, every request
- * supersedes the one before it, and a request whose answer arrives after it
- * has been superseded is dropped rather than shown.
+ * What that buys, beyond the calls not made:
+ *
+ *   - pressing the trigger again *extends* the suggestion rather than
+ *     replacing it, so a prediction grows a line or two at a time and the
+ *     user decides how far it goes;
+ *   - the request can be expensive, because it was asked for -- so it carries
+ *     the whole notebook as a script, and what the kernel knows about the
+ *     names on the current line;
+ *   - Tab accepts and Backspace rejects, which are only ours to bind because
+ *     the ghost text is ours (see completion/ghost.ts).
  */
 
-const ENDPOINT = ['jupyter-vybe', 'complete'];
+const HINT_LIMIT = 800;
 
-class VybeInlineProvider implements IInlineCompletionProvider {
-  readonly identifier = 'jupyter-vybe:inline';
-  readonly name = 'Vybe';
+class Predictor {
+  /** Cancels the request in flight; there is only ever one. */
+  private _abort: AbortController | null = null;
 
-  private _generation = 0;
+  constructor(
+    private readonly settings: IVybeSettings,
+    private readonly tracker: INotebookTracker
+  ) {}
 
-  constructor(private readonly settings: IVybeSettings) {}
-
-  async fetch(
-    request: CompletionHandler.IRequest,
-    context: IInlineCompletionContext
-  ): Promise<IInlineCompletionList<IInlineCompletionItem>> {
+  /**
+   * Ask for a suggestion, or for more of the one already showing.
+   *
+   * Returns true whenever the key was ours to consume, including while the
+   * request is still in flight: returning false would let the editor insert a
+   * tab underneath the prediction being written.
+   */
+  request = (view: EditorView): boolean => {
     if (!this.settings.enabled || !this.settings.completionEnabled) {
-      return { items: [] };
+      return false;
     }
-    const text = request.text ?? '';
-    const offset = request.offset ?? text.length;
-    const prefix = text.slice(0, offset);
-    const suffix = text.slice(offset);
-
-    // Typing invalidates whatever is in flight. The generation counter is what
-    // makes a late answer harmless rather than wrong.
-    const generation = ++this._generation;
-
-    if (context.triggerKind !== 0 /* Invoke */) {
-      await new Promise(resolve =>
-        window.setTimeout(resolve, this.settings.completionDebounceMs)
-      );
-      if (generation !== this._generation) {
-        return { items: [] };
-      }
+    const panel = this.tracker.currentWidget;
+    const cell = panel?.content.activeCell;
+    if (!panel || !cell || cell.editor?.host?.contains(view.dom) === false) {
+      return false;
     }
-    // A completion in the middle of a word is usually noise; the editor's own
-    // completer is better at that, and this one costs a model call.
-    if (/[A-Za-z0-9_]$/.test(prefix) && /^[A-Za-z0-9_]/.test(suffix)) {
-      return { items: [] };
+    void this._run(view, panel);
+    return true;
+  };
+
+  private async _run(view: EditorView, panel: NotebookPanel): Promise<void> {
+    this._abort?.abort();
+    const abort = new AbortController();
+    this._abort = abort;
+
+    const cursor = view.state.selection.main.head;
+    const document = view.state.doc.toString();
+    // Pressing the trigger with a suggestion on screen means "and then what?",
+    // so the suggestion is part of what the model is continuing -- but it is
+    // still not in the document, and is not written there unless accepted.
+    const existing = currentGhost(view);
+    const accepted = existing?.text ?? '';
+    const typed = document.slice(0, cursor) + accepted;
+
+    const cellId = panel.content.activeCell?.model.id ?? '';
+    const script = notebookAsScript(panel, cellId, typed);
+    if (!script) {
+      return;
     }
 
+    const hints = await this._hints(panel, typed, abort.signal);
+    if (abort.signal.aborted) {
+      return;
+    }
+
+    let latest = accepted;
     try {
-      const items = await this._request(prefix, suffix);
-      return generation === this._generation ? { items } : { items: [] };
-    } catch (err) {
-      // Never surface a completion failure as an error in the editor: the user
-      // did not ask for this, and a red box for a suggestion is a bad trade.
-      console.debug('[jupyter-vybe] completion failed', err);
-      return { items: [] };
+      await predict(
+        {
+          script: script.script,
+          cell: script.cellNumber,
+          typed,
+          maxLines: this.settings.completionMaxLines,
+          hints,
+          agentId: this.settings.completionAgentId,
+          options: this.settings.agentOptions,
+          timeoutSeconds: this.settings.completionTimeoutSeconds
+        },
+        text => {
+          if (abort.signal.aborted) {
+            return;
+          }
+          // The suggestion already on screen is kept in front of the new
+          // one: the user asked for *more*, and having the accepted part
+          // flicker away and back would read as it being reconsidered.
+          latest = accepted + text;
+          showGhost(view, latest, cursor);
+        },
+        abort.signal
+      );
+    } catch {
+      // A prediction nobody sees is not worth an error in the editor.
+    }
+    if (!abort.signal.aborted && !latest.trim()) {
+      dismissGhost(view);
     }
   }
 
-  private async _request(
-    prefix: string,
-    suffix: string
-  ): Promise<IInlineCompletionItem[]> {
-    const settings = ServerConnection.makeSettings();
-    const response = await ServerConnection.makeRequest(
-      URLExt.join(settings.baseUrl, ...ENDPOINT),
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          prefix,
-          suffix,
-          agentId: this.settings.agentId,
-          options: this.settings.agentOptions,
-          multiline: this.settings.completionMultiline,
-          maxTokens: this.settings.completionMaxTokens,
-          timeoutSeconds: this.settings.completionTimeoutSeconds
-        })
-      },
-      settings
-    );
-    if (!response.ok) {
-      return [];
+  /**
+   * What the kernel knows, for the names on the line being written.
+   *
+   * This is the one thing a local model cannot infer from the notebook: what
+   * an object actually offers in *this* session, after however many cells
+   * have run. It is the same data the user would get from Tab and Shift+Tab,
+   * asked for on their behalf.
+   */
+  private async _hints(
+    panel: NotebookPanel,
+    typed: string,
+    signal: AbortSignal
+  ): Promise<string> {
+    const line = typed.split('\n').pop() ?? '';
+    const target = /([A-Za-z_][\w.]*)$/.exec(line)?.[1];
+    if (!target || !target.includes('.')) {
+      // Only for attribute access. A bare name is one the notebook already
+      // shows, and asking the kernel about it buys nothing.
+      return '';
     }
-    const payload = (await response.json()) as {
-      items?: { insertText: string }[];
-    };
-    return payload.items ?? [];
+    try {
+      const [completions, help] = await Promise.all([
+        complete(panel, line),
+        inspect(panel, target.replace(/\.[^.]*$/, ''))
+      ]);
+      if (signal.aborted) {
+        return '';
+      }
+      const parts: string[] = [];
+      if (completions && !completions.startsWith('no ')) {
+        parts.push(`completions for ${target}:\n${completions}`);
+      }
+      if (help && !help.startsWith('no ')) {
+        parts.push(help.slice(0, HINT_LIMIT));
+      }
+      return parts.join('\n\n').slice(0, HINT_LIMIT * 2);
+    } catch {
+      // The kernel is busy, or dead. The notebook is still context enough.
+      return '';
+    }
   }
 }
 
 export const inlineCompleterPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-vybe:inline-completer',
-  description: 'Ghost-text completions from the configured agent.',
+  description: 'On-demand ghost text from the configured agent.',
   autoStart: true,
-  requires: [ICompletionProviderManager, IVybeSettings],
+  requires: [IEditorExtensionRegistry, IVybeSettings, INotebookTracker],
   activate: (
     _app: JupyterFrontEnd,
-    manager: ICompletionProviderManager,
-    settings: IVybeSettings
+    extensions: IEditorExtensionRegistry,
+    settings: IVybeSettings,
+    tracker: INotebookTracker
   ): void => {
-    manager.registerInlineProvider(new VybeInlineProvider(settings));
+    const predictor = new Predictor(settings, tracker);
+    extensions.addExtension({
+      name: 'jupyter-vybe:ghost-text',
+      factory: () =>
+        EditorExtensionRegistry.createImmutableExtension(
+          ghostExtension({
+            // Read once, when the editor is built. A trigger that changed
+            // under a live editor would need every open editor rebuilt;
+            // reopening the notebook is the honest price for changing it.
+            trigger: settings.completionTriggerKey,
+            predict: view => predictor.request(view)
+          })
+        )
+    });
   }
 };
 

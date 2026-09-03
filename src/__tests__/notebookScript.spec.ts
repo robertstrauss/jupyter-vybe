@@ -1,0 +1,67 @@
+import { notebookAsScript } from '../completion/notebookScript';
+
+/**
+ * The completion prompt is the notebook as a script. What matters is where it
+ * stops: everything below the cursor is what the model is being asked for, so
+ * sending any of it turns the question into a quiz it can copy the answer to.
+ */
+
+type Cell = { id: string; type: string; source: string };
+
+const panel = (cells: Cell[]): any => ({
+  content: {
+    model: {
+      cells: {
+        length: cells.length,
+        get: (i: number) => ({
+          id: cells[i].id,
+          type: cells[i].type,
+          sharedModel: { getSource: () => cells[i].source }
+        })
+      }
+    }
+  }
+});
+
+const notebook = [
+  { id: 'a', type: 'code', source: 'import pandas as pd' },
+  { id: 'b', type: 'markdown', source: 'Load the data' },
+  { id: 'c', type: 'code', source: 'df = ' },
+  { id: 'd', type: 'code', source: 'df.describe()' }
+];
+
+describe('the notebook as a script', () => {
+  it('stops at the cursor, sending nothing from below it', () => {
+    const result = notebookAsScript(panel(notebook), 'c', 'df = ');
+
+    expect(result?.cellNumber).toBe(3);
+    expect(result?.script).toContain('import pandas as pd');
+    // The cell below holds a plausible next line. Sending it would be
+    // handing the model the answer to the question being asked.
+    expect(result?.script).not.toContain('df.describe()');
+  });
+
+  it('sends the current cell only as far as the cursor', () => {
+    const result = notebookAsScript(panel(notebook), 'c', 'df = pd.read');
+
+    expect(result?.script.endsWith('df = pd.read')).toBe(true);
+  });
+
+  it('keeps markdown as comments, because it is often the specification', () => {
+    const result = notebookAsScript(panel(notebook), 'c', 'df = ');
+
+    expect(result?.script).toContain('# Load the data');
+  });
+
+  it('marks the cells the way nbconvert does', () => {
+    const result = notebookAsScript(panel(notebook), 'c', 'df = ');
+
+    expect(result?.script).toContain('# In[1]:');
+    expect(result?.script).toContain('# In[3]:');
+  });
+
+  it('declines when the cell is not in this notebook', () => {
+    // The user switched notebooks while the request was being built.
+    expect(notebookAsScript(panel(notebook), 'gone', 'x')).toBeNull();
+  });
+});

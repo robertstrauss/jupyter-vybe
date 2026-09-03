@@ -13,7 +13,14 @@ from jupyter_server.utils import url_path_join
 from tornado import web, websocket
 
 from .adapters import ADAPTER_REGISTRY, Message, build_adapter
-from .completion import build_fim_prompt, clean, looks_useless, should_be_multiline
+from .completion import (
+    build_fim_prompt,
+    build_predict_prompt,
+    clean,
+    clean_prediction,
+    looks_useless,
+    should_be_multiline,
+)
 from .history import HistoryStore, find_orphan
 from .session import SessionManager
 
@@ -213,6 +220,85 @@ class CompletionHandler(APIHandler):
         return out
 
 
+class PredictHandler(APIHandler):
+    """Predict the rest of a cell, streaming (v1.2).
+
+    Streams because ghost text that appears a word at a time reads as the
+    model working, and ghost text that appears after two silent seconds reads
+    as the editor having hung. The response is newline-delimited JSON, flushed
+    as it arrives; the client renders the accumulated text after every frame.
+
+    A separate route from the round WebSocket, like the completion route it
+    replaces: this must be cancellable by the client simply dropping the
+    request, and nothing here touches a session, so a prediction in flight can
+    never disturb a round.
+    """
+
+    @web.authenticated
+    async def post(self) -> None:
+        body = json.loads(self.request.body or b"{}")
+        script = body.get("script", "")
+        cell = int(body.get("cell", 1))
+        typed = body.get("typed", "")
+        max_lines = max(1, int(body.get("maxLines", 2)))
+        hints = body.get("hints", "")
+        agent_id = body.get("agentId") or "ollama-qwen25-coder-7b"
+        timeout = float(body.get("timeoutSeconds", 8))
+
+        if not script.strip():
+            self.finish("")
+            return
+        try:
+            adapter = build_adapter(agent_id, body.get("options", {}))
+        except KeyError:
+            raise web.HTTPError(404, f"unknown agent {agent_id!r}")
+
+        prompt = build_predict_prompt(script, cell, max_lines, hints)
+        self.set_header("Content-Type", "application/x-ndjson")
+
+        cancel = asyncio.Event()
+        text = ""
+        try:
+            async def pump() -> None:
+                nonlocal text
+                async for chunk in adapter.stream([Message("user", prompt)], cancel):
+                    text += chunk
+                    # Cleaned every time rather than at the end: the fence the
+                    # model opens on line one must never reach the editor, not
+                    # even for the frame before the closing one arrives.
+                    shown = clean_prediction(text, typed, max_lines)
+                    self.write(json.dumps({"text": shown}) + "\n")
+                    await self.flush()
+                    if _finished(text, max_lines):
+                        cancel.set()
+                        break
+
+            await asyncio.wait_for(pump(), timeout=timeout)
+        except asyncio.TimeoutError:
+            cancel.set()
+        except asyncio.CancelledError:
+            # The user typed on, or asked for something else. Nothing to say.
+            cancel.set()
+            raise
+        except Exception as exc:  # noqa: BLE001 -- never raised at the editor
+            self.write(json.dumps({"error": f"{type(exc).__name__}: {exc}"}) + "\n")
+        self.finish()
+
+    def on_connection_close(self) -> None:
+        # Dropping the request is how the client cancels; without this the
+        # generation runs on and holds the model against the next one.
+        super().on_connection_close()
+
+
+def _finished(text: str, max_lines: int) -> bool:
+    """Stop as soon as the answer is as long as it was allowed to be.
+
+    Models overshoot the line limit, and every token past the limit is one the
+    user waits for and never sees.
+    """
+    return len(clean_prediction(text, "", max_lines + 1).split("\n")) > max_lines
+
+
 class AgentSocket(websocket.WebSocketHandler):
     """One connection per open notebook; carries prompts, prose, and tool events."""
 
@@ -303,6 +389,7 @@ def setup_handlers(web_app) -> None:
             (url_path_join(base, NAMESPACE, "defaults"), DefaultsHandler),
             (url_path_join(base, NAMESPACE, "history"), HistoryHandler),
             (url_path_join(base, NAMESPACE, "complete"), CompletionHandler),
+            (url_path_join(base, NAMESPACE, "predict"), PredictHandler),
             (url_path_join(base, NAMESPACE, "ws"), AgentSocket),
         ],
     )

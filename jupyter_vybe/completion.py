@@ -134,3 +134,104 @@ def looks_useless(text: str, prefix: str) -> bool:
     # A completion that only repeats the line the user is already on.
     current_line = prefix.rsplit("\n", 1)[-1].strip()
     return bool(current_line) and text.strip() == current_line
+
+
+# ---- predicting the rest of a cell (v1.2) --------------------------------
+#
+# The fill-in-the-middle path above predicts a cell from itself. That is the
+# wrong context for a notebook: what a cell should say next is mostly decided
+# by what the cells above it defined. Everything below sends the notebook as
+# a script and asks, in words, for the next line or two -- which every adapter
+# can answer, with no per-model token vocabulary and no raw-completion route.
+
+PREDICT_INSTRUCTIONS = """\
+You are completing a cell in a Jupyter notebook. The notebook so far is below,
+written as a Python script: each cell begins with a `# In[n]:` marker, and
+markdown cells are commented out.
+
+Continue cell {cell} from exactly where it stops. Reply with code only -- no
+explanation, no fences, and do not repeat any of the code that is already
+there.
+
+Write at most {max_lines} line(s). Stopping part-way through something is
+expected and fine: the start of a function, a loop header, half an expression.
+The user asks again for more, so a short, certain continuation is worth more
+than a long, guessed one. If there is nothing sensible to add, reply with
+nothing at all.
+"""
+
+
+def build_predict_prompt(script: str, cell: int, max_lines: int, hints: str = "") -> str:
+    """The whole request, as one instruction turn."""
+    parts = [
+        PREDICT_INSTRUCTIONS.format(cell=cell, max_lines=max_lines),
+        "```python\n" + script + "\n```",
+    ]
+    if hints.strip():
+        # What the kernel knows about the names in play. Live truth about the
+        # session beats the model's guess at what an object offers, and it is
+        # the one thing an offline model cannot infer from the notebook.
+        parts.append("From the running kernel:\n" + hints.strip())
+    return "\n\n".join(parts)
+
+
+def strip_fences(text: str) -> str:
+    """Remove code fences wherever the model put them.
+
+    Asked for code with no fences, models produce fences anyway, often only
+    the opening one. Stripping every fence line is safe here because the reply
+    is code by construction: a lone ``` is never part of the answer.
+    """
+    lines = [line for line in text.split("\n") if not _FENCE_LINE.match(line)]
+    return "\n".join(lines)
+
+
+_FENCE_LINE = re.compile(r"^\s*```[A-Za-z0-9_+-]*\s*$")
+
+
+def limit_lines(text: str, max_lines: int) -> str:
+    """Hold the model to the length it was asked for.
+
+    Told "at most two lines", models write four. The instruction is worth
+    having anyway -- it shapes what they aim for -- but the ceiling is enforced
+    here, because a suggestion longer than advertised is one the user has to
+    read all of before deciding.
+    """
+    lines = text.split("\n")
+    if len(lines) <= max_lines:
+        return text
+    return "\n".join(lines[:max_lines])
+
+
+def _without_overlap(text: str, already_typed: str) -> str:
+    """Drop any restatement of what the user has already written.
+
+    Models routinely reply with the whole line they were asked to continue:
+    given `df = `, they answer `df = pd.read_csv(...)`. Shown as ghost text
+    that duplicates the user's own code in front of them, which reads as the
+    editor having lost track of the cursor.
+
+    Done by overlap rather than by stripping a stripped prefix, so the
+    whitespace lands right: the user's trailing space is theirs, and the
+    suggestion must not begin with a second one.
+    """
+    stripped = text.lstrip()
+    lead = text[: len(text) - len(stripped)]
+    tail = already_typed.rsplit("\n", 1)[-1]
+    # Longest suffix of what they typed that the model repeated back.
+    for size in range(len(tail), 0, -1):
+        if stripped.startswith(tail[-size:]):
+            return stripped[size:]
+    return lead + stripped
+
+
+def clean_prediction(text: str, already_typed: str, max_lines: int) -> str:
+    """Everything between what the model said and what is safe to show."""
+    text = strip_fences(text)
+    for token in ("<|endoftext|>", "<|fim_pad|>", "<EOT>", "<|file_sep|>"):
+        text = text.split(token)[0]
+
+    text = _without_overlap(text, already_typed)
+
+    text = limit_lines(text, max_lines)
+    return text if text.strip() else ""

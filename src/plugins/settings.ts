@@ -102,17 +102,22 @@ class VybeSettings implements IVybeSettings {
     // user who wants that should choose it (D5).
     return (this.group<boolean>('completion')['enabled'] as boolean) ?? false;
   }
-  get completionDebounceMs(): number {
-    return (this.group<number>('completion')['debounceMs'] as number) ?? 300;
-  }
-  get completionMaxTokens(): number {
-    return (this.group<number>('completion')['maxTokens'] as number) ?? 64;
-  }
   get completionTimeoutSeconds(): number {
-    return (this.group<number>('completion')['timeoutSeconds'] as number) ?? 4;
+    return (this.group<number>('completion')['timeoutSeconds'] as number) ?? 8;
   }
-  get completionMultiline(): boolean {
-    return (this.group<boolean>('completion')['multiline'] as boolean) ?? true;
+  get completionMaxLines(): number {
+    return (this.group<number>('completion')['maxLines'] as number) ?? 2;
+  }
+  get completionTriggerKey(): string {
+    return (
+      (this.group<string>('completion')['triggerKey'] as string) || 'Alt-Tab'
+    );
+  }
+  /** Blank means "whatever writes the cells": one model, one thing to set up. */
+  get completionAgentId(): string {
+    return (
+      (this.group<string>('completion')['agentId'] as string) || this.agentId
+    );
   }
   get globalPrompt(): string {
     return (this.group<string>('prompts')['global'] as string) ?? '';

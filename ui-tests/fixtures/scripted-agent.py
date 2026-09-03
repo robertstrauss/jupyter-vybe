@@ -84,6 +84,17 @@ elif "answer without tags" in prompt:
     print("def salvaged():")
     print("    return 1")
     print("```")
+elif "You are completing a cell" in prompt:
+    # A prediction, fenced -- because that is what models do when told not to,
+    # and the fence must never reach the editor. The second call sees its own
+    # first answer in the script it is given, and continues from there, which
+    # is how pressing the trigger again extends a suggestion.
+    print("```python")
+    if "read_csv('data.csv')" in prompt:
+        print("df.head()")
+    else:
+        print("pd.read_csv('data.csv')")
+    print("```")
 elif "make the agent fail" in prompt:
     sys.stderr.write("the agent fell over\n")
     raise SystemExit(3)
