@@ -198,6 +198,11 @@
   box-shadow: var(--jp-elevation-z2);
   backdrop-filter: blur(3px);
 
+  /* The card is the jump target -- `Enter` already does it from the keyboard,
+     so a button for it would have been a third thing saying what two others
+     said, and the card is a bigger target than any button on it. */
+  cursor: pointer;
+
   /* Breathing, not blinking. Slow enough to register as alive rather than as
      something demanding attention -- the point is that an open review is
      still open, not that it is urgent. */
@@ -219,6 +224,9 @@
   display: flex;
   gap: 10px;
   align-items: center;
+
+  /* The buttons are not the jump target, so they say the opposite. */
+  cursor: default;
 }
 
 .jv-counter-actions > [hidden] {
@@ -268,7 +276,6 @@
   outline-offset: 2px;
 }
 
-.jv-counter-jump:hover,
 .jv-counter-confirm:hover,
 .jv-counter-undo:hover {
   color: var(--jp-brand-color1);

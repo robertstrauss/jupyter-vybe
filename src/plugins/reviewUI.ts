@@ -314,13 +314,13 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
         // left to review, it is the one being written -- and there is exactly
         // one thing to do with it. The diffs still waiting are drawn, dimmed:
         // hiding them would make the queue look shorter than it is.
-        counter.showMerging();
+        counter.showMerging(proposals.lastVerdict(panel));
         markPending(panel, proposals.roundPromptCellId(panel) ?? '', false);
       }
       // The counter exists for one failure mode: walking away with edits
       // still open. So it appears exactly while that is possible.
       if (!merging) {
-        counter.showRemaining(pending.length);
+        counter.showRemaining(pending.length, proposals.lastVerdict(panel));
         const promptCellId = proposals.roundPromptCellId(panel);
         if (promptCellId) {
           outputFor(panel, promptCellId)?.showReview(pending.length, []);

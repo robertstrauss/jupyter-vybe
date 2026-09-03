@@ -101,6 +101,15 @@ elif "You are completing a cell" in prompt:
 elif "make the agent fail" in prompt:
     sys.stderr.write("the agent fell over\n")
     raise SystemExit(3)
+elif "two edits please" in prompt:
+    # Two proposals, so a review survives its first verdict -- the only way to
+    # see what the counter says once a verdict has been given.
+    print('<vybe:propose_edit cell="1" note="double it">')
+    print("value = 2")
+    print("</vybe:propose_edit>")
+    print('<vybe:propose_edit cell="2" note="triple it">')
+    print("other = 3")
+    print("</vybe:propose_edit>")
 elif "double the value" in prompt:
     print('<vybe:propose_edit cell="1" note="double it">')
     print("value = 2")

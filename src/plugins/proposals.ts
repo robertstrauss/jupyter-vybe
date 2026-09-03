@@ -38,6 +38,9 @@ export interface IStageRequest {
   streaming?: boolean;
 }
 
+/** What was done to a proposal, for the undo button to name. */
+export type IVerdict = 'accept' | 'reject' | 'merge';
+
 export interface IRoundHandle {
   id: string;
   log: OperationLog;
@@ -89,6 +92,14 @@ export interface IVybeProposals {
   endManualMerge(panel: NotebookPanel): boolean;
   /** The cell being hand-edited, if any. */
   manualMerge(panel: NotebookPanel): string | null;
+  /**
+   * What the verdict Cmd+Z would take back actually was.
+   *
+   * "Undo" alone leaves the user to remember what they last did; naming it
+   * costs a map and removes the question. A merge is an accept underneath, so
+   * it has to be recorded as it happens -- afterwards the two are identical.
+   */
+  lastVerdict(panel: NotebookPanel): IVerdict | null;
   /** Ask the UI to render again, without changing anything. */
   refresh(panel: NotebookPanel): void;
   clear(panel: NotebookPanel, roundId?: string): void;
@@ -111,6 +122,8 @@ export class Proposals implements IVybeProposals {
   private _resolved = new Map<string, string[]>();
   /** The cell being hand-edited after a merge verdict, per notebook. */
   private _merging = new Map<string, string>();
+  /** What each resolved proposal had done to it, for naming the undo. */
+  private _verdicts = new Map<string, IVerdict>();
   /**
    * The round that just ended, kept so its log survives long enough to undo
    * the verdict that ended it. Without this the *last* accept of a round could
@@ -390,6 +403,27 @@ export class Proposals implements IVybeProposals {
     const order = this._resolved.get(panel.id) ?? [];
     order.push(p.id);
     this._resolved.set(panel.id, order);
+    // A merge reaches here as an accept, and is indistinguishable from one
+    // afterwards, so which it was is recorded while that is still knowable.
+    this._verdicts.set(
+      p.id,
+      p.state === 'accepted'
+        ? this._merging.get(panel.id) === p.cellId
+          ? 'merge'
+          : 'accept'
+        : 'reject'
+    );
+  }
+
+  lastVerdict(panel: NotebookPanel): IVerdict | null {
+    const order = this._resolved.get(panel.id) ?? [];
+    const id = order[order.length - 1];
+    if (!id) {
+      return null;
+    }
+    const p = this.list(panel).find(x => x.id === id);
+    // A proposal put back up for review is not a verdict any more.
+    return p && p.state !== 'pending' ? (this._verdicts.get(id) ?? null) : null;
   }
 
   /** Put the last reject-all back up for review. */

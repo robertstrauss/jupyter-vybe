@@ -186,7 +186,7 @@ vanishes the moment the last verdict lands.
 ```
    ┌──────────────────────────────────────────────────────┐
    │             3 edits left to review                   │
-   │  [ Next Enter ]  [ Reject All esc ]  [ Undo Merge ⌘Z ]│
+   │        [ Reject All esc ]  [ Undo Accept ⌘Z ]        │
    └──────────────────────────────────────────────────────┘
 
    ┌──────────────────────────────────────────────────────┐
@@ -201,6 +201,17 @@ Every action is a button naming the key that does the same thing, set as a
 `<kbd>` in the code font on a grey field so it reads as a key rather than as
 more of the label. That matters most for `esc`, the only one that is a word
 and would otherwise disappear into the sentence beside it.
+
+**The card itself is the jump.** `Enter` already goes to the next edit, so a
+button for it was a third thing on screen saying what two others said — and
+the card is a bigger, easier target than any button on it. Clicking anywhere
+that is not a button jumps and focuses; the `title` says so.
+
+**The undo names the verdict it would take back** — Undo Accept, Undo Reject,
+Undo Merge — because "Undo" alone leaves the user to remember what they last
+did. A merge is an accept underneath and indistinguishable from one
+afterwards, so which it was is recorded as it happens. With no verdict yet the
+button is not shown at all, rather than shown and inert.
 
 The border breathes between 30% and 60% brand colour over six seconds: slow
 enough to register as alive rather than as urgent, because the point is that

@@ -364,23 +364,72 @@ test.describe('the review session', () => {
     const counter = page.locator('.jv-review-counter');
 
     await expect(counter).toContainText('1 edit left to review');
-    // Every exit is on it, each naming the key that does the same thing.
-    await expect(counter.locator('.jv-counter-jump')).toContainText('Next');
-    await expect(counter.locator('.jv-counter-jump .jv-key')).toHaveText(
-      'Enter'
-    );
     await expect(counter.locator('.jv-counter-reject')).toContainText(
       'Reject All'
     );
     await expect(counter.locator('.jv-counter-reject .jv-key')).toHaveText(
       'esc'
     );
-    await expect(counter.locator('.jv-counter-undo')).toBeVisible();
-    // Not offered while there is nothing to merge back to.
+    // No verdict yet, so nothing to take back and nothing offered.
+    await expect(counter.locator('.jv-counter-undo')).toBeHidden();
     await expect(counter.locator('.jv-counter-confirm')).toBeHidden();
+    // The card itself is the jump, so it says so.
+    await expect(counter).toHaveAttribute('title', 'click to jump to proposal');
 
     await counter.locator('.jv-counter-reject').click();
     await expect(page.locator('.jv-diff-overlay')).toHaveCount(0);
+  });
+
+  test('names the verdict the undo would take back', async ({ page }) => {
+    // Two proposals, so the review outlives its first verdict: with one, the
+    // accept ends the round and takes the counter with it.
+    await page.goto();
+    await page.notebook.createNew();
+    await page.notebook.setCell(0, 'code', 'value = 1');
+    await page.notebook.addCell('code', 'other = 1');
+    await page.notebook.addCell('code', '> two edits please');
+    await page.notebook.runCell(2, { wait: false });
+    await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+      timeout: 60000
+    });
+    await page.keyboard.press('Enter');
+    const undo = page.locator('.jv-counter-undo');
+    await expect(undo).toBeHidden(); // nothing given yet, nothing to take back
+
+    await page.keyboard.press('y');
+
+    // "Undo" alone leaves the user to remember what they last did.
+    await expect(undo).toContainText('Undo Accept');
+    await expect(undo.locator('.jv-key')).toHaveText(/Z/);
+
+    await page.keyboard.press('n');
+    await expect(page.locator('.jv-review-counter')).toBeHidden();
+  });
+
+  test('the card is the jump, so the count keeps up as it walks', async ({
+    page
+  }) => {
+    await page.goto();
+    await page.notebook.createNew();
+    await page.notebook.setCell(0, 'code', 'value = 1');
+    await page.notebook.addCell('code', 'other = 1');
+    await page.notebook.addCell('code', '> two edits please');
+    await page.notebook.runCell(2, { wait: false });
+    await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+      timeout: 60000
+    });
+
+    const counter = page.locator('.jv-review-counter');
+    await page.keyboard.press('Enter');
+    await expect(counter).toContainText('2 edits left to review');
+
+    // Clicking the card, away from any button, is the jump -- so a click on
+    // the label must not be swallowed as a click on the card's chrome.
+    await counter.locator('.jv-counter-label').click();
+    await expect(page.locator('.jv-proposal-active')).toHaveCount(1);
+
+    await page.keyboard.press('n');
+    await expect(counter).toContainText('1 edit left to review');
   });
 
   /**
@@ -413,6 +462,10 @@ test.describe('the review session', () => {
       'Confirm Merge and Continue'
     );
     await expect(counter.locator('.jv-counter-reject')).toBeHidden();
+    // The verdict being offered back is the merge, named as one.
+    await expect(counter.locator('.jv-counter-undo')).toContainText(
+      'Undo Merge'
+    );
   });
 
   test('clicking away confirms the merge, as leaving edit mode would', async ({

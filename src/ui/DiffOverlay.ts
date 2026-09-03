@@ -1,6 +1,7 @@
 import { Platform } from '@lumino/domutils';
 import { Widget } from '@lumino/widgets';
 import type { IHunk } from './diff';
+import type { IVerdict } from '../plugins/proposals';
 
 /**
  * Read-only unified diff shown in place of a cell's editor while a proposal is
@@ -170,6 +171,7 @@ export class ReviewCounter extends Widget {
   private _label: HTMLElement;
   private _reviewOnly: HTMLElement[];
   private _mergeOnly: HTMLElement[];
+  private _undo: HTMLElement;
 
   constructor(actions: ICounterActions) {
     const node = document.createElement('div');
@@ -180,10 +182,20 @@ export class ReviewCounter extends Widget {
     const label = document.createElement('span');
     label.className = 'jv-counter-label';
 
+    // The card itself is the way to the next diff. `Enter` already does it
+    // from the keyboard, so a button for it was a third thing on screen
+    // saying what two others already said -- and the card is a bigger, easier
+    // target than any button on it.
+    node.title = 'click to jump to proposal';
+    node.addEventListener('click', event => {
+      if (!(event.target as HTMLElement).closest('button')) {
+        actions.onJump();
+      }
+    });
+
     const row = document.createElement('div');
     row.className = 'jv-counter-actions';
 
-    const next = button('jv-counter-jump', 'Next', 'Enter', actions.onJump);
     const rejectAll = button(
       'jv-counter-reject',
       'Reject All',
@@ -203,20 +215,21 @@ export class ReviewCounter extends Widget {
       actions.onUndo
     );
 
-    row.append(next, rejectAll, confirm, undo);
+    row.append(rejectAll, confirm, undo);
     node.append(label, row);
     super({ node });
     this._label = label;
-    this._reviewOnly = [next, rejectAll];
+    this._reviewOnly = [rejectAll];
+    this._undo = undo;
     this._mergeOnly = [confirm];
     this.showRemaining(0);
   }
 
-  showRemaining(count: number): void {
+  showRemaining(count: number, verdict: IVerdict | null = null): void {
     this._label.textContent = `${count} edit${
       count === 1 ? '' : 's'
     } left to review`;
-    this._setMode(false);
+    this._setMode(false, verdict);
   }
 
   /**
@@ -227,18 +240,33 @@ export class ReviewCounter extends Widget {
    * count is meaningless here besides: the merge is not one of the edits left
    * to review, it is the one being written.
    */
-  showMerging(): void {
+  showMerging(verdict: IVerdict | null = 'merge'): void {
     this._label.textContent = 'Manual proposal review';
-    this._setMode(true);
+    this._setMode(true, verdict);
   }
 
-  private _setMode(merging: boolean): void {
+  private _setMode(merging: boolean, verdict: IVerdict | null): void {
     this.node.classList.toggle('jv-counter-merging', merging);
     for (const el of this._reviewOnly) {
       el.hidden = merging;
     }
     for (const el of this._mergeOnly) {
       el.hidden = !merging;
+    }
+    // Named, not merely offered: "Undo" alone leaves the user to remember
+    // what they last did. With nothing to take back it is not shown at all,
+    // rather than shown and inert.
+    this._undo.hidden = !verdict;
+    if (verdict) {
+      const label = `Undo ${verdict[0].toUpperCase()}${verdict.slice(1)}`;
+      const text = this._undo.querySelector('span');
+      if (text) {
+        text.textContent = label;
+      }
+      this._undo.setAttribute(
+        'aria-label',
+        `${label} (keyboard: ${Platform.IS_MAC ? '⌘Z' : 'Ctrl+Z'})`
+      );
     }
   }
 
@@ -257,6 +285,7 @@ export class ReviewCounter extends Widget {
 }
 
 export interface ICounterActions {
+  /** Also fired by clicking the card itself, away from any button. */
   onJump: () => void;
   onRejectAll: () => void;
   onConfirmMerge: () => void;

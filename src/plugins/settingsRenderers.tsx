@@ -202,6 +202,40 @@ function GroupHeading(props: { schema: any }): JSX.Element | null {
   );
 }
 
+/**
+ * The group to write back, carrying only what is actually set.
+ *
+ * rjsf hands us `formData` already filled in with every schema default, so
+ * writing it back verbatim persists all of them -- and a value in the user's
+ * settings file is a value that no longer follows the default when we change
+ * it. That is not hypothetical: it pinned `triggerKey: "Alt-Tab"` into a real
+ * settings file, so moving the default to `Alt-\` had no effect for the one
+ * person who had ever opened this panel.
+ *
+ * So a key is written only when it differs from its default, or when it is
+ * the one being changed. Anything left at a default stays absent, and keeps
+ * following it.
+ */
+function groupUpdate(
+  data: Record<string, any>,
+  properties: Record<string, any>,
+  key: string,
+  value: any
+): Record<string, any> {
+  const next: Record<string, any> = {};
+  for (const name of Object.keys(data)) {
+    const current = name === key ? value : data[name];
+    const fallback = properties[name]?.default;
+    if (name === key || fallback === undefined || current !== fallback) {
+      next[name] = current;
+    }
+  }
+  if (!(key in next)) {
+    next[key] = value;
+  }
+  return next;
+}
+
 interface IFieldProps {
   group: string;
   name: string;
@@ -302,7 +336,7 @@ function group(
     const data: Record<string, any> = props?.formData ?? {};
     const properties: Record<string, any> = props?.schema?.properties ?? {};
     const set = (key: string, value: any) =>
-      props.onChange({ ...data, [key]: value });
+      props.onChange(groupUpdate(data, properties, key, value));
 
     return (
       <div className="jv-settings-group">
@@ -408,7 +442,7 @@ function GlobalPrompt(props: any): JSX.Element {
   const data: Record<string, any> = props?.formData ?? {};
   const properties: Record<string, any> = props?.schema?.properties ?? {};
   const set = (key: string, value: any) =>
-    props.onChange({ ...data, [key]: value });
+    props.onChange(groupUpdate(data, properties, key, value));
 
   return (
     <div className="jv-settings-group">
