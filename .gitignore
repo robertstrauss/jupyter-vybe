@@ -66,3 +66,6 @@ coverage/
 
 # Scratch notebooks a developer opens while testing are theirs, not ours.
 Untitled*.ipynb
+
+# Session notes, deliberately local.
+HANDOFF.md
