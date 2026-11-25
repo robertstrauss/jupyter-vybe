@@ -368,7 +368,14 @@ export const reviewUIPlugin: JupyterFrontEndPlugin<void> = {
           proposal.hunks,
           proposal.note ? `${label} — ${proposal.note}` : label
         );
-        Widget.attach(overlay, cellWidget.node);
+        // In the input area, where the hidden editor was: beside the cell's
+        // prompt, above its outputs, sized like the input. Appended to the
+        // cell instead, it sat below the old outputs and left the emptied
+        // input row behind as a blank band above them.
+        const inputArea = cellWidget.node.querySelector<HTMLElement>(
+          '.jp-Cell-inputWrapper .jp-InputArea'
+        );
+        Widget.attach(overlay, inputArea ?? cellWidget.node);
         created.push(overlay);
       }
       overlays.set(panel.id, created);

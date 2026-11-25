@@ -101,8 +101,17 @@ def _reordered(before: list, after: list) -> set:
     return (set(before) | set(after)) - keep
 
 
-def summarise(previous: list[dict], current: list[dict], prompt_cell_id: str = "") -> str:
-    """Describe current in terms of previous, cell by cell."""
+def summarise(
+    previous: list[dict],
+    current: list[dict],
+    prompt_cell_id: str = "",
+    stale: frozenset | set = frozenset(),
+) -> str:
+    """Describe current in terms of previous, cell by cell.
+
+    `stale` holds cells edited since they last ran; an edit to one of those
+    says so, because its old output is still sitting underneath it.
+    """
     prev_by_id = {c.get("id"): c for c in previous if c.get("id")}
     cur_by_id = {c.get("id"): c for c in current if c.get("id")}
     prev_order = [c.get("id") for c in previous if c.get("id")]
@@ -135,7 +144,8 @@ def summarise(previous: list[dict], current: list[dict], prompt_cell_id: str = "
         old_source, new_source = _source(old), _source(cell)
         changed = False
         if old_source != new_source:
-            out.append(f"EDITED  cell {ref} ({kind})")
+            note = ", not run since: its output is from before this edit" if cid in stale else ""
+            out.append(f"EDITED  cell {ref} ({kind}){note}")
             out.append(_hunks(old_source, new_source))
             out.append("")
             changed = True

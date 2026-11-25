@@ -87,7 +87,12 @@ describe('the settled prompt cell', () => {
   it('drops a stray fence the model left outside its tags', () => {
     // What the user actually saw: a settled cell whose whole content was
     // "```python" and a protocol complaint.
-    expect(toMarkdown('```python\n\n')).toBe('> do a thing\n');
+    expect(toMarkdown('```python\n\n')).toBe('> do a thing');
+  });
+
+  it('adds no trailing newline, even after a prompt typed with one', () => {
+    expect(toMarkdownSource('do a thing\n\n', '', '>')).toBe('> do a thing');
+    expect(toMarkdown('Done.\n')).toBe('> do a thing\n\nDone.');
   });
 
   it('keeps the code inside a fence but not the delimiters', () => {

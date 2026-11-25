@@ -39,7 +39,14 @@ const kernelSpec = { name: 'python3' };
 function fakePanel(): any {
   const classes = new Set<string>();
   const cells = [
-    { id: 'p1', type: 'code', source: '#% do a thing', metadata: {} }
+    { id: 'p1', type: 'code', source: '#% do a thing', metadata: {} },
+    {
+      id: 'load',
+      type: 'code',
+      source: "open('sales_2024.csv')",
+      metadata: {},
+      sharedModel: { getSource: () => "open('sales_2024.csv')" }
+    }
   ];
   return {
     id: 'panel-1',
@@ -276,6 +283,34 @@ describe('Rounds', () => {
     await rounds.begin(options(fakeCell(panel)));
 
     expect(convertPromptToMarkdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('says so when the agent proposes a cell unchanged', async () => {
+    // It used to stream a diff preview, then drop it in silence: the edit
+    // seemed to vanish before the user could accept or reject it.
+    const panel = fakePanel();
+    const { rounds } = build(
+      [
+        {
+          op: 'tool',
+          name: 'propose_edit',
+          args: {
+            cell: 'load',
+            body: "open('sales_2024.csv')\n",
+            note: 'fixed'
+          }
+        }
+      ],
+      0
+    );
+    (rounds as any)._panelFor = () => panel;
+    (convertPromptToMarkdown as jest.Mock).mockClear();
+
+    await rounds.begin(options(fakeCell(panel)));
+
+    const settled = (convertPromptToMarkdown as jest.Mock).mock.calls[0][2];
+    expect(settled).toContain('proposed no change');
+    expect(settled).toContain('fixed');
   });
 
   it('leaves the user on the prompt cell in command mode for review', async () => {

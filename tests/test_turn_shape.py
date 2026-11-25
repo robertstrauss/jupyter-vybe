@@ -369,3 +369,53 @@ def test_a_full_listing_resets_what_counts_as_unchanged():
     now = after_resync[after_resync.index("The notebook as it is now"):]
     assert "(unchanged since you last saw it in full)" in now
     assert "    return x * 2" not in now
+
+
+# -- outputs that predate the code above them ---------------------------------
+
+
+def test_an_output_left_over_from_before_an_edit_is_called_stale():
+    """What the demo did: the fix was accepted, the cell not rerun, and the
+    old FileNotFoundError still sat under the fixed code. Asked again to fix
+    the error, qwen proposed the cell unchanged, three times running."""
+    adapter = Scripted()
+    session = _session(adapter)
+    err = {"output_type": "error", "ename": "FileNotFoundError", "evalue": "sales.csv"}
+    cells = json.loads(SNAPSHOT)["cells"]
+    cells[0] = dict(cells[0], source="open('sales.csv')", execution_count=1, outputs=[err])
+    _turn_with(session, cells, 0)
+
+    cells[0] = dict(cells[0], source="open('sales_2024.csv')")
+    _turn_with(session, cells, 1)
+    assert "not run since: its output is from before this edit" in adapter.prompts[-1]
+    assert "the output below is from the old code" in adapter.prompts[-1]
+
+    # Still stale a turn later, with nothing new to say about the cell...
+    _turn_with(session, cells, 2)
+    assert "the output below is from the old code" in adapter.prompts[-1]
+
+    # ...until it runs.
+    cells[0] = dict(cells[0], execution_count=2, outputs=[])
+    _turn_with(session, cells, 3)
+    assert "old code" not in adapter.prompts[-1]
+
+
+# -- an edit aimed at the prompt cell is an insertion ---------------------------
+
+
+class EditsThePrompt:
+    async def stream(self, messages, cancel):
+        yield '<vybe:propose_edit cell="3">\nprint("chart")\n</vybe:propose_edit>'
+
+
+def test_an_edit_to_the_prompt_cell_arrives_as_a_new_cell():
+    """Accepted, such an edit put the code in the prompt cell, which then
+    settled into markdown -- code in a markdown cell, under the prompt."""
+    frames = _turn(_session(EditsThePrompt()), "print a chart", 0)
+    starts = [f for f in frames if f["op"] == "toolStart"]
+    tools = [f for f in frames if f["op"] == "tool"]
+    assert [f["name"] for f in starts] == ["add_cell"]
+    assert tools == [
+        {"op": "tool", "name": "add_cell", "args": {"type": "code", "body": 'print("chart")'}}
+    ]
+    assert all(f["name"] == "add_cell" for f in frames if f["op"] == "toolDelta")

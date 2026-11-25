@@ -38,6 +38,9 @@ def build_session(adapter: Any, notebook_path: str = "/n.ipynb", **overrides: An
         "_tool_waiters": {},
         "_cells": [],
         "_baseline": {},
+        "_stale": set(),
+        "_prompt_cell_id": "",
+        "_edit_as_insert": False,
         "_prose": "",
         # Off by default: a unit test should not write to $HOME.
         "history_enabled": False,

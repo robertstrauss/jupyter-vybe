@@ -24,6 +24,22 @@
   small stdlib-only sales notebook that fails on purpose, with ready-made
   prompt cells to fix it and carry on.
 
+### Fixes
+
+- **The toolbar's stop button cancels a running prompt.** It interrupted only
+  the kernel, which a prompt never uses, so the round carried on and settled
+  the prompt into markdown a few seconds later.
+- **An edit that changes nothing is reported, not silently dropped.** The diff
+  preview used to stream in and then vanish before it could be reviewed; the
+  prompt cell now says the agent proposed no change, and why.
+- **Outputs left over from before an edit are marked as such.** After a fix
+  was accepted but not rerun, the agent still saw the old traceback under the
+  fixed code and "fixed" the cell into itself again.
+- **An edit aimed at the prompt cell becomes a new cell below it.** Accepted,
+  it had put the code into the prompt, which then settled into markdown.
+- **Settled prompt cells no longer end with an extra newline**, nor a bare
+  `>` line when the prompt was typed with a trailing Enter.
+
 ### Your agent, on your machine, without a hole in it
 
 - **Two ways to run a command without the token are closed** (docs/13 R16).

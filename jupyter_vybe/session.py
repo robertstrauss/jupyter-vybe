@@ -73,6 +73,11 @@ class AgentSession:
         self._cancel = asyncio.Event()
         self._tool_waiters: dict[str, asyncio.Future] = {}
         self._cells: list[dict] = []  # last snapshot, for resolving cell references
+        self._prompt_cell_id = ""
+        self._stale: set[str] = set()  # edited since last run; see _stale_outputs
+        # True while a propose_edit aimed at the prompt cell is arriving: it is
+        # streamed, and finally sent, as an add_cell instead (see _translate).
+        self._edit_as_insert = False
         # The notebook as of the last full listing: a cell identical to its
         # entry here is one the agent already has word for word.
         self._baseline: dict[str, dict] = {}
@@ -186,6 +191,9 @@ class AgentSession:
         previous_cells = self._cells
         if snapshot_cells:
             self._cells = snapshot_cells
+        self._prompt_cell_id = msg.get("promptCellId", "")
+        self._edit_as_insert = False
+        self._stale = _stale_outputs(self._stale, previous_cells, snapshot_cells)
         if force_full:
             self._baseline = {c.get("id"): c for c in snapshot_cells if c.get("id")}
             prompt = assemble_initial(
@@ -204,7 +212,7 @@ class AgentSession:
             # (docs/09). The bodies it needs are in the conversation already.
             prompt = assemble_followup(
                 notebook_diff=summarise(
-                    previous_cells, snapshot_cells, msg.get("promptCellId", "")
+                    previous_cells, snapshot_cells, msg.get("promptCellId", ""), self._stale
                 ),
                 kernel=msg.get("kernelInfo", {}),
                 user_prompt=msg["prompt"],
@@ -212,6 +220,7 @@ class AgentSession:
                     snapshot_cells,
                     msg.get("promptCellId", ""),
                     brief=_unchanged_since(self._baseline, snapshot_cells),
+                    stale=self._stale,
                 ),
             )
         self.snapshot_seq = seq
@@ -439,9 +448,14 @@ class AgentSession:
                     # The TOOL event will report the protocol error properly;
                     # starting a preview against nothing would be worse.
                     return None, None
+                if args["cell"] == self._prompt_cell_id:
+                    self._edit_as_insert = True
+                    return {"op": "toolStart", "name": "add_cell", "args": {"type": "code"}}, None
+                self._edit_as_insert = False
             return {"op": "toolStart", "name": event.name, "args": args}, None
         if event.kind is EventKind.TOOL_DELTA:
-            return {"op": "toolDelta", "name": event.name, "text": event.text}, None
+            name = "add_cell" if self._edit_as_insert and event.name == "propose_edit" else event.name
+            return {"op": "toolDelta", "name": name, "text": event.text}, None
         if event.kind is EventKind.PROSE:
             return ({"op": "prose", "delta": event.text} if event.text else None), None
         if event.kind is EventKind.ERROR:
@@ -489,8 +503,44 @@ class AgentSession:
                         'cell="3". Send the whole reply again, correctly.'
                     ),
                 }, None
+            self._edit_as_insert = False
+            if resolved == self._prompt_cell_id:
+                # The prompt cell is the request, not code to rewrite. Small
+                # models aim propose_edit at it to mean "the answer goes
+                # here"; accepted, the code was then settled into markdown
+                # along with the prompt. What they mean is a new cell below.
+                _record("edit_to_prompt_cell_redirected", cell=resolved)
+                return {
+                    "op": "tool",
+                    "name": "add_cell",
+                    "args": {"type": "code", "body": args.get("body", "")},
+                }, None
             args["cell"] = resolved
         return {"op": "tool", "name": event.name, "args": args}, None
+
+
+def _stale_outputs(stale: set[str], previous: list[dict], current: list[dict]) -> set[str]:
+    """Cells whose outputs predate their source.
+
+    A cell is stale once its source changes while its execution count and
+    outputs do not, and stays stale until it runs again. Only knowable across
+    turns, so a session's first listing can show none.
+    """
+    before = {c.get("id"): c for c in previous if c.get("id")}
+    out = set()
+    for cell in current:
+        cid = cell.get("id")
+        old = before.get(cid)
+        if old is None or not cell.get("outputs"):
+            continue
+        ran = old.get("execution_count") != cell.get("execution_count") or (
+            old.get("outputs") or []
+        ) != (cell.get("outputs") or [])
+        if ran:
+            continue
+        if cid in stale or _src(old) != _src(cell):
+            out.add(cid)
+    return out
 
 
 def _unchanged_since(baseline: dict[str, dict], cells: list[dict]) -> set[str]:

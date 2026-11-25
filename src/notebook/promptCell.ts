@@ -78,12 +78,15 @@ export function toMarkdownSource(
   prose: string,
   prefix: string
 ): string {
+  // No trailing newline: the cell ends where its text does. A prompt typed
+  // with a trailing Enter would otherwise settle with a bare `>` line too.
   const quoted = prompt
+    .replace(/\s+$/, '')
     .split('\n')
     .map(line => (line.length ? `${prefix} ${line}` : prefix))
     .join('\n');
-  const tail = withoutStrayFences(prose);
-  return tail ? `${quoted}\n\n${tail}\n` : `${quoted}\n`;
+  const tail = withoutStrayFences(prose).replace(/\s+$/, '');
+  return tail ? `${quoted}\n\n${tail}` : quoted;
 }
 
 /** Recover the original prompt source from a settled markdown cell. */

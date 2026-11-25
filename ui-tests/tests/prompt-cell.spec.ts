@@ -168,6 +168,38 @@ test('a proposed edit is reviewed, not applied, until accepted', async ({
     .toContain('value = 2');
 });
 
+test('the diff takes the place of the editor, above the old output', async ({
+  page
+}) => {
+  await page.goto();
+  await page.notebook.createNew();
+  await page.notebook.setCell(0, 'code', 'value = 1\nvalue');
+  await page.notebook.runCell(0, { wait: true });
+  await page.notebook.addCell('code', '> double the value above');
+  // Running cell 0 advanced into a new empty cell, so the prompt is third.
+  await page.notebook.runCell(2, { wait: false });
+  await expect(page.locator('.jv-prompt-output.jv-review')).toBeVisible({
+    timeout: 60000
+  });
+  await page.keyboard.press('Enter');
+
+  const cell = page.locator('.jp-Cell.jv-proposal');
+  const overlay = cell.locator('.jp-InputArea > .jv-diff-overlay');
+  await expect(overlay).toBeVisible();
+  // In the input row, not tacked on below the outputs...
+  const diff = (await overlay.boundingBox())!;
+  const output = (await cell.locator('.jp-Cell-outputWrapper').boundingBox())!;
+  expect(diff.y + diff.height).toBeLessThanOrEqual(output.y + 1);
+  // ...and the input row is the diff: no emptied band above it.
+  const input = (await cell.locator('.jp-Cell-inputWrapper').boundingBox())!;
+  expect(diff.y - input.y).toBeLessThan(8);
+  expect(input.y + input.height - (diff.y + diff.height)).toBeLessThan(8);
+  await page.screenshot({
+    path: 'test-results/diff-in-place.png',
+    clip: { x: 0, y: input.y - 20, width: 1200, height: input.height + 120 }
+  });
+});
+
 test('rejecting leaves the notebook exactly as it was', async ({ page }) => {
   await page.goto();
   await page.notebook.createNew();

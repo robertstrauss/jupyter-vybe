@@ -44,7 +44,10 @@ def kernel_banner(kernel: dict) -> str:
 
 
 def render_notebook(
-    cells: list[dict], prompt_cell_id: str = "", brief: frozenset | set = frozenset()
+    cells: list[dict],
+    prompt_cell_id: str = "",
+    brief: frozenset | set = frozenset(),
+    stale: frozenset | set = frozenset(),
 ) -> str:
     """Render the notebook as a numbered listing rather than raw JSON.
 
@@ -57,6 +60,10 @@ def render_notebook(
     Cells whose id is in `brief` get one line instead of their source: on a
     follow-up turn, those are the cells the agent already has word for word
     from the last full listing, so their number is all it needs here.
+
+    Cells whose id is in `stale` were edited after they last ran, so their
+    outputs belong to code that is no longer there. Said outright: shown an
+    old traceback under fixed code, a model "fixes" it again, into itself.
     """
     lines: list[str] = []
     prompt_index = next(
@@ -88,7 +95,13 @@ def render_notebook(
 
         count = cell.get("execution_count")
         if kind == "code" and count:
-            lines.append(f"    (executed, count {count})")
+            if cid and cid in stale:
+                lines.append(
+                    f"    (executed, count {count}, then edited and not run since: "
+                    "the output below is from the old code, not this code)"
+                )
+            else:
+                lines.append(f"    (executed, count {count})")
         for line in source.split("\n"):
             lines.append(f"    {line}")
 

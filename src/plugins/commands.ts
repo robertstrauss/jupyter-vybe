@@ -301,6 +301,25 @@ export const commandsPlugin: JupyterFrontEndPlugin<void> = {
       }
     });
 
+    /*
+     * The toolbar's stop button (and I,I) interrupt the *kernel*, which a
+     * prompt round never touches -- so pressing it left the round running,
+     * and a few seconds later it settled the prompt into markdown as if
+     * nothing had been asked to stop. Stopping is stopping: if a round is in
+     * flight on that notebook, cancel it too.
+     */
+    const INTERRUPTS = new Set([
+      'notebook:interrupt-kernel',
+      'kernelmenu:interrupt',
+      'runmenu:interrupt'
+    ]);
+    app.commands.commandExecuted.connect((_, { id }) => {
+      const panel = current();
+      if (INTERRUPTS.has(id) && panel && rounds.hasActiveRound(panel)) {
+        rounds.cancel(panel);
+      }
+    });
+
     // Available forever, not just inside the undo window (docs/02).
     app.commands.addCommand(CommandIDs.reopenPrompt, {
       label: 'Reopen as prompt cell',

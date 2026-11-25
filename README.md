@@ -108,19 +108,19 @@ has prompt cells ready to run.
 
 Once installed and enabled, the extension is triggered by adding a code cell and entering '>' followed by a natural language prompt for cells to generate below this prompt cell or edits to propose throughout the notebook. The prompt is evaluated through the agent by running this code cell ('>' MUST be the first charachter in the cell input to be used as a prompt cell. Any natural language (or even example code/psuedo code/markdown text can follow within the cell input and wil be fed to the agent). Once evaluated with Shift+Enter or Cmd+Enter, the prompt will be fed to the agent, which will insert cells below the prompt cell only, or propose edits to other cells. If proposals are made, a status indicator in the top-right shows how many and clicking it or pressing the shortcut will take you to the first one, which can be accepted or rejected with the keyboard or buttons, bringing you to the next, and the next, until all are resolved and you are brought back to the prompt cell where you started. You can reverse all edits and cancel at any time with Ctrl+C, or undo individual edit approvals with Cmd+Z and be brought back to the previous one you approved. Once back at the prompt, Cmd+Z will undo all agent-inserted cells and dismiss all proposed edits and place your cursor back in the prompt cell.
 
-[HUMAN: SCREENSHOT]
+![A prompt cell running: the agent reading the notebook, with elapsed time and context used](screenshots/generating.png)
 
 ### Edit Proposal Reviewal
 
 The agent can directly add cells immediately below the prompt (which you can instantly see and veto), but to modify any other part of the notebook it needs human reviewal. Proposed cell edits are shown like a git diff, green for new lines, red for replaced lines. If the model decides it needs to change other cells, a bubble in the top-right of the notebook panel shows you how many attempted edits there are, and takes you to them one at a time when clicked (or keyboard shortcut pressed). `Y` accepts the new version and moves to the next cell to review, `N` rejects modifications, `Return` places your cursor in the cell to modify it as you wish and continue reviewing once you hit `Esc`. You can also reject all edits at any time or go back undoing your approvals with `Cmd+Z`.
 
-[HUMAN: REVIEWAL PROCESS SCREENSHOT]
+![A proposed edit shown as a diff, with Accept (Y), Reject (N) and Modify (Return) beside it](screenshots/cell-edit-proposal.png)
 
 ### Prompt History
 
 Clicking the icon in the right toolbar (below the settings and debugger icon) [HUMAN TODO: SCREENSHOT TOOLBAR W/ ICON] will open/close a prompt history pane where previous prompts and proposed cell inserts/edits can be scrolled through, from the latest at the bottom to the oldest within this session at the top. The history includes rejected edits. Clicking any proposed/edited cell in this history copies it to the cell clipboard so pressing 'v' in command mode pastes it as a cell below the current selection. Selecting an edit proposal/difference copies the net 'after' edited cell.
 
-[HUMAN: PROPMT HISTORY SCREENSHOT]
+![The prompt history pane: each prompt with its proposals and whether they were accepted or rejected](screenshots/prompt-history.png)
 
 ### Settings
 
@@ -145,7 +145,7 @@ following controls:
 
 The AI engine is completely interchangeable. Hook it up to a local agent or your subscription AI service of choice. Just go to settings, open the model selection drop down, and click 'add model' and follow the setup steps.
 
-[HUMAN: SCREENSHOTS]
+![The Agent section of the Jupyter Vybe settings: the agent picker, the fields each kind of agent uses, and a reachability check](screenshots/settings-agents.png)
 
 ### When the model and the notebook are on different machines
 

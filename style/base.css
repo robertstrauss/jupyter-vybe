@@ -76,6 +76,15 @@
   display: none;
 }
 
+/* In place of the editor: it fills the row the editor filled, beside the
+   execution prompt, with no margin of its own -- the prompt already provides
+   the indent the free-standing overlay has to fake. */
+.jp-InputArea > .jv-diff-overlay {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
 /* ---- per-cell review controls ---- */
 .jv-review-controls {
   position: absolute;

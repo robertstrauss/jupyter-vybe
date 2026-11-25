@@ -189,7 +189,12 @@ fi
 # in a browser that never loaded it. That cost an afternoon; it does not get
 # to cost a second one.
 bundle=$(ls -t jupyter_vybe/labextension/static/lib_index_js.*.js 2>/dev/null | head -1)
-if [ -z "$bundle" ]; then
+if [ -z "$bundle" ] && [ -n "${CI:-}" ]; then
+  # A fresh CI checkout has no bundle yet (it is built from source later in
+  # the job), so there is nothing stale to catch. The gate guards a
+  # developer's browser, not a clean checkout.
+  echo "skip  T-BUILD: no bundle in a fresh CI checkout"
+elif [ -z "$bundle" ]; then
   echo "FAIL T-BUILD: no built labextension; run 'jlpm build' with the venv active"
   fail=1
 else

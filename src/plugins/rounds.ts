@@ -16,6 +16,7 @@ import { setRounds } from '../roundRegistry';
 import {
   OperationLog,
   convertPromptToMarkdown,
+  findCellModel,
   insertCellsBelow,
   restorePromptForReview,
   revertRound,
@@ -29,6 +30,7 @@ import {
 } from '../notebook/promptCell';
 import { buildSnapshot, estimateTokens } from '../notebook/snapshot';
 import { runIntrospection } from '../introspect';
+import { normaliseSource } from '../ui/diff';
 
 /**
  * Room kept back from the context window for the preamble, the conversation so
@@ -345,6 +347,22 @@ export class Rounds implements IVybeRounds {
         } else if (name === 'propose_edit') {
           if (proposals >= this.settings.maxProposals) {
             continue;
+          }
+          const target = findCellModel(panel, args.cell ?? '');
+          const current = target?.sharedModel.getSource() ?? '';
+          if (
+            target &&
+            normaliseSource(current) === normaliseSource(args.body ?? '')
+          ) {
+            // An "edit" that rewrites a cell into itself proposes nothing, so
+            // there is no diff to review -- but dropping it in silence made
+            // the streamed preview vanish before the user could act, which
+            // read as the extension losing their edit. Say what happened.
+            const label = current.split('\n')[0].slice(0, 60);
+            const why = args.note ? `: ${args.note}` : '';
+            const said = `The agent proposed no change to \`${label}\`${why}`;
+            round.prose += `\n\n_${said}_`;
+            this._emitProblem(round, said, 'notice');
           }
           if (streaming && streaming.name === 'propose_edit') {
             this.proposals.finishStaged(
