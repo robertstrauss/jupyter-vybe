@@ -180,12 +180,23 @@ class VybeAgent implements IVybeAgent {
     return ch;
   }
 
+  /**
+   * Always this notebook's own server, authenticated like any Jupyter socket.
+   *
+   * The browser used to connect straight to a sidecar on the user's machine
+   * when the agent ran there. Any web page could reach that sidecar the same
+   * way, so the agent on the user's machine now dials *out* to the server
+   * (`jupyter-vybe-local connect`) and the browser never leaves its origin.
+   * The token goes on the URL exactly as JupyterLab's own kernel sockets do
+   * it; with a cookie session it is empty and the cookie does the work.
+   */
   private url(): string {
-    if (this.settings.agentHost === 'client') {
-      return `${this.settings.sidecarUrl.replace(/^http/, 'ws')}/ws`;
+    const settings = ServerConnection.makeSettings();
+    const url = URLExt.join(settings.wsUrl, 'jupyter-vybe', 'ws');
+    if (settings.appendToken && settings.token) {
+      return `${url}?token=${encodeURIComponent(settings.token)}`;
     }
-    const base = ServerConnection.makeSettings().wsUrl;
-    return URLExt.join(base, 'jupyter-vybe', 'ws');
+    return url;
   }
 
   send(notebookPath: string, req: IPromptRequest): AsyncIterable<IAgentFrame> {

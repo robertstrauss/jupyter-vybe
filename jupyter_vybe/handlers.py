@@ -9,10 +9,10 @@ import uuid
 from pathlib import Path
 
 from jupyter_server.base.handlers import APIHandler
-from jupyter_server.utils import url_path_join
+from jupyter_server.utils import ensure_async, url_path_join
 from tornado import web, websocket
 
-from .adapters import ADAPTER_REGISTRY, Message, build_adapter
+from .adapters import ADAPTER_REGISTRY, HUB, Message, build_adapter
 from .completion import (
     build_fim_prompt,
     build_predict_prompt,
@@ -25,6 +25,7 @@ from .completion import (
 )
 from .history import HistoryStore, find_orphan
 from .session import SessionManager
+from .sockets import AuthenticatedSocket, RunnerSocket
 
 NAMESPACE = "jupyter-vybe"
 
@@ -38,15 +39,23 @@ class AgentsHandler(APIHandler):
     async def get(self) -> None:
         agents = []
         for spec in ADAPTER_REGISTRY.values():
-            agents.append(
-                {
-                    "id": spec.id,
-                    "label": spec.label,
-                    "contextWindow": spec.context_window,
-                    "local": spec.local,
-                    "requiresConfig": spec.requires_config,
-                }
-            )
+            entry = {
+                "id": spec.id,
+                "label": spec.label,
+                "contextWindow": spec.context_window,
+                "local": spec.local,
+                "requiresConfig": spec.requires_config,
+            }
+            if spec.id == "runner" and HUB.info is not None:
+                # What is actually on the other end, not what might be.
+                info = HUB.info
+                entry["label"] = f"{info.label} on {info.hostname or 'your machine'}"
+                entry["local"] = info.local
+                entry["contextWindow"] = info.context_window or spec.context_window
+                entry["connected"] = True
+            elif spec.id == "runner":
+                entry["connected"] = False
+            agents.append(entry)
         self.finish(json.dumps({"agents": agents}))
 
 
@@ -308,16 +317,11 @@ def _finished(text: str, max_lines: int, typed: str = "") -> bool:
     return bool(body) and limit_lines(body, max_lines, typed) != body
 
 
-class AgentSocket(websocket.WebSocketHandler):
+class AgentSocket(AuthenticatedSocket):
     """One connection per open notebook; carries prompts, prose, and tool events."""
 
-    def check_xsrf_cookie(self) -> None:  # handled by the token/cookie auth below
-        pass
-
-    def get_current_user(self):
-        return self.settings.get("jupyter_vybe_user_stub", True)
-
-    async def open(self) -> None:
+    async def open(self, *args, **kwargs) -> None:
+        await ensure_async(super().open(*args, **kwargs))
         self.session = None
         self.round_id = None
 
@@ -338,7 +342,13 @@ class AgentSocket(websocket.WebSocketHandler):
             )
             await self._send({"op": "status", "state": "ready"})
         elif op == "prompt":
-            await self._run_prompt(msg)
+            # A task, not an await. Tornado reads no further frame from this
+            # socket until on_message returns -- not the cancel, not the
+            # result of a kernel lookup the round is itself waiting for, and
+            # not the pong to Jupyter's keep-alive ping, which closes the
+            # socket after 90 s without one. Awaited, any round longer than
+            # that was cut off mid-reply.
+            self._round = asyncio.ensure_future(self._run_prompt(msg))
         elif op == "toolResult":
             if self.session is not None:
                 self.session.deliver_tool_result(msg["callId"], msg.get("result", ""), msg.get("ok", True))
@@ -386,6 +396,7 @@ class AgentSocket(websocket.WebSocketHandler):
         # A dropped socket mid-round is a cancel; we never auto-retry (docs/06).
         if self.session is not None:
             self.session.cancel()
+        super().on_close()
 
 
 def setup_handlers(web_app) -> None:
@@ -400,5 +411,6 @@ def setup_handlers(web_app) -> None:
             (url_path_join(base, NAMESPACE, "complete"), CompletionHandler),
             (url_path_join(base, NAMESPACE, "predict"), PredictHandler),
             (url_path_join(base, NAMESPACE, "ws"), AgentSocket),
+            (url_path_join(base, NAMESPACE, "runner"), RunnerSocket),
         ],
     )

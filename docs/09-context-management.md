@@ -69,11 +69,44 @@ actually falls through to the language default.
 
 PROMPT §6: "don't repeat the entire notebook, use the proper edit/difference based summary".
 
-**Built** (`jupyter_vybe/diffsummary.py`). After each round the last snapshot is retained
-server-side, and the next turn sends a one-line-per-cell _index_ plus a cell-level diff. The index
-is not optional: the agent has to name a cell to edit it, and a number it cannot see is a number
-it invents — which is how silent edits to the wrong cell happened. What the index drops is the
-cell _bodies_, which are already in the conversation.
+**Built** (`jupyter_vybe/diffsummary.py`, `assemble_followup`). A follow-up turn sends, in this
+order:
+
+1. **The diff** since the last turn — the record of what changed, including what cells printed.
+2. **The notebook as it is now** — every cell changed since the last _full_ listing in full, with
+   its outputs; every other cell as one line, because the agent already has it word for word.
+3. **The rules recap**, then **the request**.
+
+The agent never has to rebuild the present by applying a chain of diffs to an old copy: anything
+not identical to what it last saw in full is in front of it as it now is, and it is the last thing
+it reads before the request. The cost grows with how much has changed, not with the notebook — a
+60-cell notebook sent in full on every turn measured 9.4 s of prompt processing per turn on
+qwen 7B, against 0.2 s for a diff.
+
+**Measured (1.2), qwen 7B, two-turn sessions.** _Fix the error_: the first turn writes a cell; the
+load cell then runs and raises `FileNotFoundError` naming the right file; the second turn asks
+to fix the error. Success = an edit to the load cell using that file. _Edit the cell above_: the
+second turn asks to make the generated function return `float32`. Success = an edit to that
+cell, not a new copy.
+
+| Follow-up turn sends                                | Fix the error | Edit the cell above |
+| --------------------------------------------------- | ------------- | ------------------- |
+| one-line index + diff (1.1; the diff had no output) | —             | 8/8                 |
+| index + diff with outputs                           | 0/10          | —                   |
+| the whole notebook (forced full listing)            | 3/4           | —                   |
+| rules, current cells, diff                          | 0/8           | 8/8                 |
+| rules, diff, current cells                          | 12/12         | 4/8                 |
+| **diff, current cells, rules (shipped)**            | **14/16**     | **16/16**           |
+
+Two things follow. The present has to come _after_ the diff — the same current cells placed
+before it scored 0/8. And the rules have to sit next to the request, or "edit the cell above"
+turns into a modified copy. Small samples, one model; a multi-turn benchmark is the proper test
+and has not been built.
+
+Outputs in the diff use the listing's `# output:` form. Until 1.2 a cell that ran was reported
+only as `output changed`, so after the first turn the agent never saw a traceback. The browser
+has already applied `context.includeOutputs` and `maxOutputChars`, so nothing is sent that the
+user did not agree to send.
 
 A cell whose index shifted because something above it was deleted is not reported as moved; only
 a change in order relative to the other surviving cells is a move. Reporting the shift as a move
@@ -96,8 +129,9 @@ EDITED cell 2c9e (code)
 
 REMOVED cell 91ab (markdown)
 
-RAN cell 2c9e -> execution_count 12, output changed:
-<stdout truncated> shape: (4096, 3)
+RAN cell 2c9e -> execution_count 12, output now:
+
+# output: shape: (4096, 3)
 
 MOVED cell 55dd from index 9 to index 4
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -42,7 +43,9 @@ def kernel_banner(kernel: dict) -> str:
     )
 
 
-def render_notebook(cells: list[dict], prompt_cell_id: str = "") -> str:
+def render_notebook(
+    cells: list[dict], prompt_cell_id: str = "", brief: frozenset | set = frozenset()
+) -> str:
     """Render the notebook as a numbered listing rather than raw JSON.
 
     A small model asked to edit a cell has to name a target. Digging a uuid out
@@ -50,6 +53,10 @@ def render_notebook(cells: list[dict], prompt_cell_id: str = "") -> str:
     easy one. Cells are numbered from 1 in notebook order, the cell directly
     above the prompt is called out, and ids are still shown so either form of
     address works.
+
+    Cells whose id is in `brief` get one line instead of their source: on a
+    follow-up turn, those are the cells the agent already has word for word
+    from the last full listing, so their number is all it needs here.
     """
     lines: list[str] = []
     prompt_index = next(
@@ -67,12 +74,17 @@ def render_notebook(cells: list[dict], prompt_cell_id: str = "") -> str:
         if cid:
             tag += f" id={cid}"
         tag += ":"
+        if cid and cid in brief:
+            first = next((ln.strip() for ln in source.split("\n") if ln.strip()), "(empty)")
+            tag += f" {first[:72]}   (unchanged since you last saw it in full)"
         if prompt_index is not None:
             if i == prompt_index:
                 tag += "   <-- this is the prompt cell you are answering"
             elif i == prompt_index - 1:
                 tag += '   <-- the cell directly above the prompt ("the cell above")'
         lines.append(tag)
+        if cid and cid in brief:
+            continue
 
         count = cell.get("execution_count")
         if kind == "code" and count:
@@ -83,7 +95,7 @@ def render_notebook(cells: list[dict], prompt_cell_id: str = "") -> str:
         for out in cell.get("outputs", []) or []:
             text = _output_text(out)
             if text:
-                lines.append(f"    # output: {text}")
+                lines.extend(f"    # output: {part}" for part in text.split("\n"))
         # Explicit terminator: without it a header can read as belonging to the
         # block above it as easily as the block below.
         lines.append(f"[end of cell {n}]")
@@ -91,10 +103,66 @@ def render_notebook(cells: list[dict], prompt_cell_id: str = "") -> str:
     return "\n".join(lines).rstrip()
 
 
+EVALUE_CAP = 300
+CODE_LINE_CAP = 160
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_ARROW = re.compile(r"^\s*-*>\s*\d+\s?(.*)$")
+_FRAME_HEAD = re.compile(r"^(Cell In\[|File |Input In \[|<ipython-input)")
+
+
+def _clip(text: str, cap: int) -> str:
+    text = text.strip()
+    return text if len(text) <= cap else text[: cap - 1] + "\u2026"
+
+
+def _frame(entry: str) -> str:
+    """One traceback frame as `where: the line that ran`, or "" if not a frame.
+
+    IPython renders each frame as a header (`Cell In[2], line 5, in g()` or
+    `File .../json/decoder.py:355, in raw_decode(...)`) followed by a few
+    lines of context, the executing one marked with an arrow. A syntax error
+    has no arrow; its offending line is the one after the header.
+    """
+    lines = [ln for ln in _ANSI.sub("", entry).split("\n") if ln.strip()]
+    if len(lines) < 2 or not _FRAME_HEAD.match(lines[0].strip()):
+        return ""
+    head = lines[0].strip()
+    if head.startswith("File "):
+        # Library paths are long and say little: keep the package and file.
+        path, _, rest = head[5:].partition(":")
+        head = "File " + "/".join(Path(path).parts[-2:]) + ":" + rest
+    code = next((m.group(1) for m in map(_ARROW.match, lines[1:]) if m), None)
+    if code is None:
+        code = lines[1]
+    return f"{_clip(head, CODE_LINE_CAP)}: {_clip(code, CODE_LINE_CAP)}"
+
+
+def _error_text(out: dict) -> str:
+    """The error, then the first and last frames of its traceback.
+
+    The first frame is where the user's cell called in; the last is where it
+    actually raised. Between them is usually library plumbing, so it is
+    counted rather than shown. Each frame costs one line, so a deep pandas
+    traceback is four lines, not four screens.
+    """
+    evalue = _clip(str(out.get("evalue", "")).replace("\n", " "), EVALUE_CAP)
+    lines = [f"{out.get('ename', '')}: {evalue}"]
+    frames = [f for f in map(_frame, out.get("traceback") or []) if f]
+    if frames:
+        lines.append(f"  at {frames[0]}")
+        if len(frames) > 2:
+            hidden = len(frames) - 2
+            lines.append(f"  ... {hidden} more frame{'s' if hidden > 1 else ''}")
+        if len(frames) > 1:
+            lines.append(f"  at {frames[-1]}")
+    return "\n".join(lines)
+
+
 def _output_text(out: dict) -> str:
+    """An output as the agent sees it. Errors may span lines; nothing else does."""
     kind = out.get("output_type")
     if kind == "error":
-        return f"{out.get('ename', '')}: {out.get('evalue', '')}"
+        return _error_text(out)
     if kind == "stream":
         text = out.get("text", "")
         if isinstance(text, list):
@@ -188,19 +256,34 @@ TOOL_RECAP = (
 def assemble_followup(
     *, notebook_diff: str, kernel: dict, user_prompt: str, notebook_listing: str = ""
 ) -> str:
-    """A follow-up turn in a persistent session.
+    """A follow-up turn in a persistent session: what changed, what is, what to do.
 
-    The listing is NOT optional in practice. Without it the agent has no cell
-    numbers to address, so a request like "edit the cell above" makes it invent
-    an index -- which then resolves to a real but wrong cell. That is a silent
-    wrong edit, the worst failure this tool can produce, so the listing goes on
-    every turn until diff summaries exist to replace it (docs/09).
+    In this order, each part measured on qwen 7B (docs/09 has the table):
+
+    1. **The diff** -- the record of what changed since the last turn.
+    2. **The notebook as it is now**: every cell changed since the last full
+       listing in full, with its outputs, the rest one line each. Asked to fix
+       the error a run had just produced, with only the diff the agent edited
+       the right cell 0 times in 10; with the current cells after the diff,
+       14 in 16. Placed *before* the diff, the same cells scored 0 in 8:
+       having the present is not enough, it has to be the last thing read.
+    3. **The rules**, next to the request. Placed first instead, "edit the
+       cell above" became a modified copy in a new cell half the time (4 in 8,
+       against 16 in 16 here).
+
+    The listing is also what makes a cell addressable. Without it the agent
+    invents an index, which resolves to a real but wrong cell -- the worst
+    failure this tool can produce.
     """
     diff = notebook_diff.strip() or "(no changes since your last turn)"
-    parts = [kernel_banner(kernel), TOOL_RECAP]
+    parts = [kernel_banner(kernel), f"Changes since your last turn:\n\n{diff}"]
     if notebook_listing:
-        parts.append(f"The notebook now contains:\n\n{notebook_listing}")
-    parts.append(f"Changes since your last turn:\n\n{diff}")
+        parts.append(
+            "The notebook as it is now. Cells changed since you last saw the whole "
+            "notebook are shown in full, with their outputs; the others are "
+            f"unchanged since then.\n\n{notebook_listing}"
+        )
+    parts.append(TOOL_RECAP)
     parts.append(f"## Request\n\n{user_prompt}")
     return "\n\n".join(parts) + "\n"
 

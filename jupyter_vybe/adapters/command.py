@@ -7,8 +7,14 @@ Two modes:
   that answers on stdout.
 * **persistent** -- keep the child alive and exchange newline-delimited JSON,
   as `claude -p --input-format stream-json --output-format stream-json` does.
-  Health-checked at session start; a failed handshake falls back to one-shot
-  rather than failing the round.
+  Claude Code refuses that without `--verbose`, so it is added when missing.
+  A failed handshake falls back to one-shot rather than failing the round, and
+  the fallback drops the stream-json flags: left in, they made the one-shot
+  retry fail the same way, so the fallback could never succeed.
+
+A reply with nothing on stdout is an error, not an empty answer. Agent CLIs
+exit 0 having said nothing -- `agy -p` does when a tool it wanted was denied
+-- and their reason is on stderr, which is what the user needs to see.
 
 `argv` is split with shlex and executed with shell=False, so no user string
 ever reaches /bin/sh. The command is the user's own, on their own machine, so
@@ -29,6 +35,14 @@ from .base import Adapter, AdapterSpec, HealthStatus, Message
 
 HANDSHAKE_TIMEOUT = float(os.environ.get("VYBE_COMMAND_HANDSHAKE", "10"))
 
+# Flags that only mean something to a stream-json child. Each entry is the flag
+# and how many values follow it.
+_STREAM_ONLY_FLAGS = {
+    "--input-format": 1,
+    "--output-format": 1,
+    "--include-partial-messages": 0,
+}
+
 
 class CommandAdapter(Adapter):
     def __init__(
@@ -37,12 +51,18 @@ class CommandAdapter(Adapter):
         argv: str | list[str],
         persistent: bool = False,
         api_key_env: str = "",
+        cwd: str | None = None,
     ) -> None:
         self.spec = spec
         self.argv = shlex.split(argv) if isinstance(argv, str) else list(argv)
         self.persistent = persistent
         self.api_key_env = api_key_env
+        # Where the agent starts. The runner gives each session an empty
+        # directory, so an agent that goes looking for files finds none.
+        self.cwd = cwd
         self._proc: asyncio.subprocess.Process | None = None
+        if persistent:
+            self.argv = _with_verbose(self.argv)
 
     # -- health ------------------------------------------------------------
 
@@ -84,6 +104,7 @@ class CommandAdapter(Adapter):
                 # mode answered through the health detail.
                 await self.close()
                 self.persistent = False
+                self.argv = _one_shot_argv(self.argv)
                 self.spec.requires_config.append(
                     f"persistent handshake failed ({exc}); using one-shot"
                 )
@@ -98,10 +119,15 @@ class CommandAdapter(Adapter):
             prompt,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # Nothing to read: an agent that waits on stdin for a prompt it was
+            # already given as an argument would otherwise hang the round.
+            stdin=asyncio.subprocess.DEVNULL,
+            cwd=self.cwd,
             # Its own process group, so cancelling kills the whole tree rather
             # than orphaning children of a wrapper script.
             start_new_session=True,
         )
+        said_anything = False
         try:
             assert proc.stdout is not None
             while True:
@@ -111,13 +137,20 @@ class CommandAdapter(Adapter):
                 block = await proc.stdout.read(256)
                 if not block:
                     break
-                yield block.decode("utf-8", errors="replace")
+                text = block.decode("utf-8", errors="replace")
+                said_anything = said_anything or bool(text.strip())
+                yield text
             await proc.wait()
-            if proc.returncode not in (0, None):
+            if proc.returncode not in (0, None) or not said_anything:
                 assert proc.stderr is not None
-                err = (await proc.stderr.read()).decode("utf-8", errors="replace")
+                err = (await proc.stderr.read()).decode("utf-8", errors="replace").strip()
+                if proc.returncode not in (0, None):
+                    raise RuntimeError(
+                        f"{self.argv[0]} exited {proc.returncode}: {err[:400]}"
+                    )
                 raise RuntimeError(
-                    f"{self.argv[0]} exited {proc.returncode}: {err[:400]}"
+                    f"{self.argv[0]} replied with nothing"
+                    + (f": {err[:400]}" if err else " (and said nothing on stderr)")
                 )
         finally:
             if proc.returncode is None:
@@ -135,6 +168,11 @@ class CommandAdapter(Adapter):
         proc.stdin.write((json.dumps(request) + "\n").encode())
         await proc.stdin.drain()
 
+        # With --include-partial-messages the text arrives twice: as deltas
+        # while it is written, then whole in the closing assistant message.
+        # Once any delta has been seen the whole message is the duplicate.
+        streamed = False
+        said_anything = False
         while True:
             if cancel.is_set():
                 await self.close()
@@ -150,9 +188,23 @@ class CommandAdapter(Adapter):
                 continue
             kind = event.get("type")
             if kind in ("result", "done"):
+                if event.get("is_error"):
+                    raise RuntimeError(
+                        f"{self.argv[0]}: {str(event.get('result') or event.get('subtype'))[:400]}"
+                    )
+                if not said_anything:
+                    raise RuntimeError(f"{self.argv[0]} replied with nothing")
                 return
-            text = _text_of(event)
+            delta = _delta_of(event)
+            if delta is not None:
+                streamed = True
+                text = delta
+            elif kind == "assistant" and streamed:
+                continue
+            else:
+                text = _text_of(event)
             if text:
+                said_anything = said_anything or bool(text.strip())
                 yield text
 
     async def _ensure_child(self) -> asyncio.subprocess.Process:
@@ -160,6 +212,7 @@ class CommandAdapter(Adapter):
             return self._proc
         self._proc = await asyncio.create_subprocess_exec(
             *self.argv,
+            cwd=self.cwd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -184,6 +237,33 @@ def _terminate(proc: asyncio.subprocess.Process) -> None:
         pass
 
 
+def _with_verbose(argv: list[str]) -> list[str]:
+    """Claude Code will not emit stream-json in print mode without --verbose."""
+    wants_stream = any(
+        a == "--output-format" and i + 1 < len(argv) and argv[i + 1] == "stream-json"
+        for i, a in enumerate(argv)
+    ) or "--output-format=stream-json" in argv
+    if wants_stream and "--verbose" not in argv:
+        return [*argv, "--verbose"]
+    return list(argv)
+
+
+def _one_shot_argv(argv: list[str]) -> list[str]:
+    """The same command with the flags only a stream-json child understands removed."""
+    out: list[str] = []
+    skip = 0
+    for arg in argv:
+        if skip:
+            skip -= 1
+            continue
+        name = arg.split("=", 1)[0]
+        if name in _STREAM_ONLY_FLAGS:
+            skip = 0 if "=" in arg else _STREAM_ONLY_FLAGS[name]
+            continue
+        out.append(arg)
+    return out
+
+
 def _replay(messages: list[Message]) -> str:
     """One-shot has no memory, so the transcript goes into the prompt."""
     if len(messages) == 1:
@@ -195,6 +275,24 @@ def _replay(messages: list[Message]) -> str:
         else:
             parts.append(m.content)
     return "\n\n".join(parts)
+
+
+def _delta_of(event: dict) -> str | None:
+    """Text from a partial-message event, or None if this is not one.
+
+    The shape `claude -p --include-partial-messages` emits:
+    {"type": "stream_event", "event": {"type": "content_block_delta",
+     "delta": {"type": "text_delta", "text": "..."}}}
+    """
+    if event.get("type") != "stream_event":
+        return None
+    inner = event.get("event")
+    if not isinstance(inner, dict) or inner.get("type") != "content_block_delta":
+        return ""
+    delta = inner.get("delta")
+    if isinstance(delta, dict) and delta.get("type") == "text_delta":
+        return str(delta.get("text", ""))
+    return ""
 
 
 def _text_of(event: dict) -> str:

@@ -12,11 +12,20 @@ notebook:
 Execution is reported separately from source: a cell that merely ran is a
 different signal from a cell that changed, and conflating them makes the agent
 think code moved when only its output did.
+
+What a cell printed is reported too, in the same `# output:` form the first
+turn's listing uses. It used to say only "output changed", so after the first
+turn the agent never saw a traceback -- "fix the error above" was a guess until
+the full resync ten turns later. The browser has already applied the
+`context.includeOutputs` and `maxOutputChars` settings, so whatever arrives
+here is what the user agreed to send.
 """
 
 from __future__ import annotations
 
 import difflib
+
+from .assembler import _output_text
 
 CONTEXT = 3
 FIRST_LINE_CHARS = 72
@@ -54,6 +63,16 @@ def render_index(cells: list[dict], prompt_cell_id: str = "") -> str:
                 tag += '   <-- the cell directly above the prompt ("the cell above")'
         lines.append(tag)
     return "\n".join(lines)
+
+
+def _output_lines(cell: dict) -> list[str]:
+    """The cell's outputs as the listing renders them, one line each."""
+    lines = []
+    for out in cell.get("outputs") or []:
+        text = _output_text(out)
+        if text:
+            lines.extend(f"    # output: {part}" for part in text.split("\n"))
+    return lines
 
 
 def _hunks(before: str, after: str) -> str:
@@ -98,6 +117,7 @@ def summarise(previous: list[dict], current: list[dict], prompt_cell_id: str = "
 
     for index, cell in enumerate(current):
         cid = cell.get("id")
+        ref = cid
         kind = cell.get("cell_type", "code")
         if cid == prompt_cell_id:
             # The prompt cell is the request, not a change to report.
@@ -105,8 +125,9 @@ def summarise(previous: list[dict], current: list[dict], prompt_cell_id: str = "
         if cid not in prev_by_id:
             after = current[index - 1].get("id") if index else None
             where = f" after cell {after}" if after else " at the top"
-            out.append(f"ADDED   cell {cid}{where} ({kind})")
+            out.append(f"ADDED   cell {ref}{where} ({kind})")
             out.extend(f"+ {line}" for line in _source(cell).split("\n"))
+            out.extend(_output_lines(cell))
             out.append("")
             continue
 
@@ -114,18 +135,32 @@ def summarise(previous: list[dict], current: list[dict], prompt_cell_id: str = "
         old_source, new_source = _source(old), _source(cell)
         changed = False
         if old_source != new_source:
-            out.append(f"EDITED  cell {cid} ({kind})")
+            out.append(f"EDITED  cell {ref} ({kind})")
             out.append(_hunks(old_source, new_source))
             out.append("")
             changed = True
 
         old_count = old.get("execution_count")
         new_count = cell.get("execution_count")
+        outputs_changed = (old.get("outputs") or []) != (cell.get("outputs") or [])
+        shown = _output_lines(cell) if outputs_changed else []
         if kind == "code" and new_count and new_count != old_count:
-            note = f"RAN     cell {cid} -> execution_count {new_count}"
-            if (old.get("outputs") or []) != (cell.get("outputs") or []):
-                note += ", output changed"
+            note = f"RAN     cell {ref} -> execution_count {new_count}"
+            if shown:
+                note += ", output now:"
+            elif outputs_changed:
+                note += ", output cleared" if not cell.get("outputs") else ", output changed"
             out.append(note)
+            out.extend(shown)
+            out.append("")
+            changed = True
+        elif outputs_changed:
+            # Cleared by hand, or arrived after the run was last reported.
+            if shown:
+                out.append(f"OUTPUT  cell {ref} now:")
+                out.extend(shown)
+            else:
+                out.append(f"OUTPUT  cell {ref} cleared")
             out.append("")
             changed = True
 

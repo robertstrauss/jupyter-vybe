@@ -8,8 +8,6 @@ export interface IVybeSettings {
   readonly enabled: boolean;
   readonly prefix: string;
   readonly agentId: string;
-  readonly agentHost: 'server' | 'client';
-  readonly sidecarUrl: string;
   /** Per-adapter configuration, passed through to the server as-is. */
   readonly agentOptions: Record<string, string>;
   readonly persistent: boolean;

@@ -6,28 +6,79 @@ Adapters are **host-agnostic**: `jupyter_vybe/adapters/` imports no Tornado and 
 about the server extension. That is what lets the same code run in two places
 ([12](12-decisions.md) D2):
 
-| `agent.host`         | Adapter runs in                                | Reached by the frontend at   |
-| -------------------- | ---------------------------------------------- | ---------------------------- |
-| `server` _(default)_ | the Jupyter server extension                   | `<base_url>/jupyter-vybe/ws` |
-| `client` _(v1.1)_    | `jupyter-vybe-local` on the user's own machine | `http://127.0.0.1:8137/ws`   |
+| Agent            | Adapter runs in                                | Reaches the server by                                |
+| ---------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| any but `runner` | the Jupyter server extension                   | — (it is in the server)                              |
+| `runner`         | `jupyter-vybe-local` on the user's own machine | dialling **out** to `<base_url>/jupyter-vybe/runner` |
 
-**Co-located setups** (Jupyter and model on one laptop) use `server` and never think about this.
+The browser always talks to its own server at `<base_url>/jupyter-vybe/ws`, whichever agent is
+chosen. It never connects to anything on the user's machine.
 
-**Split setups** — Jupyter on a compute cluster, model on the user's laptop — have two answers.
-The v1.0 answer is a reverse tunnel, which needs no extension code at all:
+**Co-located setups** (Jupyter and model on one laptop) pick any agent and never think about this.
+
+**Split setups** — Jupyter on a compute cluster, the agent on the user's laptop — have two answers.
+
+### The runner: your agent CLI, your login, nothing listening
+
+For `claude`, `codex`, `agy` and `gemini` — agent CLIs whose subscription login lives on the
+machine they run on — run this on the laptop:
+
+```bash
+pipx run --spec jupyter-vybe jupyter-vybe-local connect "https://cluster/lab?token=…" --agent claude
+```
+
+and choose **runner** as the agent in JupyterLab's Vybe settings. Paste the URL as the browser
+shows it; a `?token=` in it is used, or pass `--token` / set `$JUPYTER_TOKEN`. The runner keeps
+reconnecting if the server restarts, prints each prompt and how long it took, and stops if
+another runner takes its place (one per server; two that each reconnected would evict each
+other forever).
+
+**Why it dials out.** Its predecessor (1.1) was a server on `127.0.0.1:8137` that the browser
+connected to. A WebSocket is not covered by CORS, so any web page open in the same browser
+could connect to it too, and the session it reached ran whatever command the page named —
+verified, and fixed by removing it ([13](13-risks.md) R16). Now nothing on the laptop
+listens. The runner opens one connection, authenticated with the Jupyter token exactly as
+the browser is, and the server relays prompts down it (`adapters/relay.py`).
+
+**What the server can make it do.** Answer, and nothing else. The agent and its flags are fixed
+on the laptop's command line when the runner starts; a frame from the server carries a
+conversation, a caption and opaque ids, and has no field for a command, argument, model, path
+or environment (gated by T-RUNNER, tested by sending exactly such a frame). A compromised or
+shared server can ask your agent a question; it cannot run anything on your machine through
+the runner.
+
+**What the agent can do.** The other half of that promise, because an agent CLI has tools and
+a notebook can contain text written to talk it into using them. Each preset is configured to
+have none, checked by planting a file and asking the agent to read it:
+
+| `--agent`       | Configured as                                                                                     | Verified                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `claude`        | persistent `stream-json` session, `--tools ""`, `--strict-mcp-config`, `--disable-slash-commands` | tool list is empty (built-ins, MCP connectors, skills); planted file not read                             |
+| `codex`         | `exec --sandbox read-only --ephemeral`                                                            | refused to read the planted file                                                                          |
+| `agy`           | `--settings` denying every tool (`read_file(*)`, `run_command(*)`, …)                             | planted file not read. Without this, headless `agy -p` **read it** — it asks permission only for commands |
+| `gemini`        | `-p`                                                                                              | not verified (the CLI was not logged in)                                                                  |
+| `ollama-*`      | the local model, as on the server                                                                 | a model has no tools                                                                                      |
+| `--command "…"` | whatever you give it                                                                              | yours to judge                                                                                            |
+
+Each session also starts in an empty temporary directory.
+
+Measured on one MacBook through a real server, per round: `claude` (Haiku) 2.9 s for the first
+prompt and ~1.6 s after, because the session stays open and only the new turn is sent; `codex`
+4–5 s; `agy` ~33 s with its tools denied (15–20 s with them, which is the price of not reading
+your files).
+
+### A tunnel, for HTTP backends
+
+For a model served over HTTP (Ollama, TurboFieldfare, an OpenAI-compatible server) a reverse
+tunnel works too and needs nothing installed:
 
 ```bash
 ssh -R 11434:127.0.0.1:11434 user@cluster    # laptop's Ollama, visible on the cluster
 ```
 
 The cluster-side `OllamaAdapter` then dials `127.0.0.1:11434` as usual and reaches the laptop.
-This is documented as a supported configuration, not a workaround, and the settings pane's health
-probe reports which machine actually answered (via Ollama's version endpoint and a hostname
-round-trip) so a misconfigured tunnel is visible rather than silently wrong.
-
-### Setting one up
-
-The port depends on which adapter the cluster will use:
+The settings pane's health probe reports which machine actually answered, so a misconfigured
+tunnel is visible rather than silently wrong.
 
 | Agent                   | Laptop port | Tunnel                                                                                                   |
 | ----------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
@@ -37,49 +88,19 @@ The port depends on which adapter the cluster will use:
 
 `-N` because no remote command is wanted, and keep the tunnel in its own terminal or under
 `autossh` — an `ssh` that dies takes the agent with it, and the failure looks like "the model
-stopped answering" rather than "the tunnel dropped".
-
-Three things go wrong often enough to name:
-
-- **The cluster already has something on that port.** `sshd` refuses the forward and says so on
-  stderr, which is easy to miss under `-f`. The health probe then reports whatever _is_ on that
-  port, which is why it prints the hostname that answered: if that is the cluster's own name
-  rather than your laptop's, the tunnel is not what you reached.
-- **`GatewayPorts` is irrelevant here** — the adapter runs on the cluster and dials loopback, so
-  the default (`no`, bind to the cluster's loopback only) is exactly right. Do not set it.
-- **`claude -p` cannot be tunnelled.** It needs the credentials on the machine it runs on, so a
-  split setup wanting the `command` adapter needs the v1.1 sidecar, not a tunnel.
-
-The v1.1 answer is the **sidecar**, and it is **built**: `jupyter-vybe-local` (or
-`python -m jupyter_vybe.local`) on the laptop, a transport around the identical adapter package,
-which the browser talks to directly.
-
-```bash
-pipx run --spec jupyter-vybe jupyter-vybe-local          # on the laptop
-# then in JupyterLab settings: agent.host = client
-```
-
-Standard library only — no Tornado, no jupyter_server, not even a WebSocket library — because
-anything you must install on a second machine before the tool works is friction the tool pays
-for. It serves `/health`, `/agents`, and `/ws`, speaking exactly the protocol `handlers.py`
-speaks, so `agentClient.ts` needs nothing but a different URL.
-
-`--allow-origin https://your-jupyter.example.org` restricts it to one JupyterLab origin. It binds
-loopback by default; `--host` will bind wider, which exposes your model _and any command adapter
-you have configured_ to the network, so do that only behind something that authenticates. It covers
-what a tunnel cannot — `claude -p` and CLI binaries need to run where the user's credentials
-live. It also sets the `Access-Control-Allow-Private-Network` header that browsers now require
-for a page to reach localhost, which is why the browser cannot simply call Ollama itself (see
-[13](13-risks.md) R12).
-
-`agent.host` ships in the settings schema from v1.0 so enabling the sidecar is configuration
-rather than migration.
+stopped answering" rather than "the tunnel dropped". If the cluster already has something on
+that port, `sshd` refuses the forward on stderr and the health probe reports whatever _is_ there
+— hence the hostname. `GatewayPorts` is irrelevant; leave it at `no`. The runner can also carry
+an Ollama model (`--agent ollama-qwen25-coder-7b`) if a tunnel is not possible.
 
 ## Server extension surface
 
-`jupyter_vybe` registers via `_jupyter_server_extension_points` and mounts four routes under the
-server's base URL, all authenticated by the standard `@tornado.web.authenticated` +
-XSRF machinery (inherited from `ExtensionHandlerMixin` / `APIHandler`):
+`jupyter_vybe` registers via `_jupyter_server_extension_points` and mounts these routes under
+the server's base URL. The REST routes use `@tornado.web.authenticated` and the XSRF machinery
+of `APIHandler`. The two WebSockets use `sockets.AuthenticatedSocket` — Jupyter's own
+terminal-socket pattern: a logged-in user, the authorizer's `execute` on `kernels`, and
+Jupyter's origin check. (Until 1.2 the agent socket overrode `get_current_user` to admit
+everyone; T-AUTH now fails on any such override.)
 
 | Route                   | Method    | Purpose                                                                            |
 | ----------------------- | --------- | ---------------------------------------------------------------------------------- |
@@ -87,6 +108,7 @@ XSRF machinery (inherited from `ExtensionHandlerMixin` / `APIHandler`):
 | `/jupyter-vybe/health`  | GET       | Per-adapter probe (Ollama `/`, TurboFieldfare `/health`, `which` for commands).    |
 | `/jupyter-vybe/history` | GET/POST  | Optional durable history (see [05](05-history-pane.md)).                           |
 | `/jupyter-vybe/ws`      | WebSocket | The agent channel. One connection per open notebook.                               |
+| `/jupyter-vybe/runner`  | WebSocket | Where `jupyter-vybe-local connect` dials in. At most one; a newer one replaces it. |
 
 The package ships **no kernel-facing code at all**: `jupyter_client`, `nbclient`, and
 `ipykernel` are absent from its dependency list, and a CI check asserts they are never imported

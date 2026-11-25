@@ -268,3 +268,104 @@ def test_ollama_requests_keep_the_model_resident():
 
     asyncio.run(go())
     assert sent["payload"]["keep_alive"] == "30m"
+
+
+# -- the notebook as it is now, at the end of every follow-up -----------------
+
+
+def _turn_with(session, cells, seq, prompt="next"):
+    async def go():
+        return [e async for e in session.run({
+            "prompt": prompt,
+            "snapshot": json.dumps({"cells": cells}),
+            "snapshotSeq": seq,
+            "promptCellId": "p1",
+            "kernelInfo": KERNEL,
+            "roundId": f"r{seq}",
+            "limits": {},
+        })]
+
+    return asyncio.run(go())
+
+
+def test_a_changed_cell_is_shown_as_it_now_is_with_its_output():
+    """Given only a diff, qwen 7B fixed the cell whose error it was shown 0
+    times in 10; given that cell as it now is, 14 in 16 (docs/09)."""
+    adapter = Scripted()
+    session = _session(adapter)
+    _turn(session, "add a function", 0)
+
+    cells = json.loads(SNAPSHOT)["cells"]
+    cells[0] = dict(cells[0], execution_count=1, outputs=[
+        {"output_type": "error", "ename": "ModuleNotFoundError", "evalue": "No module named 'numpy'"}
+    ])
+    _turn_with(session, cells, 1, "fix the error")
+    second = adapter.prompts[1]
+
+    now = second[second.index("The notebook as it is now"):]
+    assert "[1] code id=c1:\n" in now and "    import numpy as np" in now
+    assert "# output: ModuleNotFoundError: No module named 'numpy'" in now
+    assert "[2] code id=c2: def f(x):   (unchanged since you last saw it in full)" in now
+    assert "    return x" not in now, "an unchanged cell is not repeated"
+
+
+def test_the_order_is_diff_then_notebook_then_rules_then_request():
+    """Each position measured: the notebook before the diff scored 0 in 8 on
+    fixing an error; the rules far from the request turned edits into copies."""
+    adapter = Scripted()
+    session = _session(adapter)
+    _turn(session, "add a function", 0)
+    _turn(session, "again", 1)
+    second = adapter.prompts[1]
+    assert (
+        second.index("Changes since your last turn")
+        < second.index("The notebook as it is now")
+        < second.index("Reply only with <vybe:")
+        < second.index("## Request")
+    )
+
+
+def test_the_current_notebook_comes_after_the_diff_and_before_the_request():
+    adapter = Scripted()
+    session = _session(adapter)
+    _turn(session, "add a function", 0)
+    _turn(session, "again", 1)
+    second = adapter.prompts[1]
+    assert (
+        second.index("Changes since your last turn")
+        < second.index("The notebook as it is now")
+        < second.index("## Request")
+    )
+
+
+def test_a_cell_changed_turns_ago_stays_in_full_until_the_next_full_listing():
+    """Changed since the last *full* listing, not since the last turn: a cell
+    edited two turns ago would otherwise be back to one line, and its current
+    text would again have to be pieced together from an old diff."""
+    adapter = Scripted()
+    session = _session(adapter)
+    _turn(session, "add a function", 0)
+    cells = json.loads(SNAPSHOT)["cells"]
+    cells[1] = dict(cells[1], source="def f(x):\n    return x * 2")
+    _turn_with(session, cells, 1)
+    _turn_with(session, cells, 2)
+    third = adapter.prompts[2]
+    now = third[third.index("The notebook as it is now"):]
+    assert "    return x * 2" in now
+    diff = third[third.index("Changes since"):third.index("The notebook as it is now")]
+    assert "EDITED" not in diff, "the edit was two turns ago, not news"
+
+
+def test_a_full_listing_resets_what_counts_as_unchanged():
+    adapter = Scripted()
+    session = _session(adapter)
+    _turn(session, "add a function", 0)
+    cells = json.loads(SNAPSHOT)["cells"]
+    cells[1] = dict(cells[1], source="def f(x):\n    return x * 2")
+    for seq in range(1, 11):  # turn 10 is the periodic full listing
+        _turn_with(session, cells, seq)
+    _turn_with(session, cells, 11)
+    after_resync = adapter.prompts[11]
+    now = after_resync[after_resync.index("The notebook as it is now"):]
+    assert "(unchanged since you last saw it in full)" in now
+    assert "    return x * 2" not in now

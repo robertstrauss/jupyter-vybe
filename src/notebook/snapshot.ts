@@ -142,7 +142,7 @@ function filterOutputs(outputs: any[], opts: ISnapshotOptions): any[] {
           output_type: 'error',
           ename: o.ename,
           evalue: o.evalue,
-          traceback: (o.traceback ?? []).slice(-TRACEBACK_LINES)
+          traceback: trimTraceback(o.traceback ?? [])
         };
       case 'execute_result':
       case 'display_data':
@@ -154,6 +154,23 @@ function filterOutputs(outputs: any[], opts: ISnapshotOptions): any[] {
         return { output_type: o.output_type };
     }
   });
+}
+
+/**
+ * Each traceback entry is one frame. The server shows the first frame (where
+ * the user's cell called in) and the last (where it raised), so a deep
+ * traceback keeps its head -- the banner and the cell's own frame -- as well
+ * as its tail, rather than only the tail.
+ */
+export function trimTraceback(traceback: string[]): string[] {
+  if (traceback.length <= TRACEBACK_LINES) {
+    return traceback;
+  }
+  const head = 3;
+  return [
+    ...traceback.slice(0, head),
+    ...traceback.slice(head - TRACEBACK_LINES)
+  ];
 }
 
 function filterBundle(

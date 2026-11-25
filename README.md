@@ -100,6 +100,10 @@ not hot-reload modules. `./scripts/dev.sh` starts a lab that prints the commit
 it is serving and refuses to start beside a stale one, which exists because
 several hours were once lost to testing against a server that predated the fix.
 
+To try it on a small example, `./scripts/demo.sh` copies `examples/demo` to
+`~/vybe-demo` and opens `demo.ipynb`, a notebook that breaks on purpose and
+has prompt cells ready to run.
+
 ### Inline Prompting
 
 Once installed and enabled, the extension is triggered by adding a code cell and entering '>' followed by a natural language prompt for cells to generate below this prompt cell or edits to propose throughout the notebook. The prompt is evaluated through the agent by running this code cell ('>' MUST be the first charachter in the cell input to be used as a prompt cell. Any natural language (or even example code/psuedo code/markdown text can follow within the cell input and wil be fed to the agent). Once evaluated with Shift+Enter or Cmd+Enter, the prompt will be fed to the agent, which will insert cells below the prompt cell only, or propose edits to other cells. If proposals are made, a status indicator in the top-right shows how many and clicking it or pressing the shortcut will take you to the first one, which can be accepted or rejected with the keyboard or buttons, bringing you to the next, and the next, until all are resolved and you are brought back to the prompt cell where you started. You can reverse all edits and cancel at any time with Ctrl+C, or undo individual edit approvals with Cmd+Z and be brought back to the previous one you approved. Once back at the prompt, Cmd+Z will undo all agent-inserted cells and dismiss all proposed edits and place your cursor back in the prompt cell.
@@ -145,15 +149,19 @@ The AI engine is completely interchangeable. Hook it up to a local agent or your
 
 ### When the model and the notebook are on different machines
 
-If Jupyter runs on a cluster and the model is on your laptop, run the sidecar on the laptop:
+If Jupyter runs on a cluster and your agent is on your laptop — `claude`, `codex` or `agy`,
+already logged in to your subscription — connect it from the laptop:
 
 ```bash
-pipx run --spec jupyter-vybe jupyter-vybe-local
+pipx run --spec jupyter-vybe jupyter-vybe-local connect "<the JupyterLab URL, with ?token=>" --agent claude
 ```
 
-and set `agent.host` to `client` in settings. The browser is already on your machine, so it talks
-to the sidecar directly. This is the only arrangement that works for CLI agents like `claude -p`,
-whose credentials live on the machine they run on. For HTTP backends an SSH reverse tunnel
+and choose **runner** as the agent in settings. It dials out to the server with your Jupyter
+token and listens on nothing, so no re-login, no API key, and no web page can reach it. The
+server can only hand your agent text: which agent runs, and with which flags, is fixed on your
+laptop, and each preset switches the agent's own tools off so a notebook cannot talk it into
+reading your files ([docs/06](docs/06-agent-integration.md) has what was verified for each).
+For HTTP backends like Ollama an SSH reverse tunnel
 (`ssh -N -R 11434:127.0.0.1:11434 user@cluster`) works too and needs nothing installed.
 
 I personally recommend using a local model, if you have a device that can support it. The whole design of this project scopes the agent to fine-grained, simple, modular chunks of generated code, which open source local models are plenty adept at especially in Python.

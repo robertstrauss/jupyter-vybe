@@ -1,4 +1,4 @@
-import { truncate, estimateTokens } from '../notebook/snapshot';
+import { truncate, estimateTokens, trimTraceback } from '../notebook/snapshot';
 
 /**
  * The ladder from docs/09. Order matters: it drops the cheapest signal first,
@@ -195,5 +195,22 @@ describe('performance on a large notebook (M8)', () => {
 
     expect(cells[7].source).toContain('import pandas as pd');
     expect(cells[cells.length - 1].source).toBe('#% summarise this');
+  });
+});
+
+describe('trimTraceback', () => {
+  it('keeps the banner and the cell frame as well as the tail', () => {
+    const tb = ['----', 'Err  Traceback', 'Cell In[1]'];
+    for (let i = 0; i < 40; i++) {
+      tb.push(`File lib.py:${i}`);
+    }
+    const kept = trimTraceback(tb);
+    expect(kept.length).toBe(20);
+    expect(kept.slice(0, 3)).toEqual(['----', 'Err  Traceback', 'Cell In[1]']);
+    expect(kept[kept.length - 1]).toBe('File lib.py:39');
+  });
+
+  it('leaves a short traceback alone', () => {
+    expect(trimTraceback(['a', 'b'])).toEqual(['a', 'b']);
   });
 });

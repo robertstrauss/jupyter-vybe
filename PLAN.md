@@ -78,7 +78,9 @@ arriving at the source rather than the plan:
 | `jupyter_vybe/diffsummary.py`    | What changed since the last turn, for follow-up prompts.               |
 | `jupyter_vybe/history.py`        | The prompt record: a sidecar store, not notebook metadata.             |
 | `jupyter_vybe/adapters/`         | Four backends behind one interface, free of the server framework.      |
-| `jupyter_vybe/local.py`          | `jupyter-vybe-local`: the agent on your machine, Jupyter on another.   |
+| `jupyter_vybe/local.py`          | `jupyter-vybe-local connect`: your agent CLI, dialling out to Jupyter. |
+| `jupyter_vybe/adapters/relay.py` | The server end of that connection; it has no word for "run this".      |
+| `jupyter_vybe/sockets.py`        | The two WebSockets that can make something run, and their auth.        |
 | `jupyter_vybe/doctor.py`         | `jupyter-vybe-doctor`: every check exists because that thing happened. |
 | `scripts/check-invariants.sh`    | The six rules the design is load-bearing on. Run in CI.                |
 | `scripts/bench-tools.py`         | Does the model pick the right tool, and aim it at the right cell?      |

@@ -39,6 +39,7 @@
             "ollama-qwen25-coder-3b",
             "turbofieldfare-gemma4",
             "command",
+            "runner",
             "openai-compat"
           ],
           "default": "ollama-qwen25-coder-7b"
@@ -73,19 +74,6 @@
           "description": "Read from the server's environment by name. The key itself is never stored in settings.",
           "default": ""
         },
-        "host": {
-          "type": "string",
-          "title": "Where the agent runs",
-          "description": "'server' runs it beside Jupyter. 'client' uses the local sidecar (v1.1) for a model on your own machine while Jupyter is remote.",
-          "enum": ["server", "client"],
-          "default": "server"
-        },
-        "sidecarUrl": {
-          "type": "string",
-          "title": "Sidecar URL",
-          "default": "http://127.0.0.1:8137",
-          "description": "Where jupyter-vybe-local is listening on your own machine."
-        },
         "timeoutSeconds": {
           "type": "integer",
           "title": "Per-turn timeout (seconds)",
@@ -100,8 +88,6 @@
         "endpoint": "http://127.0.0.1:8000",
         "model": "",
         "apiKeyEnv": "",
-        "host": "server",
-        "sidecarUrl": "http://127.0.0.1:8137",
         "timeoutSeconds": 120
       }
     },

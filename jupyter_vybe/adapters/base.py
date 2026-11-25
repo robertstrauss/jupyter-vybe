@@ -1,8 +1,8 @@
 """Adapter protocol. Host-agnostic by construction (docs/06, D2).
 
 Nothing in this package may import tornado or jupyter_server: the same code runs
-inside the server extension today and inside the `jupyter-vybe-local` sidecar
-in v1.1, and that only stays true if the dependency never creeps in.
+inside the server extension and inside `jupyter-vybe-local connect` on the
+user's own machine, and that only stays true if the dependency never creeps in.
 """
 
 from __future__ import annotations

@@ -14,7 +14,7 @@ raised in review and are resolved below. All others stand at the recommendation.
 |     | Decision                      | Status                                                      |
 | --- | ----------------------------- | ----------------------------------------------------------- |
 | D1  | Kernel introspection          | ✅ A — inspect+complete, allowlisted                        |
-| D2  | Where the agent runs          | ✅ **revised** — `server` + tunnel in v1.0, sidecar v1.1    |
+| D2  | Where the agent runs          | ✅ **revised twice** — 1.2: the runner dials out (R16)      |
 | D3  | Tool-call format              | ✅ **revised** — tagged text only; native path deferred     |
 | D4  | Notebook metadata             | ✅ A — zero persisted metadata                              |
 | D5  | Autocomplete in v1.0          | ✅ A — deferred to v1.1; rebuilt on demand in v1.2          |
@@ -82,6 +82,12 @@ now gates requests from an HTTPS page to `127.0.0.1`: the request needs a prefli
 142 there is no fallback path — it is blocked or gated behind a user permission prompt. Building
 on it would produce an extension that works on one browser version and breaks on the next. The
 sidecar exists precisely because it _can_ send those headers correctly.
+
+**Revised again in 1.2.** The browser-to-sidecar arrangement below had a hole the browser
+could not close: any page could reach `127.0.0.1` the same way JupyterLab did, and run a
+command there ([13](13-risks.md) R16). The sidecar became `jupyter-vybe-local connect`, which
+dials _out_ to the server with the Jupyter token. Everything said below about the adapters
+being shared still holds; only the direction of the connection changed.
 
 **Why the sidecar is cheap.** It is not a second implementation. `jupyter_vybe/adapters/` has no
 dependency on Tornado or on the server extension; `python -m jupyter_vybe.local` is a second

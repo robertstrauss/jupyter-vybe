@@ -49,7 +49,11 @@ const AGENT_NOTES: Record<string, string> = {
     'Fastest and weakest; worth trying if the 7B is too slow.',
   'turbofieldfare-gemma4':
     'Writes correct code 8 times in 8, but a first prompt costs 17-30s. Later turns are far quicker.',
-  command: 'Runs any binary that writes to stdout, e.g. claude -p.',
+  command:
+    'Runs any binary on this server that writes to stdout, e.g. claude -p.',
+  runner:
+    'Your own agent (claude, codex, agy) on your own machine, with your own login. ' +
+    "Start it there with: jupyter-vybe-local connect <this page's URL> --agent claude",
   'openai-compat':
     'Any OpenAI-compatible endpoint: vLLM, llama.cpp, LM Studio, hosted.'
 };
@@ -66,7 +70,6 @@ const PLACEHOLDERS: Record<string, string> = {
   'agent.endpoint': 'http://localhost:8000/v1',
   'agent.model': 'qwen2.5-coder:7b',
   'agent.apiKeyEnv': 'OPENAI_API_KEY',
-  'agent.sidecarUrl': 'http://127.0.0.1:8791',
   'completion.agentId': 'same as the agent above',
   'completion.triggerKey': 'Alt-\\',
   'prompts.global': 'The shipped default is shown; edit it to replace it.'
@@ -100,10 +103,6 @@ const RELEVANCE: Record<string, (group: Record<string, any>) => string | null> =
       g.id === 'openai-compat'
         ? null
         : 'Only used by the "openai-compat" agent.',
-    'agent.sidecarUrl': g =>
-      g.host === 'client'
-        ? null
-        : 'Only used when the agent runs on your machine.',
     'context.maxOutputChars': g =>
       g.includeOutputs ? null : 'Outputs are not being sent.',
     'history.location': g => (g.persist ? null : 'History is not being kept.'),

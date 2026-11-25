@@ -38,6 +38,54 @@ def test_running_a_cell_is_reported_separately_from_changing_it():
     assert "EDITED" not in out, "the source did not change"
 
 
+def test_the_error_a_run_produced_reaches_the_agent():
+    """It used to say only "output changed", so after the first turn the agent
+    could not see the traceback it was being asked to fix."""
+    before = [cell("a", "df = load()", execution_count=None, outputs=[])]
+    error = {"output_type": "error", "ename": "FileNotFoundError", "evalue": "data.csv"}
+    after = [cell("a", "df = load()", execution_count=3, outputs=[error])]
+
+    out = summarise(before, after)
+
+    assert "RAN     cell a -> execution_count 3, output now:" in out
+    assert "# output: FileNotFoundError: data.csv" in out
+
+
+def test_printed_output_is_shown_as_the_listing_shows_it():
+    stream = {"output_type": "stream", "name": "stdout", "text": "mean 0.0\nstd 1.0\n"}
+    before = [cell("a", "show()", execution_count=1, outputs=[])]
+    after = [cell("a", "show()", execution_count=2, outputs=[stream])]
+
+    assert "    # output: mean 0.0 std 1.0" in summarise(before, after)
+
+
+def test_an_unchanged_output_is_not_repeated():
+    result = {"output_type": "execute_result", "data": {"text/plain": "42"}}
+    before = [cell("a", "x", execution_count=1, outputs=[result])]
+    after = [cell("a", "x", execution_count=2, outputs=[result])]
+
+    out = summarise(before, after)
+
+    assert "RAN     cell a -> execution_count 2" in out
+    assert "# output" not in out, "the agent has already seen this output"
+
+
+def test_cleared_output_is_said_rather_than_left_stale():
+    result = {"output_type": "execute_result", "data": {"text/plain": "42"}}
+    before = [cell("a", "x", execution_count=1, outputs=[result])]
+    after = [cell("a", "x", execution_count=1, outputs=[])]
+
+    assert "OUTPUT  cell a cleared" in summarise(before, after)
+
+
+def test_an_added_cell_brings_its_output():
+    result = {"output_type": "execute_result", "data": {"text/plain": "3"}}
+    before = [cell("a", "import numpy as np")]
+    after = [before[0], cell("b", "1 + 2", execution_count=4, outputs=[result])]
+
+    assert "    # output: 3" in summarise(before, after)
+
+
 def test_a_moved_cell_is_a_move_not_an_add_and_a_remove():
     a, b = cell("a", "first"), cell("b", "second")
     out = summarise([a, b], [b, a])

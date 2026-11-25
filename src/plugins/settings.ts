@@ -41,17 +41,6 @@ class VybeSettings implements IVybeSettings {
       (this.group<string>('agent')['id'] as string) ?? 'ollama-qwen25-coder-7b'
     );
   }
-  get agentHost(): 'server' | 'client' {
-    return (
-      (this.group<string>('agent')['host'] as 'server' | 'client') ?? 'server'
-    );
-  }
-  get sidecarUrl(): string {
-    return (
-      (this.group<string>('agent')['sidecarUrl'] as string) ??
-      'http://127.0.0.1:8137'
-    );
-  }
   get agentOptions(): Record<string, string> {
     // Whatever the chosen adapter needs. Sent as strings: the server owns
     // the meaning of each key, and the API key is a variable *name*, never

@@ -9,7 +9,8 @@ that owns all UI and all notebook mutation, plus a thin companion **Jupyter Serv
 that owns nothing but agent subprocesses and HTTP fan-out.
 
 Where that server extension _runs_ is configurable, not fixed: co-located with Jupyter by
-default, or — in v1.1 — as a sidecar on the user's own machine, using the identical adapter code.
+default, or — since 1.2 — in `jupyter-vybe-local connect` on the user's own machine, which dials
+out to the server, using the identical adapter code.
 See [06](06-agent-integration.md) and [12](12-decisions.md) D2; this matters whenever Jupyter is
 remote and the model is not.
 

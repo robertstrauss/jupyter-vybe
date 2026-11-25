@@ -57,9 +57,9 @@ test('the settings pane keeps the fields inside a customised group', async ({
   );
   // `agent` has a custom renderer for the picker; the rest of the group must
   // survive it. These vanished when the renderer replaced the whole object.
-  expect(text).toContain('Where the agent runs');
+  expect(text).toContain('Keep the command running between turns');
   expect(text).toContain('Per-turn timeout');
-  expect(text).toContain('Sidecar URL');
+  expect(text).toContain('API key environment variable');
 });
 
 test('the panel greys out what the chosen agent does not use', async ({

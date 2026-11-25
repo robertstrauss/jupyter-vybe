@@ -15,7 +15,7 @@ from collections import OrderedDict
 from typing import AsyncIterator
 
 from .adapters import Message, build_adapter
-from .diffsummary import render_index, summarise
+from .diffsummary import summarise
 from .history import HistoryStore
 from .assembler import (
     assemble_followup,
@@ -65,7 +65,7 @@ class AgentSession:
         self.options = options
         # Adapter configuration rides in the hello options: which command to
         # run, which endpoint, which environment variable holds the key.
-        self.adapter = build_adapter(agent_id, options)
+        self.adapter = build_adapter(agent_id, {**options, "notebookPath": notebook_path})
         self.messages: list[Message] = []
         self.turns = 0
         self.snapshot_seq = -1
@@ -73,6 +73,9 @@ class AgentSession:
         self._cancel = asyncio.Event()
         self._tool_waiters: dict[str, asyncio.Future] = {}
         self._cells: list[dict] = []  # last snapshot, for resolving cell references
+        # The notebook as of the last full listing: a cell identical to its
+        # entry here is one the agent already has word for word.
+        self._baseline: dict[str, dict] = {}
         # The prompt record is a sidecar, not the notebook (D12, docs/05). On
         # by default: a durable record cannot be opt-in when losing it is the
         # normal consequence of tidying up a cell.
@@ -122,6 +125,13 @@ class AgentSession:
         self.messages.clear()
         self.turns = 0
         self.snapshot_seq = -1
+        # A persistent agent process keeps its own copy of the conversation,
+        # so forgetting ours is not forgetting. Ending it is: the next prompt
+        # starts a fresh one.
+        if getattr(self.adapter, "persistent", False) or hasattr(self.adapter, "session"):
+            close = getattr(self.adapter, "close", None)
+            if close is not None:
+                asyncio.ensure_future(close())
 
     def deliver_tool_result(self, call_id: str, result: str, ok: bool = True) -> None:
         fut = self._tool_waiters.pop(call_id, None)
@@ -177,6 +187,7 @@ class AgentSession:
         if snapshot_cells:
             self._cells = snapshot_cells
         if force_full:
+            self._baseline = {c.get("id"): c for c in snapshot_cells if c.get("id")}
             prompt = assemble_initial(
                 notebook_json=msg["snapshot"],
                 kernel=msg.get("kernelInfo", {}),
@@ -197,8 +208,10 @@ class AgentSession:
                 ),
                 kernel=msg.get("kernelInfo", {}),
                 user_prompt=msg["prompt"],
-                notebook_listing=render_index(
-                    snapshot_cells, msg.get("promptCellId", "")
+                notebook_listing=render_notebook(
+                    snapshot_cells,
+                    msg.get("promptCellId", ""),
+                    brief=_unchanged_since(self._baseline, snapshot_cells),
                 ),
             )
         self.snapshot_seq = seq
@@ -214,6 +227,9 @@ class AgentSession:
             "agentId": self.agent_id,
             "promptChars": len(prompt),
         })
+        if hasattr(self.adapter, "caption"):
+            # The runner shows this in the user's terminal (adapters/relay.py).
+            self.adapter.caption = msg["prompt"]
         if self.echo_prompt:
             yield {"op": "assembledPrompt", "prompt": prompt}
         yield {"op": "status", "state": "generating"}
@@ -475,6 +491,29 @@ class AgentSession:
                 }, None
             args["cell"] = resolved
         return {"op": "tool", "name": event.name, "args": args}, None
+
+
+def _unchanged_since(baseline: dict[str, dict], cells: list[dict]) -> set[str]:
+    """Ids of cells the agent already has exactly, from the last full listing."""
+    keep = set()
+    for cell in cells:
+        cid = cell.get("id")
+        old = baseline.get(cid) if cid else None
+        if old is None:
+            continue
+        same = (
+            old.get("cell_type") == cell.get("cell_type")
+            and _src(old) == _src(cell)
+            and (old.get("outputs") or []) == (cell.get("outputs") or [])
+        )
+        if same:
+            keep.add(cid)
+    return keep
+
+
+def _src(cell: dict) -> str:
+    source = cell.get("source") or ""
+    return "".join(source) if isinstance(source, list) else source
 
 
 def _tooling_with_limits(limits: dict, source: str | None = None) -> str | None:

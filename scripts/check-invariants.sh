@@ -65,7 +65,12 @@ fi
 # T-FRAMES: every frame op the server emits must be handled by the frontend.
 # An unhandled op is a round that produces nothing and says nothing -- twice
 # now (protocolError, resync), so it is a gate rather than a habit.
-emitted=$(grep -ohE '"op": "[a-zA-Z]+"' jupyter_vybe/*.py \
+#
+# local.py and sockets.py are excluded because they speak the *runner*
+# channel (adapters/relay.py), whose frames go to jupyter-vybe-local, never to
+# the browser.
+emitted=$(ls jupyter_vybe/*.py | grep -v -E '/(local|sockets)\.py$' \
+  | xargs grep -ohE '"op": "[a-zA-Z]+"' \
   | grep -oE '"[a-zA-Z]+"$' | tr -d '"' | sort -u)
 unhandled=""
 for op in $emitted; do
@@ -132,6 +137,34 @@ if grep -rnE '^\s*(import|from)\s+(tornado|jupyter_server)' jupyter_vybe/adapter
   fail=1
 else
   echo "pass  D2: adapters are host-agnostic"
+fi
+
+# T-AUTH: no handler may decide for itself who the user is.
+#
+# The agent socket once overrode get_current_user to return a user for every
+# request and stubbed out check_xsrf_cookie. Any process that could reach the
+# port could then run a command through it without the token (docs/13 R16).
+# Jupyter's own authentication is the only kind this package uses.
+if grep -rnE 'def (get_current_user|check_xsrf_cookie|check_origin)\b|allow_unauthenticated' \
+    jupyter_vybe/*.py 2>/dev/null; then
+  echo "FAIL T-AUTH: a handler overrides Jupyter's authentication"
+  fail=1
+else
+  echo "pass  T-AUTH: every handler leaves authentication to Jupyter"
+fi
+
+# T-RUNNER: jupyter-vybe-local takes nothing but text from the server.
+#
+# The agent it runs is chosen on the user's machine when it starts. If a frame
+# from the server could name a command, an argument, a model or a directory,
+# a compromised server could run anything on the user's machine (docs/13 R16).
+# Matches a read of any such key from a received frame.
+if grep -nE "frame(\.get)?[\[(]['\"](command|argv|args|cmd|model|cwd|env|options|path|agent)['\"]" \
+    jupyter_vybe/local.py 2>/dev/null; then
+  echo "FAIL T-RUNNER: local.py reads a command-shaped field from a server frame"
+  fail=1
+else
+  echo "pass  T-RUNNER: the runner takes only text and ids from the server"
 fi
 
 # T-ACCEL: keybindings say Accel, never Cmd.

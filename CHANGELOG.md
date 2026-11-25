@@ -4,6 +4,53 @@
 
 ## 1.2.0 (unreleased)
 
+### Follow-up turns show the notebook as it is now
+
+- **The agent sees what a cell printed after the first turn.** Follow-ups said
+  only "output changed", so a traceback never reached the agent and "fix the
+  error" was a guess. Outputs now go in the diff, in the listing's form.
+- **Every changed cell is shown as it now is, after the diff and right before
+  the request**, so the agent no longer pieces the present together from a
+  chain of diffs. Cells it already has word for word stay one line, so the
+  cost follows what changed, not the notebook's size. On qwen 7B, fixing the
+  cell whose error it had just been shown went from 0/10 to 14/16, and "edit
+  the cell above" still lands on the right cell (16/16) (docs/09).
+- **An error now shows the line that raised it.** The agent gets the message,
+  then the first frame of the traceback (where the cell called in) and the
+  last (where it raised), each as `location: line of code`, with the frames
+  between counted. `evalue` is capped at 300 characters and kept on one line,
+  and the browser keeps a deep traceback's first frames as well as its last.
+- **`./scripts/demo.sh`** starts a lab on a fresh copy of `examples/demo`: a
+  small stdlib-only sales notebook that fails on purpose, with ready-made
+  prompt cells to fix it and carry on.
+
+### Your agent, on your machine, without a hole in it
+
+- **Two ways to run a command without the token are closed** (docs/13 R16).
+  The 1.1 sidecar accepted a WebSocket from any web page, and the session it
+  reached ran whatever command that page named. The server's agent socket
+  admitted any process that reached the port, token or not. Both sockets now
+  use Jupyter's own authentication, and gates T-AUTH and T-RUNNER keep it so.
+- **`jupyter-vybe-local connect <url> --agent claude|codex|agy|gemini`**
+  replaces the listening sidecar. It dials _out_ to the server with your token
+  and listens on nothing; choose **runner** as the agent. Your CLI's own login
+  is used — no API key. The server can send it text and nothing else: the agent
+  and its flags are fixed when you start it, and each preset turns the agent's
+  own tools off (verified per agent by planting a file and asking for it).
+  `agent.host` and `agent.sidecarUrl` are gone.
+- **A Claude session stays open per notebook**, so only the new turn is sent:
+  ~1.6 s a round after the first, against ~3 s one-shot. Text streams as it is
+  written.
+- **Persistent `claude -p` works with the flags the settings describe.** It
+  needs `--verbose`, which is now added; the one-shot fallback no longer
+  carries the stream-json flags that made it fail too.
+- **An agent that replies with nothing says why.** `agy -p` exits 0 having
+  printed nothing when a tool it wanted was denied; its reason is on stderr,
+  and is now the round's error rather than an empty round that looked done.
+- **A long round is no longer cut off at 90 s**, and a cancel or a kernel
+  lookup's result reaches the server while a round is running. The round used
+  to block the socket's reads until it finished.
+
 ### Cells are written in front of you
 
 - **A cell appears the moment its tag opens and fills in as the model writes

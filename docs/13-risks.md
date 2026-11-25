@@ -219,9 +219,55 @@ cluster's own (empty) Ollama is visibly wrong instead of silently wrong. `agent.
 the schema from v1.0 so the v1.1 sidecar — which can send the PNA header correctly and can run
 `claude -p` with the user's own credentials — is a settings change, not a migration.
 
-_Residual:_ until the sidecar ships, CLI-based agents (`claude -p`) cannot run on the laptop
-while Jupyter runs remotely. A tunnel cannot carry a subprocess. This is stated plainly in the
-README rather than discovered.
+_Residual (1.2):_ the 1.1 sidecar closed this and opened R16; the dial-out runner closes both.
+CLI agents run on the laptop with their own login, and nothing there listens. The remaining cost
+is one install on the laptop, which any design that uses the user's subscriptions has to pay.
+
+---
+
+## R16 · Anyone who could reach a socket could run a command · **REALISED — fixed in 1.2**
+
+Found by a status audit on 2026-11-16, both by doing it rather than reading it:
+
+1. **The 1.1 sidecar accepted any web page.** `jupyter-vybe-local` listened on
+   `127.0.0.1:8137` and echoed back whatever `Origin` it was sent unless started with
+   `--allow-origin`. WebSockets are not covered by CORS, so a page on any site, open in the
+   same browser, could connect, say `hello` with the `command` agent and a command of its
+   choosing, and have it run on the laptop. A connection claiming `https://evil.example`
+   created a file.
+2. **The server's agent socket ignored the token.** `AgentSocket` overrode
+   `get_current_user` to return a user for every request and stubbed out
+   `check_xsrf_cookie`. Cross-origin connections were still refused by Tornado, but any process
+   that could reach the port — another user on a shared login node — could open it without the
+   token and run a command through the `command` agent. docs/06 said the route was
+   authenticated.
+
+_Fixed:_
+
+- The agent socket and the new runner socket use Jupyter's own WebSocket authentication
+  (`sockets.AuthenticatedSocket`, the terminal socket's pattern). Tests open both without a
+  token, with a wrong one and from a foreign origin, and expect 403. **T-AUTH** fails on any
+  handler that overrides `get_current_user`, `check_xsrf_cookie` or `check_origin`.
+- The listening sidecar is gone. Its replacement, `jupyter-vybe-local connect`, **dials out**
+  to the server with the token and listens on nothing, so no web page can reach it
+  ([06](06-agent-integration.md)).
+- The runner cannot be told what to run. Its agent is fixed on its own command line; server
+  frames carry text and ids only. **T-RUNNER** fails if `local.py` reads a command-shaped field
+  from a frame, and a test sends one naming a command, argv, cwd and env and checks nothing
+  of it is used.
+- The agent CLIs' own tools are switched off per preset, because a notebook can hold text
+  written to talk an agent into using them. That this matters was measured, not assumed:
+  headless `agy -p` read a planted file on request. The table in docs/06 records what was
+  verified for each.
+
+_Found on the way:_ the round was awaited inside `on_message`, so Tornado read no further frame
+until it ended — no cancel, no kernel-lookup result, and, once the socket gained Jupyter's
+keep-alive, no pong, which closed any round longer than 90 s. Rounds now run as tasks; a test
+cancels one mid-flight.
+
+_Residual:_ with the token, Jupyter skips the origin check by design (the token is the secret).
+Anyone holding the token can already run code through a kernel, so the agent socket gives them
+nothing new. `--command` and `gemini` are not contained by us; docs/06 says so.
 
 ---
 

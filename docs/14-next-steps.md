@@ -202,8 +202,9 @@ What is left is not roadmap work but judgement calls that want a user:
 - **How aggressively should the ladder trim?** `context.windowTokens` minus a
   4096-token reserve is a guess that has never been wrong in testing because
   testing never used a 200-cell notebook.
-- **The client-side sidecar (D2 v1.1).** Still the plan for "local model on my
-  laptop, notebook on a cluster"; the SSH reverse tunnel covers it today.
+- **The client-side sidecar (D2 v1.1)** — built, then replaced in 1.2 by the dial-out
+  runner after it proved reachable from any web page (13 R16). The SSH reverse tunnel still
+  covers HTTP backends with nothing installed.
 - **Native tool calling (D3).** Deliberately deferred, and the tagged-text
   protocol plus salvage has held up well enough that there is no pressure.
 

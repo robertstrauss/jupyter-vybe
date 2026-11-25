@@ -6,6 +6,7 @@ from .base import Adapter, AdapterSpec, HealthStatus, Message
 from .command import CommandAdapter
 from .ollama import OllamaAdapter
 from .openai_compat import OpenAICompatAdapter
+from .relay import HUB, RunnerAdapter
 from .turbofieldfare import TurboFieldfareAdapter
 
 ADAPTER_REGISTRY: dict[str, AdapterSpec] = {
@@ -26,6 +27,15 @@ ADAPTER_REGISTRY: dict[str, AdapterSpec] = {
         "A command (claude -p, or any binary)",
         200000,
         requires_config=["agent.command"],
+    ),
+    "runner": AdapterSpec(
+        "runner",
+        "The agent on your own machine (jupyter-vybe-local connect)",
+        200000,
+        # Where the *model* runs is the runner's to say -- claude, codex and
+        # agy are cloud models, an Ollama runner is not. Updated from the
+        # runner's hello in AgentsHandler; False until then is the safe answer.
+        local=False,
     ),
     "openai-compat": AdapterSpec(
         "openai-compat",
@@ -61,6 +71,8 @@ def build_adapter(agent_id: str, options=None) -> Adapter:
             persistent=str(opts.get("persistent", "")).lower() in ("1", "true", "yes"),
             api_key_env=opts.get("apiKeyEnv", ""),
         )
+    if agent_id == "runner":
+        return RunnerAdapter(spec, HUB, notebook_path=str(opts.get("notebookPath", "")))
     if agent_id == "openai-compat":
         return OpenAICompatAdapter(
             spec,
