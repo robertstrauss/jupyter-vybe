@@ -29,9 +29,6 @@ tsconfig.tsbuildinfo
 jupyter_vybe/labextension/
 jupyter_vybe/_version.py
 
-# Server extension enable/disable config dropped by the build
-jupyter-config/
-
 # --- Jupyter runtime ---
 .ipynb_checkpoints/
 .jupyter/
