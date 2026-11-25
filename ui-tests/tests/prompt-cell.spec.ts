@@ -763,7 +763,8 @@ test('the review counter appears only while edits are open', async ({
   const counter = page.locator('.jv-review-counter');
   await expect(counter).toBeVisible({ timeout: 60000 });
   await expect(counter).toContainText('1 edit left to review');
-  await expect(counter).toContainText('⌘Z');
+  // Accel renders as ⌘Z on a Mac and Ctrl+Z elsewhere (CI runs Linux).
+  await expect(counter).toContainText(/⌘Z|Ctrl\+Z/);
 
   await page.keyboard.press('Enter');
   await page.keyboard.press('y');
