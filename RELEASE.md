@@ -50,15 +50,15 @@ again, so a broken release needs a new patch version.
 These are already done unless marked otherwise.
 
 - **PyPI trusted publisher** (needs the maintainer's PyPI account). At
-  <https://pypi.org/manage/account/publishing/>, add a *pending publisher*:
+  <https://pypi.org/manage/account/publishing/>, add a _pending publisher_:
 
-  | Field             | Value             |
-  | ----------------- | ----------------- |
-  | PyPI project name | `jupyter-vybe`    |
-  | Owner             | `robertstrauss`   |
-  | Repository name   | `jupyter-vybe`    |
-  | Workflow name     | `release.yml`     |
-  | Environment name  | `pypi`            |
+  | Field             | Value           |
+  | ----------------- | --------------- |
+  | PyPI project name | `jupyter-vybe`  |
+  | Owner             | `robertstrauss` |
+  | Repository name   | `jupyter-vybe`  |
+  | Workflow name     | `release.yml`   |
+  | Environment name  | `pypi`          |
 
   The first successful release creates the project and turns the pending
   publisher into a normal one.
