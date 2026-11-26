@@ -1,0 +1,115 @@
+name: Release
+
+# Pushing a tag vX.Y.Z publishes jupyter_vybe X.Y.Z to PyPI and makes a
+# GitHub release from that version's CHANGELOG section. scripts/release.sh
+# makes the commit and the tag; see RELEASE.md.
+#
+# PyPI is reached by trusted publishing (OIDC), so there is no token to
+# store or leak. PyPI has to be told about this workflow once: RELEASE.md.
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jupyterlab/maintainer-tools/.github/actions/base-setup@v1
+
+      - name: Check the tag matches the package version
+        id: version
+        run: |
+          set -eu
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME but package.json says $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: |
+          set -eux
+          python -m pip install -U "jupyterlab>=4.0.0,<5"
+          jlpm
+          jlpm run lint:check
+          jlpm run test
+          bash scripts/check-invariants.sh
+          python -m pip install ".[test]"
+          python -m pytest tests -q
+
+      - name: Build
+        run: |
+          set -eux
+          jlpm clean:all
+          python -m pip install build twine
+          python -m build
+          python -m twine check --strict dist/*
+
+      - name: Check the wheel installs and loads in a clean environment
+        run: |
+          set -eux
+          python -m venv /tmp/check
+          /tmp/check/bin/pip install "jupyterlab>=4.0.0,<5" dist/*.whl
+          /tmp/check/bin/jupyter labextension list 2>&1 | grep -ie "jupyter-vybe.*OK"
+          /tmp/check/bin/jupyter server extension list 2>&1 | grep -ie "jupyter_vybe.*OK"
+          /tmp/check/bin/python -m jupyterlab.browser_check --no-browser-test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/jupyter-vybe/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: [build, pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -eu
+          # This version's CHANGELOG section: from its heading to the next.
+          awk -v v="$VERSION" '
+            $0 ~ "^## " v "( |$)" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Release $VERSION" > notes.md
+          flags=""
+          case "$VERSION" in *-*) flags="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md $flags

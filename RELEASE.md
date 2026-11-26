@@ -1,88 +1,82 @@
-# Making a new release of jupyter_vybe
+# Releasing jupyter_vybe
 
-The extension can be published to `PyPI` and `npm` manually or using the [Jupyter Releaser](https://github.com/jupyter-server/jupyter_releaser).
+A release is a tag. Pushing `vX.Y.Z` runs
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which:
 
-## Manual release
+1. checks that the tag matches `package.json`'s version,
+2. runs the lint, jest, invariant gates and pytest,
+3. builds the sdist and wheel and checks them with `twine check --strict`,
+4. installs the wheel in a clean virtualenv and checks that both the lab
+   extension and the server extension load,
+5. publishes to [PyPI](https://pypi.org/project/jupyter-vybe/) by trusted
+   publishing (no token is stored anywhere), and
+6. makes a GitHub release with the wheel and sdist attached and that
+   version's CHANGELOG section as the notes.
 
-### Python package
+The version lives only in `package.json`. Hatch reads it from there
+(`hatch-nodejs-version`), so `1.2.0-rc.1` there becomes `1.2.0rc1` on PyPI.
 
-This extension can be distributed as Python packages. All of the Python
-packaging instructions are in the `pyproject.toml` file to wrap your extension in a
-Python package. Before generating a package, you first need to install some tools:
+## Cutting a release
 
-```bash
-pip install build twine hatch
-```
+1. Under `## X.Y.Z (unreleased)` in `CHANGELOG.md`, write what changed.
+2. Make sure CI on `main` is green.
+3. Run:
 
-Bump the version using `hatch`. By default this will create a tag.
-See the docs on [hatch-nodejs-version](https://github.com/agoose77/hatch-nodejs-version#semver) for details.
+   ```bash
+   ./scripts/release.sh 1.2.0 --dry   # commit and tag locally, push nothing
+   git tag -d v1.2.0 && git reset --hard HEAD~1   # undo the dry run
+   ./scripts/release.sh 1.2.0         # the real thing
+   ```
 
-```bash
-hatch version <new-version>
-```
+   The script refuses to run unless you are on `main`, have no uncommitted
+   changes, are level with `origin/main`, and have a CHANGELOG section for
+   the version. It sets the version, replaces `(unreleased)` with today's
+   date, commits `Release 1.2.0`, tags `v1.2.0` and pushes both.
 
-Make sure to clean up all the development files before building the package:
+4. Watch it run: `gh run watch $(gh run list -w Release -L1 --json databaseId -q '.[0].databaseId')`.
 
-```bash
-jlpm clean:all
-```
+A pre-release (`./scripts/release.sh 1.2.0-rc.1`) is published to PyPI as
+`1.2.0rc1`. pip skips it unless asked (`pip install --pre jupyter-vybe`). It
+is marked as a pre-release on GitHub, and the CHANGELOG section stays
+undated for the final release.
 
-You could also clean up the local git repository:
+If a release fails before the PyPI step, fix the problem, delete the tag
+(`git push origin :v1.2.0 && git tag -d v1.2.0`) and run the script again
+with the same version. Once a version is on PyPI it can never be uploaded
+again, so a broken release needs a new patch version.
 
-```bash
-git clean -dfX
-```
+## One-time setup
 
-To create a Python source package (`.tar.gz`) and the binary package (`.whl`) in the `dist/` directory, do:
+These are already done unless marked otherwise.
 
-```bash
-python -m build
-```
+- **PyPI trusted publisher** (needs the maintainer's PyPI account). At
+  <https://pypi.org/manage/account/publishing/>, add a *pending publisher*:
 
-> `python setup.py sdist bdist_wheel` is deprecated and will not work for this package.
+  | Field             | Value             |
+  | ----------------- | ----------------- |
+  | PyPI project name | `jupyter-vybe`    |
+  | Owner             | `robertstrauss`   |
+  | Repository name   | `jupyter-vybe`    |
+  | Workflow name     | `release.yml`     |
+  | Environment name  | `pypi`            |
 
-Then to upload the package to PyPI, do:
+  The first successful release creates the project and turns the pending
+  publisher into a normal one.
 
-```bash
-twine upload dist/*
-```
+- **The `pypi` GitHub environment**, which the publish job runs in. Under
+  Settings → Environments → `pypi` you can add required reviewers, so that
+  a pushed tag waits for a click before anything reaches PyPI.
 
-### NPM package
+## npm
 
-To publish the frontend part of the extension as a NPM package, do:
+The npm package is not published. JupyterLab 4 installs the extension
+prebuilt from the Python wheel, so npm is only needed by someone building
+another extension on top of this one. To publish it as well, add a job to
+`release.yml` that runs `npm publish --provenance --access public` with
+`id-token: write`, after setting up npm trusted publishing for the package.
 
-```bash
-npm login
-npm publish --access public
-```
+## conda-forge
 
-## Automated releases with the Jupyter Releaser
-
-The extension repository should already be compatible with the Jupyter Releaser. But
-the GitHub repository and the package managers need to be properly set up. Please
-follow the instructions of the Jupyter Releaser [checklist](https://jupyter-releaser.readthedocs.io/en/latest/how_to_guides/convert_repo_from_repo.html).
-
-For the release workflows in this repository, make sure GitHub is configured with:
-
-- a `release` environment
-- an `APP_PRIVATE_KEY` secret
-- an `APP_ID` repository variable
-
-When using [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), `NPM_TOKEN` is not required (and trusted publishing is recommended). Configure `NPM_TOKEN` only if you are publishing without trusted publishers.
-
-Here is a summary of the steps to cut a new release:
-
-- Go to the Actions panel
-- Run the "Step 1: Prep Release" workflow
-- Check the draft changelog
-- Run the "Step 2: Publish Release" workflow
-
-> [!NOTE]
-> Check out the [workflow documentation](https://jupyter-releaser.readthedocs.io/en/latest/get_started/making_release_from_repo.html)
-> for more information.
-
-## Publishing to `conda-forge`
-
-If the package is not on conda forge yet, check the documentation to learn how to add it: https://conda-forge.org/docs/maintainer/adding_pkgs.html
-
-Otherwise a bot should pick up the new version publish to PyPI, and open a new PR on the feedstock repository automatically.
+Not on conda-forge yet. To add it, see
+<https://conda-forge.org/docs/maintainer/adding_pkgs.html>. Once there is a
+feedstock, its bot opens a PR for each new PyPI release.

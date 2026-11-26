@@ -1,10 +1,9 @@
 [build-system]
-requires = ["hatchling>=1.5.0", "hatch-nodejs-version>=0.3.2", "jupyter-builder>=1.2.0,<2"]
+requires = ["hatchling>=1.5.0", "hatch-nodejs-version>=0.3.2", "hatch-fancy-pypi-readme>=24.1", "jupyter-builder>=1.2.0,<2"]
 build-backend = "hatchling.build"
 
 [project]
 name = "jupyter_vybe"
-readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
@@ -25,7 +24,7 @@ classifiers = [
 dependencies = [
     "jupyter_server>=2.14,<3",
 ]
-dynamic = ["version", "description", "authors", "urls", "keywords"]
+dynamic = ["version", "description", "authors", "urls", "keywords", "readme"]
 
 [project.scripts]
 # The client-side sidecar (D2 v1.1): `jupyter-vybe-local` on the machine with
@@ -62,9 +61,26 @@ source = "nodejs"
 [tool.hatch.metadata.hooks.nodejs]
 fields = ["description", "authors", "urls", "keywords"]
 
+# PyPI renders the README with no repository around it, so a relative link or
+# image there is broken. Rewrite them to point at GitHub; the README itself
+# keeps relative links so it still reads offline and in forks.
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '\]\((?!https?://|#|mailto:)([^)\s]+\.(?:png|jpe?g|gif|svg))\)'
+replacement = '](https://raw.githubusercontent.com/robertstrauss/jupyter-vybe/main/\1)'
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '\]\((?!https?://|#|mailto:)([^)\s]+)\)'
+replacement = '](https://github.com/robertstrauss/jupyter-vybe/blob/main/\1)'
+
 [tool.hatch.build.targets.sdist]
 artifacts = ["jupyter_vybe/labextension"]
-exclude = [".github", "binder", "docs", ".venv"]
+exclude = [".github", "binder", "docs", ".venv", "screenshots", "ui-tests", "coverage"]
 
 [tool.hatch.build.targets.wheel.shared-data]
 "jupyter_vybe/labextension" = "share/jupyter/labextensions/jupyter-vybe"
@@ -92,17 +108,6 @@ build_cmd = "install:extension"
 npm = ["jlpm"]
 source_dir = "src"
 build_dir = "jupyter_vybe/labextension"
-
-[tool.jupyter-releaser.options]
-version_cmd = "hatch version"
-
-[tool.jupyter-releaser.hooks]
-before-build-npm = [
-    "python -m pip install 'jupyter-builder>=1.2.0,<2'",
-    "jlpm",
-    "jlpm build:prod"
-]
-before-build-python = ["jlpm clean:all"]
 
 [tool.check-wheel-contents]
 ignore = ["W002"]
