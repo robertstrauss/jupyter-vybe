@@ -137,15 +137,13 @@ following controls:
 - Trigger prefix: a text field where the prefix used at the beginning of a code cell to prompt the agent can be changed '>' is default. '!' and '?' are already used for bash or IPython help so can't be selected. Any valid code syntax can't be used (otherwise there would be ambiguity rather whether to actually evaluate it as code).
 - Global prompt: a text field to modify a prompt the agent will always be given in addition to the notebook, tooling prompt, and other necessary context. Here you can describe properties/conventions you want all agent generated code to have, for example "well documented with concise phrases. Example usage in docstring. All caps for constants", or more meta information: "Never propose cell edits, only propose a new version of the function/class in a completley new cell."
 
-[HUMAN: SCREENSHOT]
+![The Agent section of the Jupyter Vybe settings: the agent picker, the fields each kind of agent uses, and a reachability check](screenshots/settings-agents.png)
 
 ## Agent Integration
 
 ### Connect your own agent
 
 The AI engine is completely interchangeable. Hook it up to a local agent or your subscription AI service of choice. Just go to settings, open the model selection drop down, and click 'add model' and follow the setup steps.
-
-![The Agent section of the Jupyter Vybe settings: the agent picker, the fields each kind of agent uses, and a reachability check](screenshots/settings-agents.png)
 
 ### When the model and the notebook are on different machines
 
@@ -166,7 +164,32 @@ For HTTP backends like Ollama an SSH reverse tunnel
 
 I personally recommend using a local model, if you have a device that can support it. The whole design of this project scopes the agent to fine-grained, simple, modular chunks of generated code, which open source local models are plenty adept at especially in Python.
 
-[HUMAN: SUMMARIZE/LINK TO INSTALLING LOCAL MODEL]
+#### Setting up a local model
+
+**Qwen 2.5 Coder through [Ollama](https://ollama.com)** (any OS; the default agent). Install
+Ollama, then pull the model:
+
+```bash
+ollama pull qwen2.5-coder:7b     # 4.7 GB; :3b for less memory, :14b for better code
+```
+
+Pick the matching `ollama-qwen25-coder-*` agent in settings. The settings pane checks the daemon
+is running and the model is pulled, and starts `ollama serve` for you if it is not.
+
+**Gemma 4 26B-A4B through [TurboFieldfare](https://github.com/drumih/turbo-fieldfare)** (Apple
+Silicon only). It writes correct code more often than qwen 7B (8/8 against 19/24 on
+`scripts/bench-quality.py`) but answers about fifteen times slower. You need Xcode's command line
+tools (`xcode-select --install`) and about 15 GB of disk:
+
+```bash
+bash jupyter_vybe/adapters/vendored/setup_turbofieldfare.sh    # clones and builds into ~/.turbofieldfare
+~/.turbofieldfare/turbo-fieldfare/.build/release/TurboFieldfareRepack \
+  --output ~/.turbofieldfare/turbo-fieldfare/scratch/gemma4.gturbo --overwrite   # downloads the model
+```
+
+Pick `turbofieldfare-gemma4` in settings. It uses `TurboFieldfareServer` on port 8080 if that is
+running (faster, since it keeps its prompt cache between turns) and runs the CLI once per prompt
+otherwise. `TURBOFIELDFARE_BIN` and `TURBOFIELDFARE_MODEL` point it somewhere else.
 
 ### Agent tools
 
