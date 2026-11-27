@@ -190,6 +190,50 @@ describe('Rounds', () => {
     expect(await rounds.begin(options(fakeCell(panel)))).toBe(true);
   });
 
+  it('reads ahead with the sequence number the round will then use', async () => {
+    const panel = fakePanel();
+    const { rounds } = build([{ op: 'prose', delta: 'done' }], 0);
+    (rounds as any)._panelFor = () => panel;
+    const prefills: any[] = [];
+    const sent: any[] = [];
+    const agent = (rounds as any).agent;
+    agent.prefill = (_path: string, req: any) => prefills.push(req);
+    const send = agent.send;
+    agent.send = (path: string, req: any) => {
+      sent.push(req);
+      return send(path, req);
+    };
+
+    rounds.prefill(panel, 'p1');
+    rounds.prefill(panel, 'p1');
+    await rounds.begin(options(fakeCell(panel)));
+
+    // Taken by neither read: the round still gets 0, and so did both reads,
+    // so the server plans the turn it read ahead as the turn it then runs.
+    expect(prefills.map(r => r.snapshotSeq)).toEqual([0, 0]);
+    expect(sent[0].snapshotSeq).toBe(0);
+    expect(prefills[0].snapshot).toBe(sent[0].snapshot);
+    expect(prefills[0].promptCellId).toBe('p1');
+    expect(prefills[0].prompt).toBeUndefined();
+  });
+
+  it('does not read ahead while a round is running', async () => {
+    const panel = fakePanel();
+    const { rounds } = build(
+      [{ op: 'tool', name: 'propose_edit', args: { cell: '1', body: 'x' } }],
+      1
+    );
+    (rounds as any)._panelFor = () => panel;
+    const prefills: any[] = [];
+    (rounds as any).agent.prefill = (_p: string, req: any) =>
+      prefills.push(req);
+
+    await rounds.begin(options(fakeCell(panel)));
+    expect(rounds.hasActiveRound(panel)).toBe(true);
+    rounds.prefill(panel, 'p1');
+    expect(prefills).toEqual([]);
+  });
+
   it('releases the round when the agent stream throws', async () => {
     const panel = fakePanel();
     const { rounds } = build([], 0);

@@ -12,17 +12,23 @@ import json
 import os
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 from typing import AsyncIterator
 
 from .adapters import Message, build_adapter
+from . import zeta
 from .diffsummary import summarise
 from .history import HistoryStore
 from .assembler import (
+    READY_ACK,
+    READY_INSTRUCTION,
+    REQUEST_CUE,
     assemble_followup,
     assemble_initial,
     preload_prompts,
     render_notebook,
     resolve_cell_ref,
+    split_request,
 )
 from .protocol import (
     EventKind,
@@ -55,6 +61,35 @@ def _record(kind: str, **fields) -> None:
             fh.write(json.dumps({"kind": kind, "ts": time.time(), **fields}) + "\n")
     except Exception:  # logging must never break a round
         pass
+
+
+@dataclass
+class _Plan:
+    """What a turn would send, worked out without changing the session.
+
+    Shared by the real turn and the read-ahead, which has to arrive at the
+    same context from the same notebook or the cache it fills is no use.
+    """
+
+    seq: int
+    force_full: bool
+    out_of_order: bool
+    snapshot_cells: list
+    previous_cells: list
+    stale: set
+    context: str  # everything before the request
+    request: str  # the request heading and the user's words ("" for a read-ahead)
+    full: str  # the prompt as one message, for an adapter that cannot read ahead
+    base: list  # the conversation this turn continues
+
+
+@dataclass
+class _Prefill:
+    context: str
+    base_len: int
+    turns: int
+    task: asyncio.Future
+    cancel: asyncio.Event
 
 
 class AgentSession:
@@ -93,6 +128,9 @@ class AgentSession:
         self.echo_prompt = bool(options.get("echoPrompt", False))
         self._prose = ""
         self.store = HistoryStore(notebook_path, location=self.history_location)
+        # The notebook read ahead of the request (prefill), if any.
+        self._prefill: _Prefill | None = None
+        self._running = False
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -146,88 +184,64 @@ class AgentSession:
     # -- the turn ----------------------------------------------------------
 
     async def run(self, msg: dict) -> AsyncIterator[dict]:
+        # No read-ahead while a round runs: the runtime is busy with the round,
+        # and its cache is about to hold the round's reply.
+        self._running = True
+        try:
+            turn = self._run_zeta if getattr(self.adapter, "edit_predict", False) else self._run
+            async for frame in turn(msg):
+                yield frame
+        finally:
+            self._running = False
+
+    async def _run(self, msg: dict) -> AsyncIterator[dict]:
         self.touched = time.monotonic()
         self._cancel = asyncio.Event()
 
-        seq = msg.get("snapshotSeq", 0)
-        # Turn 0 sends everything; later turns in a persistent session send the
-        # short form. This was pinned to always-full while the follow-up prompt
-        # lacked a cell listing, which made the model invent cell numbers and
-        # edit the wrong cell. The listing now goes on every turn and TOOL_RECAP
-        # carries the rules whose absence caused real damage (docs/09).
-        #
-        # It is also the single largest latency win available. Measured against
-        # TurboFieldfareServer: a request that continues the conversation reuses
-        # the cached prefix and prefills only what is new -- 0.8 s against 48 s
-        # for the same tokens sent cold (docs/14 N4). Re-sending the full
-        # preamble each turn threw that away.
-        first_turn = not self.persistent or not self.messages
-        # A full snapshot every RESYNC_EVERY turns bounds drift from
-        # accumulated small errors in the diff path (docs/09).
-        periodic = self.turns > 0 and self.turns % RESYNC_EVERY == 0
-        # The sequence check docs/09 promised and nothing implemented: a diff
-        # is only meaningful against the snapshot it was computed from. If the
-        # client's counter skipped -- server restarted, session evicted,
-        # notebook reopened -- the picture here is stale, and diffing against
-        # it would desynchronise the agent silently, which is R4 exactly.
-        # Sending everything is cheaper than being subtly wrong.
-        out_of_order = not first_turn and seq != self.snapshot_seq + 1
-        force_full = first_turn or periodic or out_of_order or msg.get("forceFull", False)
-        if out_of_order:
-            _record("resync", expected=self.snapshot_seq + 1, got=seq)
-        if force_full and msg.get("snapshot") is None:
+        plan = self._plan(msg, msg["prompt"])
+        if plan is None:
             yield {"op": "resync"}
             return
+        if plan.out_of_order:
+            _record("resync", expected=self.snapshot_seq + 1, got=plan.seq)
+
+        if hasattr(self.adapter, "prefill"):
+            # The notebook in a turn of its own, the model's one-word reply,
+            # then the request: see READY_INSTRUCTION. Read ahead already if
+            # the user's '>' started it; otherwise read now, which costs one
+            # short extra call and keeps the next turn's cache usable.
+            yield {"op": "status", "state": "generating"}
+            ack = await self._await_prefill(plan)
+            if self._cancel.is_set():
+                # Nothing committed: the client has moved its counter on, so
+                # the next prompt arrives out of order and resyncs in full
+                # rather than diffing against a turn the model never saw.
+                yield {"op": "done", "stopReason": "cancelled"}
+                return
+            turn = [
+                Message("user", plan.context),
+                Message("assistant", ack),
+                Message("user", f"{REQUEST_CUE}\n\n{plan.request}"),
+            ]
+            prompt = "\n\n".join(m.content if m.role == "user" else f"[assistant: {m.content}]" for m in turn)
+        else:
+            prompt = plan.full
+            turn = [Message("user", prompt)]
 
         limits = msg.get("limits", {})
-        snapshot_cells: list[dict] = []
-        # _translate needs the cell list to resolve index references.
-        raw_snapshot = msg.get("snapshot")
-        if raw_snapshot:
-            try:
-                snapshot_cells = json.loads(raw_snapshot).get("cells", [])
-            except (json.JSONDecodeError, AttributeError):
-                snapshot_cells = []
-        previous_cells = self._cells
+        snapshot_cells = plan.snapshot_cells
         if snapshot_cells:
             self._cells = snapshot_cells
         self._prompt_cell_id = msg.get("promptCellId", "")
         self._edit_as_insert = False
-        self._stale = _stale_outputs(self._stale, previous_cells, snapshot_cells)
-        if force_full:
+        self._stale = plan.stale
+        if plan.force_full:
             self._baseline = {c.get("id"): c for c in snapshot_cells if c.get("id")}
-            prompt = assemble_initial(
-                notebook_json=msg["snapshot"],
-                kernel=msg.get("kernelInfo", {}),
-                prompt_cell_id=msg.get("promptCellId", ""),
-                user_prompt=msg["prompt"],
-                global_prompt=msg.get("globalPrompt", ""),
-                tooling=_tooling_with_limits(limits),
-            )
-            if not self.persistent:
-                self.messages = []
-        else:
-            # An index rather than the whole notebook: the agent still has to
-            # name a cell, and a number it cannot see is a number it invents
-            # (docs/09). The bodies it needs are in the conversation already.
-            prompt = assemble_followup(
-                notebook_diff=summarise(
-                    previous_cells, snapshot_cells, msg.get("promptCellId", ""), self._stale
-                ),
-                kernel=msg.get("kernelInfo", {}),
-                user_prompt=msg["prompt"],
-                notebook_listing=render_notebook(
-                    snapshot_cells,
-                    msg.get("promptCellId", ""),
-                    brief=_unchanged_since(self._baseline, snapshot_cells),
-                    stale=self._stale,
-                ),
-            )
-        self.snapshot_seq = seq
-        self.messages.append(Message("user", prompt))
+        self.snapshot_seq = plan.seq
+        self.messages = plan.base + turn
 
         _record("prompt", persistent=self.persistent, turns=self.turns,
-                force_full=force_full, prompt=prompt)
+                force_full=plan.force_full, prompt=prompt)
         round_id = msg.get("roundId", "")
         self.record({
             "kind": "prompt",
@@ -380,6 +394,261 @@ class AgentSession:
         self.turns += 1
         self._flush_prose(round_id)
         yield {"op": "done", "stopReason": "limit"}
+
+    # -- an edit predictor -------------------------------------------------
+
+    async def _run_zeta(self, msg: dict) -> AsyncIterator[dict]:
+        """A turn for Zeta 2, which predicts edits rather than following a chat.
+
+        The notebook is laid out as one file with the cursor where the work is
+        (jupyter_vybe/zeta.py), predictions are chained until one is finished,
+        and the result is sent as the same add_cell / propose_edit frames any
+        other agent's reply becomes -- so review, undo and history are the
+        same whichever agent wrote the code.
+        """
+        self.touched = time.monotonic()
+        self._cancel = asyncio.Event()
+        cells: list[dict] = []
+        try:
+            cells = json.loads(msg.get("snapshot") or "{}").get("cells", [])
+        except (json.JSONDecodeError, AttributeError):
+            cells = []
+        if not cells:
+            yield {"op": "resync"}
+            return
+        if zeta.contains_special_tokens(cells):
+            yield {
+                "op": "error",
+                "message": "This notebook contains Zeta's control tokens, so Zeta cannot read it safely. "
+                "Pick another agent for this notebook.",
+                "retriable": False,
+            }
+            yield {"op": "done", "stopReason": "error"}
+            return
+
+        prompt_cell_id = msg.get("promptCellId", "")
+        round_id = msg.get("roundId", "")
+        history = zeta.history_since(self._cells if self.persistent else [], cells, prompt_cell_id)
+        plan = zeta.plan_turn(cells, prompt_cell_id, msg["prompt"], history)
+        self._cells = cells
+        self._prompt_cell_id = prompt_cell_id
+        self.snapshot_seq = msg.get("snapshotSeq", 0)
+        prompt = plan.prompt()
+        _record("prompt", agent="zeta2", mode=plan.mode, anchor=plan.anchor_id, prompt=prompt)
+        self.record({
+            "kind": "prompt",
+            "roundId": round_id,
+            "text": msg["prompt"],
+            "agentId": self.agent_id,
+            "promptChars": len(prompt),
+        })
+        if self.echo_prompt:
+            yield {"op": "assembledPrompt", "prompt": prompt}
+        yield {"op": "status", "state": "generating"}
+
+        chars = 0
+        produced: list[dict] = []
+        if plan.mode == "insert" and hasattr(self.adapter, "fill"):
+            # New code: one fill-in-the-middle call, the editable-region chain
+            # below only if it writes nothing (zeta.fim_prompt).
+            out, timings = await self.adapter.fill(zeta.fim_prompt(plan), zeta.FIM_STOP, self._cancel)
+            if self._cancel.is_set():
+                yield {"op": "done", "stopReason": "cancelled"}
+                return
+            chars += len(out)
+            yield {"op": "progress", "chars": chars}
+            _record("reply", step="fim", reply=out, timings=timings)
+            produced = zeta.fim_frames(plan, out)
+        for placement in () if produced else ("top", "bottom") if plan.mode != "insert" else ("top",):
+            if placement != "top":
+                plan = zeta.plan_turn(cells, prompt_cell_id, msg["prompt"], history, placement)
+                prompt = plan.prompt()
+                _record("replan", placement=placement)
+            region = plan.region
+            for step in range(zeta.MAX_STEPS):
+                out, timings = await self.adapter.complete(prompt, self._cancel)
+                if self._cancel.is_set():
+                    yield {"op": "done", "stopReason": "cancelled"}
+                    return
+                chars += len(out)
+                yield {"op": "progress", "chars": chars}
+                _record("reply", step=step, reply=out, timings=timings)
+                region, again = zeta.next_region(plan, out)
+                if not again:
+                    break
+                plan.region = region
+                prompt = plan.prompt()
+            produced = zeta.frames(plan, region)
+            if produced:
+                break
+
+        if not produced:
+            yield {"op": "prose", "delta": "_Zeta predicted no change here._"}
+        for frame in produced:
+            self._record_frame(round_id, frame)
+            yield frame
+        self.turns += 1
+        self._flush_prose(round_id)
+        yield {"op": "done", "stopReason": "end"}
+
+    # -- assembly and read-ahead ---------------------------------------------
+
+    def _plan(self, msg: dict, user_prompt: str) -> _Plan | None:
+        """The turn `msg` asks for, or None if a full snapshot is needed and absent."""
+        seq = msg.get("snapshotSeq", 0)
+        # Turn 0 sends everything; later turns in a persistent session send the
+        # short form. This was pinned to always-full while the follow-up prompt
+        # lacked a cell listing, which made the model invent cell numbers and
+        # edit the wrong cell. The listing now goes on every turn and TOOL_RECAP
+        # carries the rules whose absence caused real damage (docs/09).
+        #
+        # It is also the single largest latency win available. Measured against
+        # TurboFieldfareServer: a request that continues the conversation reuses
+        # the cached prefix and prefills only what is new -- 0.8 s against 48 s
+        # for the same tokens sent cold (docs/14 N4). Re-sending the full
+        # preamble each turn threw that away.
+        first_turn = not self.persistent or not self.messages
+        # A full snapshot every RESYNC_EVERY turns bounds drift from
+        # accumulated small errors in the diff path (docs/09).
+        periodic = self.turns > 0 and self.turns % RESYNC_EVERY == 0
+        # The sequence check docs/09 promised and nothing implemented: a diff
+        # is only meaningful against the snapshot it was computed from. If the
+        # client's counter skipped -- server restarted, session evicted,
+        # notebook reopened -- the picture here is stale, and diffing against
+        # it would desynchronise the agent silently, which is R4 exactly.
+        # Sending everything is cheaper than being subtly wrong.
+        out_of_order = not first_turn and seq != self.snapshot_seq + 1
+        force_full = first_turn or periodic or out_of_order or msg.get("forceFull", False)
+        if force_full and msg.get("snapshot") is None:
+            return None
+
+        snapshot_cells: list[dict] = []
+        raw_snapshot = msg.get("snapshot")
+        if raw_snapshot:
+            try:
+                snapshot_cells = json.loads(raw_snapshot).get("cells", [])
+            except (json.JSONDecodeError, AttributeError):
+                snapshot_cells = []
+        previous_cells = self._cells
+        stale = _stale_outputs(self._stale, previous_cells, snapshot_cells)
+        prompt_cell_id = msg.get("promptCellId", "")
+        if force_full:
+            assembled = assemble_initial(
+                notebook_json=msg["snapshot"],
+                kernel=msg.get("kernelInfo", {}),
+                prompt_cell_id=prompt_cell_id,
+                user_prompt=user_prompt,
+                global_prompt=msg.get("globalPrompt", ""),
+                tooling=_tooling_with_limits(msg.get("limits", {})),
+            )
+        else:
+            # An index rather than the whole notebook: the agent still has to
+            # name a cell, and a number it cannot see is a number it invents
+            # (docs/09). The bodies it needs are in the conversation already.
+            baseline = self._baseline
+            assembled = assemble_followup(
+                notebook_diff=summarise(previous_cells, snapshot_cells, prompt_cell_id, stale),
+                kernel=msg.get("kernelInfo", {}),
+                user_prompt=user_prompt,
+                notebook_listing=render_notebook(
+                    snapshot_cells,
+                    prompt_cell_id,
+                    brief=_unchanged_since(baseline, snapshot_cells),
+                    stale=stale,
+                ),
+            )
+        context, request = split_request(assembled)
+        if hasattr(self.adapter, "prefill"):
+            context = f"{context}\n\n{READY_INSTRUCTION}"
+        base = [] if (force_full and not self.persistent) else list(self.messages)
+        return _Plan(
+            seq=seq,
+            force_full=force_full,
+            out_of_order=out_of_order,
+            snapshot_cells=snapshot_cells,
+            previous_cells=previous_cells,
+            stale=stale,
+            context=context,
+            request=request,
+            full=assembled,
+            base=base,
+        )
+
+    def prefill(self, msg: dict) -> None:
+        """Read the notebook into the model's cache while the request is typed.
+
+        Sent by the client when a cell becomes a prompt, and again when the
+        notebook changes while one is open. The context does not depend on the
+        request's words (the listing leaves the prompt cell's text out), so
+        everything but the request can be read before the user has finished
+        writing it, and on a local model that is nearly all of the wait.
+
+        Best-effort and side-effect free: nothing about the session changes
+        except what is cached, and the real turn checks that what was read is
+        still exactly what it would send.
+        """
+        if self._running or not hasattr(self.adapter, "prefill"):
+            return
+        plan = self._plan(msg, "")
+        if plan is None:
+            return
+        current = self._prefill
+        if (
+            current is not None
+            and current.context == plan.context
+            and current.base_len == len(plan.base)
+            and current.turns == self.turns
+            and not (current.task.done() and not current.task.result())
+        ):
+            return  # already read, or being read
+        if current is not None:
+            current.cancel.set()
+        cancel = asyncio.Event()
+        messages = plan.base + [Message("user", plan.context)]
+        task = asyncio.ensure_future(self._safe_prefill(messages, cancel))
+        self._prefill = _Prefill(plan.context, len(plan.base), self.turns, task, cancel)
+        _record("prefill", chars=len(plan.context), base=len(plan.base))
+
+    async def _safe_prefill(self, messages: list[Message], cancel: asyncio.Event) -> str:
+        try:
+            return await self.adapter.prefill(messages, cancel) or ""
+        except Exception as exc:  # noqa: BLE001 -- the real turn reports for real
+            _record("prefill_error", error=f"{type(exc).__name__}: {exc}")
+            return ""
+
+    async def _await_prefill(self, plan: _Plan) -> str:
+        """The model's reply to this turn's context, reading it now if need be.
+
+        A read-ahead of exactly this context, against exactly this history, is
+        waited for rather than repeated. Anything else is stale and stopped,
+        since the runtime would otherwise finish it before starting this.
+        """
+        current, self._prefill = self._prefill, None
+        if (
+            current is not None
+            and current.context == plan.context
+            and current.base_len == len(plan.base)
+            and current.turns == self.turns
+        ):
+            task = current.task
+            _record("prefill_hit", done=task.done())
+        else:
+            if current is not None:
+                current.cancel.set()
+                _record("prefill_stale")
+            task = asyncio.ensure_future(
+                self._safe_prefill(plan.base + [Message("user", plan.context)], self._cancel)
+            )
+        waiter = asyncio.ensure_future(self._cancel.wait())
+        try:
+            await asyncio.wait({task, waiter}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            waiter.cancel()
+        if not task.done():
+            if current is not None:
+                current.cancel.set()
+            return READY_ACK
+        return task.result() or READY_ACK
 
     # -- the prompt record -------------------------------------------------
 

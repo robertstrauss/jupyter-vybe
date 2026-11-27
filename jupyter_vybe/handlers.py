@@ -358,7 +358,13 @@ class AgentSocket(AuthenticatedSocket):
         elif op == "warm":
             # Fire and forget: the client is not waiting on this, and a
             # notebook that is only being read should never block on it.
-            if self.session is not None:
+            if self.session is None:
+                pass
+            elif msg.get("snapshot") is not None:
+                # A cell just became a prompt, or the notebook changed while
+                # one is open: read the notebook ahead of the request.
+                self.session.prefill(msg)
+            else:
                 asyncio.ensure_future(self.session.warm())
         elif op == "reset":
             if self.session is not None:

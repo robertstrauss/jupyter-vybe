@@ -24,6 +24,28 @@
   small stdlib-only sales notebook that fails on purpose, with ready-made
   prompt cells to fix it and carry on.
 
+- **The notebook is read while you type the request.** Typing the prompt
+  prefix sends the notebook to the model at once, and again after a pause if
+  the notebook changes, so by shift-enter only the request is left to read.
+  On Gemma 4 through TurboFieldfare the first cell now starts in about 4 s
+  instead of 40 s; on qwen 7B through Ollama, 0.5 s instead of 7 s. For local
+  models a turn is now three messages: the notebook, the model's one-word
+  "Ready", then the request. That is the only shape TurboFieldfareServer's
+  cache can reuse. The listing no longer repeats the prompt cell's text, which
+  is the request anyway.
+
+- **Zeta 2, Zed's edit predictor, as an agent** (`zeta2`). It runs under
+  llama-server with prompt-lookup speculative decoding. It is not a chat model,
+  so a turn becomes an edit prediction:
+  - The notebook is one percent-format Python file.
+  - New code is plain fill-in-the-middle.
+  - A change or fix is the request typed atop the target cell, with the error
+    in the diagnostics section.
+
+  Its answers arrive as the same proposals as any other agent's. On the same
+  20 cases it scores 18/20 at a median 0.6 s. qwen 7B scores 19/20 at 2.3 s,
+  and Gemma 4 scores 19/20 at 37 s, or 3.3 s with read-ahead (docs/15).
+
 ### Fixes
 
 - **The toolbar's stop button cancels a running prompt.** It interrupted only

@@ -38,6 +38,7 @@
             "ollama-qwen25-coder-14b",
             "ollama-qwen25-coder-3b",
             "turbofieldfare-gemma4",
+            "zeta2",
             "command",
             "runner",
             "openai-compat"

@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 from typing import AsyncIterator
 
-from .base import Adapter, AdapterSpec, HealthStatus, Message
+from .base import Adapter, AdapterSpec, HealthStatus, Message, post_json
 
 KEEP_ALIVE = os.environ.get("VYBE_OLLAMA_KEEP_ALIVE", "30m")
 DEFAULT_HOST = os.environ.get("CODELLM_HOST", "http://127.0.0.1:11434")
@@ -164,6 +164,29 @@ class OllamaAdapter(Adapter):
                 return json.load(resp).get("response", "")
 
         return await asyncio.to_thread(call)
+
+    async def prefill(self, messages: list[Message], cancel: asyncio.Event) -> str:
+        """Read the conversation so far into ollama's cache (Adapter.prefill).
+
+        ollama reuses the longest prompt prefix it already holds, so the real
+        request -- these messages, the reply, then the request -- prefills
+        only what comes after them.
+        """
+        if not await self.ensure_server():
+            return ""
+        reply = await post_json(
+            f"{self.host}/api/chat",
+            {
+                "model": self.model,
+                "messages": [{"role": m.role, "content": m.content} for m in messages],
+                "stream": False,
+                "options": {"temperature": 0.2, "num_predict": 4},
+                "keep_alive": KEEP_ALIVE,
+            },
+            cancel,
+            timeout=300,
+        )
+        return (reply or {}).get("message", {}).get("content", "")
 
     async def stream(self, messages: list[Message], cancel: asyncio.Event) -> AsyncIterator[str]:
         if not await self.ensure_server():

@@ -9,7 +9,11 @@ import { UUID } from '@lumino/coreutils';
 
 import { Signal } from '@lumino/signaling';
 
-import { IVybeAgent, type IAgentFrame } from './agentClient';
+import {
+  IVybeAgent,
+  type IAgentFrame,
+  type IPrefillRequest
+} from './agentClient';
 import { IVybeSettings, IVybeRounds, type IRoundStatus } from '../tokens';
 import { IVybeProposals } from './proposals';
 import { setRounds } from '../roundRegistry';
@@ -130,6 +134,60 @@ export class Rounds implements IVybeRounds {
   hasActiveRound = (panel: NotebookPanel): boolean =>
     this._active.has(panel.id);
 
+  /**
+   * Everything a prompt frame carries but the prompt: the snapshot, and what
+   * the server needs to assemble the turn around it. Shared with prefill,
+   * which must describe the notebook exactly as the round then will.
+   */
+  private _request(
+    panel: NotebookPanel,
+    promptCellId: string,
+    seq: number
+  ): IPrefillRequest {
+    const snap = buildSnapshot(panel, {
+      includeOutputs: this.settings.includeOutputs,
+      maxOutputChars: this.settings.maxOutputChars,
+      // The notebook gets what is left after the preamble and the reply. The
+      // ladder is a latency feature as much as a budget one: prefill cost
+      // grows faster than linearly in prompt length, so an oversized notebook
+      // is paid for on every single turn (docs/14 N4).
+      budgetTokens: Math.max(0, this.settings.windowTokens - RESERVE_TOKENS),
+      cellWindow: this.settings.cellWindow,
+      promptCellId
+    });
+    this._context.set(panel.id, {
+      tokens: snap.estimatedTokens,
+      budget: Math.max(0, this.settings.windowTokens - RESERVE_TOKENS),
+      dropped: snap.dropped
+    });
+    return {
+      promptCellId,
+      snapshot: snap.json,
+      snapshotSeq: seq,
+      kernelInfo: snap.kernel,
+      globalPrompt: this.settings.globalPrompt,
+      limits: {
+        maxInsertions: this.settings.maxInsertions,
+        maxProposals: this.settings.maxProposals,
+        maxToolTurns: this.settings.maxToolTurns
+      }
+    };
+  }
+
+  /**
+   * Have the agent read the notebook while the request in `promptCellId` is
+   * still being typed (IVybeAgent.prefill). Carries the sequence number the
+   * round will use, without taking it, so the server plans the same turn.
+   */
+  prefill(panel: NotebookPanel, promptCellId: string): void {
+    if (this.hasActiveRound(panel)) {
+      return;
+    }
+    const path = panel.context.path;
+    const seq = (this._seq.get(path) ?? -1) + 1;
+    this.agent.prefill(path, this._request(panel, promptCellId, seq));
+  }
+
   cancel(panel: NotebookPanel): void {
     const round = this._active.get(panel.id);
     if (!round) {
@@ -206,24 +264,9 @@ export class Rounds implements IVybeRounds {
   private async _drive(round: Round, cell: CodeCell): Promise<void> {
     const panel = round.panel;
     const path = panel.context.path;
-    const snap = buildSnapshot(panel, {
-      includeOutputs: this.settings.includeOutputs,
-      maxOutputChars: this.settings.maxOutputChars,
-      // The notebook gets what is left after the preamble and the reply. The
-      // ladder is a latency feature as much as a budget one: prefill cost
-      // grows faster than linearly in prompt length, so an oversized notebook
-      // is paid for on every single turn (docs/14 N4).
-      budgetTokens: Math.max(0, this.settings.windowTokens - RESERVE_TOKENS),
-      cellWindow: this.settings.cellWindow,
-      promptCellId: round.promptCellId
-    });
-    this._context.set(panel.id, {
-      tokens: snap.estimatedTokens,
-      budget: Math.max(0, this.settings.windowTokens - RESERVE_TOKENS),
-      dropped: snap.dropped
-    });
     const seq = (this._seq.get(path) ?? -1) + 1;
     this._seq.set(path, seq);
+    const request = this._request(panel, round.promptCellId, seq);
 
     const pending: ICellSpec[] = [];
     let insertions = 0;
@@ -236,18 +279,9 @@ export class Rounds implements IVybeRounds {
     let streaming: { name: string; cellId: string; body: string } | null = null;
 
     const frames = this.agent.send(path, {
+      ...request,
       roundId: round.id,
-      prompt: promptText(round.promptSource, this.settings.prefix),
-      promptCellId: round.promptCellId,
-      snapshot: snap.json,
-      snapshotSeq: seq,
-      kernelInfo: snap.kernel,
-      globalPrompt: this.settings.globalPrompt,
-      limits: {
-        maxInsertions: this.settings.maxInsertions,
-        maxProposals: this.settings.maxProposals,
-        maxToolTurns: this.settings.maxToolTurns
-      }
+      prompt: promptText(round.promptSource, this.settings.prefix)
     });
 
     for await (const frame of frames as AsyncIterable<IAgentFrame>) {
@@ -743,7 +777,6 @@ export const roundsPlugin: JupyterFrontEndPlugin<IVybeRounds> = {
     settings: IVybeSettings,
     proposals: IVybeProposals
   ): IVybeRounds => {
-    void isPromptCell;
     const rounds = new Rounds(tracker, agent, settings, proposals);
     setRounds(rounds);
 
@@ -772,6 +805,57 @@ export const roundsPlugin: JupyterFrontEndPlugin<IVybeRounds> = {
       agent.warm(path);
     };
     tracker.widgetAdded.connect((_t, panel) => warm(panel));
+
+    /*
+     * Read the notebook ahead of the request. Everything a turn sends except
+     * the request's own words is known the moment a cell becomes a prompt, so
+     * the agent starts reading on the first prefix typed rather than on
+     * shift-enter. On a local model that read is most of the wait: Gemma 4 on
+     * TurboFieldfare took 30 s for 1,200 tokens cold and 2.6 s once read.
+     *
+     * Read again, after a pause, whenever the notebook changes while a prompt
+     * is open -- a cell finishing its run is the usual case -- because the
+     * server only reuses a read that matches the turn exactly. It ignores a
+     * read identical to the last one, so a keystroke in the prompt itself
+     * (which the turn leaves out) costs nothing but a snapshot.
+     */
+    const FIRST_READ_MS = 150;
+    const REREAD_MS = 1500;
+    tracker.widgetAdded.connect((_t, panel) => {
+      let readFor = '';
+      let timer = 0;
+      const onChange = () => {
+        const cell = panel.content.activeCell;
+        if (
+          !settings.enabled ||
+          !cell ||
+          cell.model.type !== 'code' ||
+          !isPromptCell(cell.model, settings.prefix) ||
+          rounds.hasActiveRound(panel)
+        ) {
+          return;
+        }
+        const id = cell.model.id;
+        const first = id !== readFor;
+        readFor = id;
+        window.clearTimeout(timer);
+        timer = window.setTimeout(
+          () => {
+            const still = panel.content.activeCell;
+            if (still?.model.id === id && !panel.isDisposed) {
+              rounds.prefill(panel, id);
+            }
+          },
+          first ? FIRST_READ_MS : REREAD_MS
+        );
+      };
+      panel.context.ready
+        .then(() => {
+          panel.content.model?.contentChanged.connect(onChange);
+        })
+        .catch(() => undefined);
+      panel.disposed.connect(() => window.clearTimeout(timer));
+    });
 
     return rounds;
   }

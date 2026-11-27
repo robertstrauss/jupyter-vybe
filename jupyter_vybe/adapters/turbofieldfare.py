@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 from typing import AsyncIterator
 
-from .base import Adapter, AdapterSpec, HealthStatus, Message
+from .base import Adapter, AdapterSpec, HealthStatus, Message, post_json
 
 DEFAULT_HOST = os.environ.get("TURBOFIELDFARE_HOST", "http://127.0.0.1:8080")
 # Between-token read timeout. Generous: a cold prefill on a long prompt can
@@ -151,6 +151,33 @@ class TurboFieldfareAdapter(Adapter):
             raise RuntimeError(status.detail)
         async for chunk in self._stream_cli(wire, cancel):
             yield chunk
+
+    async def prefill(self, messages: list[Message], cancel: asyncio.Event) -> str:
+        """Read the conversation so far into the server's cache (Adapter.prefill).
+
+        Server only: the CLI is a fresh process per prompt and keeps nothing.
+        The server keeps one conversation and reuses it only for a request
+        that repeats it message for message, its own reply included, and adds
+        one user turn -- so the reply is returned, to be sent back as is.
+        """
+        if not await asyncio.to_thread(self._server_up):
+            return ""
+        reply = await post_json(
+            f"{self.host}/v1/chat/completions",
+            {
+                "model": await asyncio.to_thread(self._server_model),
+                "messages": _as_turns(messages),
+                "max_tokens": 4,
+                "temperature": float(os.environ.get("TEMPERATURE", "0.2")),
+                "stream": False,
+            },
+            cancel,
+            timeout=READ_TIMEOUT * 4,
+        )
+        try:
+            return (reply or {})["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError):
+            return ""
 
     async def _stream_server(
         self, wire: list[dict], cancel: asyncio.Event

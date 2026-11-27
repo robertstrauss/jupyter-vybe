@@ -8,6 +8,8 @@ from .ollama import OllamaAdapter
 from .openai_compat import OpenAICompatAdapter
 from .relay import HUB, RunnerAdapter
 from .turbofieldfare import TurboFieldfareAdapter
+from .zeta import DEFAULT_HOST as DEFAULT_ZETA_HOST
+from .zeta import ZetaAdapter
 
 ADAPTER_REGISTRY: dict[str, AdapterSpec] = {
     "ollama-qwen25-coder-7b": AdapterSpec(
@@ -22,6 +24,9 @@ ADAPTER_REGISTRY: dict[str, AdapterSpec] = {
     "turbofieldfare-gemma4": AdapterSpec(
         "turbofieldfare-gemma4", "Gemma 4 26B-A4B (TurboFieldfare, local)", 131072
     ),
+    # Zed's edit-prediction model under llama-server. Not a chat model: the
+    # session drives it as an edit prediction (jupyter_vybe/zeta.py, docs/15).
+    "zeta2": AdapterSpec("zeta2", "Zeta 2 (Zed's edit predictor, llama.cpp, local)", 8192),
     "command": AdapterSpec(
         "command",
         "A command (claude -p, or any binary)",
@@ -64,6 +69,8 @@ def build_adapter(agent_id: str, options=None) -> Adapter:
         return OllamaAdapter(spec, _OLLAMA_MODELS[agent_id])
     if agent_id == "turbofieldfare-gemma4":
         return TurboFieldfareAdapter(spec)
+    if agent_id == "zeta2":
+        return ZetaAdapter(spec, opts.get("zetaEndpoint") or DEFAULT_ZETA_HOST)
     if agent_id == "command":
         return CommandAdapter(
             spec,
@@ -101,5 +108,6 @@ __all__ = [
     "CommandAdapter",
     "OpenAICompatAdapter",
     "TurboFieldfareAdapter",
+    "ZetaAdapter",
     "build_adapter",
 ]

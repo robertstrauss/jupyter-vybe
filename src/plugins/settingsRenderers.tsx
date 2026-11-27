@@ -49,6 +49,9 @@ const AGENT_NOTES: Record<string, string> = {
     'Fastest and weakest; worth trying if the 7B is too slow.',
   'turbofieldfare-gemma4':
     'Writes correct code 8 times in 8, but a first prompt costs 17-30s. Later turns are far quicker.',
+  zeta2:
+    "Zed's edit predictor, under llama-server on port 8012. 18 right of 20 on the agent " +
+    'bench, in a median 0.6s. Answers in code only, never in prose (docs/15).',
   command:
     'Runs any binary on this server that writes to stdout, e.g. claude -p.',
   runner:

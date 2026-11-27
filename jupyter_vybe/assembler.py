@@ -92,6 +92,15 @@ def render_notebook(
         lines.append(tag)
         if cid and cid in brief:
             continue
+        if prompt_index is not None and i == prompt_index:
+            # Its text is the request, which comes at the end. Repeated here it
+            # would also make the listing change with every keystroke, and
+            # the notebook is read ahead while the request is still being
+            # typed: the listing has to be the same then as when it is sent.
+            lines.append("    (the request at the end of this message)")
+            lines.append(f"[end of cell {n}]")
+            lines.append("")
+            continue
 
         count = cell.get("execution_count")
         if kind == "code" and count:
@@ -299,6 +308,43 @@ def assemble_followup(
     parts.append(TOOL_RECAP)
     parts.append(f"## Request\n\n{user_prompt}")
     return "\n\n".join(parts) + "\n"
+
+
+REQUEST_HEADING = "## Request"
+
+# Read-ahead (session.prefill). The notebook goes to the model in a turn of its
+# own, ending with this, and the model's reply to it is kept as the assistant
+# turn before the request. The request is then a one-message continuation of
+# a conversation the runtime has already read, which is the only form
+# TurboFieldfareServer's single-prefix cache reuses: it matches on whole
+# messages, including the assistant's exact words, not on a token prefix.
+# Measured: 1,190 of 1,220 prompt tokens reused, 2.6 s against 30 s cold.
+READY_INSTRUCTION = (
+    "That is the notebook; my request comes in my next message. For now, reply "
+    "to this message with only the word Ready. Answer the request itself as the "
+    "instructions above say."
+)
+READY_ACK = "Ready"
+# Leads the request when it follows a Ready. Without it Gemma 4 answered the
+# request itself with "Ready" too, every time: the instruction to reply with
+# one word outlived the message it was given in.
+REQUEST_CUE = (
+    "Now the request. Answer it in full, with <vybe:add_cell> / <vybe:propose_edit> "
+    "tags as the instructions above say. Do not reply Ready again."
+)
+
+
+def split_request(prompt: str) -> tuple[str, str]:
+    """Split an assembled prompt into (everything before the request, the request).
+
+    Both prompt shapes end with the request heading, so the split is at its
+    last occurrence: a user convention that happens to contain the same
+    heading comes earlier and stays in the context.
+    """
+    at = prompt.rfind(REQUEST_HEADING)
+    if at < 0:
+        return "", prompt
+    return prompt[:at].rstrip(), prompt[at:].strip()
 
 
 def _substitute(template: str, values: dict[str, str]) -> str:

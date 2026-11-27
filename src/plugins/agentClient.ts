@@ -38,6 +38,9 @@ export interface IPromptRequest {
   limits: { maxInsertions: number; maxProposals: number; maxToolTurns: number };
 }
 
+/** A prompt frame without the prompt: what a read-ahead needs. */
+export type IPrefillRequest = Omit<IPromptRequest, 'roundId' | 'prompt'>;
+
 export interface IVybeAgent {
   /** One session per notebook path. Frames arrive on the returned async iterator. */
   send(notebookPath: string, req: IPromptRequest): AsyncIterable<IAgentFrame>;
@@ -58,6 +61,16 @@ export interface IVybeAgent {
    * first prompt is what makes a first prompt feel broken.
    */
   warm(notebookPath: string): void;
+  /**
+   * Read the notebook into the model's cache before the request is written.
+   *
+   * Sent when a cell becomes a prompt, and again when the notebook changes
+   * while one is open. Everything a turn sends except the request's own
+   * words is known by then, and on a local model reading it is most of the
+   * wait. Best-effort: the server ignores it while a round is running, and
+   * checks at submit that what it read is still what it would send.
+   */
+  prefill(notebookPath: string, req: IPrefillRequest): void;
   toolResult(
     notebookPath: string,
     callId: string,
@@ -213,6 +226,12 @@ class VybeAgent implements IVybeAgent {
     // failure is not worth reporting -- nobody asked for anything yet.
     void this.channel(notebookPath)
       .postWhenOpen({ op: 'warm' })
+      .catch(() => undefined);
+  }
+
+  prefill(notebookPath: string, req: IPrefillRequest): void {
+    void this.channel(notebookPath)
+      .postWhenOpen({ op: 'warm', ...req })
       .catch(() => undefined);
   }
 
