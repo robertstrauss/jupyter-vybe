@@ -2,7 +2,7 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
-## 1.2.0 (unreleased)
+## 1.2.0 (2026-11-27)
 
 ### Follow-up turns show the notebook as it is now
 
