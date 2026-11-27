@@ -114,7 +114,7 @@ Once installed and enabled, the extension is triggered by adding a code cell and
 
 The agent can directly add cells immediately below the prompt (which you can instantly see and veto), but to modify any other part of the notebook it needs human reviewal. Proposed cell edits are shown like a git diff, green for new lines, red for replaced lines. If the model decides it needs to change other cells, a bubble in the top-right of the notebook panel shows you how many attempted edits there are, and takes you to them one at a time when clicked (or keyboard shortcut pressed). `Y` accepts the new version and moves to the next cell to review, `N` rejects modifications, `Return` places your cursor in the cell to modify it as you wish and continue reviewing once you hit `Esc`. You can also reject all edits at any time or go back undoing your approvals with `Cmd+Z`.
 
-![A proposed edit shown as a diff, with Accept (Y), Reject (N) and Modify (Return) beside it](screenshots/cell-edit-proposal.png)
+![A proposed edit shown as a diff, with Accept (Y), Reject (N) and Modify (Return) beside it](screenshots/edit-cell-proposal.png)
 
 ### Prompt History
 
@@ -177,8 +177,8 @@ Pick the matching `ollama-qwen25-coder-*` agent in settings. The settings pane c
 is running and the model is pulled, and starts `ollama serve` for you if it is not.
 
 **Gemma 4 26B-A4B through [TurboFieldfare](https://github.com/drumih/turbo-fieldfare)** (Apple
-Silicon only). It writes correct code more often than qwen 7B (8/8 against 19/24 on
-`scripts/bench-quality.py`) but answers about fifteen times slower. You need Xcode's command line
+Silicon only). It is the most accurate of the three on new code, but slow to read a notebook:
+37 s a prompt cold. Typing the `>` starts that reading early, which brings it to about 3 s. You need Xcode's command line
 tools (`xcode-select --install`) and about 15 GB of disk:
 
 ```bash
@@ -190,6 +190,28 @@ bash jupyter_vybe/adapters/vendored/setup_turbofieldfare.sh    # clones and buil
 Pick `turbofieldfare-gemma4` in settings. It uses `TurboFieldfareServer` on port 8080 if that is
 running (faster, since it keeps its prompt cache between turns) and runs the CLI once per prompt
 otherwise. `TURBOFIELDFARE_BIN` and `TURBOFIELDFARE_MODEL` point it somewhere else.
+
+**Zeta 2 through [llama.cpp](https://github.com/ggml-org/llama.cpp)** (any OS; fastest). This is
+Zed's edit-prediction model: Seed-Coder-8B, fine-tuned to predict a programmer's next edit. It is
+not a chat model, so it answers in code only, never in prose. On the same 20 benchmark cases it
+matched qwen 7B and Gemma on accuracy (18 of 20) at a median 0.6 s a prompt
+([docs/15](docs/15-zeta.md)). Install llama.cpp (`brew install llama.cpp` on a Mac, or a release
+build from GitHub), then start its server. The first run downloads the 4-bit quantized model
+(Q4_K_M, 5.2 GB) from Hugging Face:
+
+```bash
+llama-server -hf bartowski/zed-industries_zeta-2-GGUF:Q4_K_M \
+  --port 8012 -c 8192 -ngl 99 -fa on -np 1 --spec-type ngram-mod
+```
+
+`--spec-type ngram-mod` is prompt-lookup speculative decoding: most of what an edit predictor
+writes is code it was shown, and drafts taken from the prompt are accepted almost every time
+there. `-np 1` keeps one request at a time; Zed and this extension can share the server. Pick
+`zeta2` in settings. It expects the server at `http://127.0.0.1:8012`; set `ZETA_HOST` before
+starting Jupyter to use another address. To keep the server running across reboots on a Mac, run
+it from a launchd agent, or use the same model as Zed's own edit predictions with
+`"edit_predictions": {"provider": "open_ai_compatible_api", "open_ai_compatible_api": {"api_url":
+"http://127.0.0.1:8012/v1/completions", "model": "zeta2", "prompt_format": "zeta2"}}`.
 
 ### Agent tools
 
