@@ -194,6 +194,23 @@ test('the diff takes the place of the editor, above the old output', async ({
   const input = (await cell.locator('.jp-Cell-inputWrapper').boundingBox())!;
   expect(diff.y - input.y).toBeLessThan(8);
   expect(input.y + input.height - (diff.y + diff.height)).toBeLessThan(8);
+  // With the cell active its toolbar (move, delete) shares the corner with
+  // Accept: the review buttons must be the thing a click there lands on.
+  await cell.locator('.jp-InputPrompt').click();
+  await expect(cell.locator('.jp-cell-toolbar')).toBeVisible();
+  const covered = await cell.evaluate(node =>
+    [...node.querySelectorAll<HTMLElement>('.jv-review-controls button')]
+      .filter(button => {
+        const r = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          r.x + r.width / 2,
+          r.y + r.height / 2
+        );
+        return !button.contains(hit);
+      })
+      .map(button => button.textContent)
+  );
+  expect(covered).toEqual([]);
   await page.screenshot({
     path: 'test-results/diff-in-place.png',
     clip: { x: 0, y: input.y - 20, width: 1200, height: input.height + 120 }
